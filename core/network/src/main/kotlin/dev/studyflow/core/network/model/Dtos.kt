@@ -3,16 +3,16 @@ package dev.studyflow.core.network.model
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
-/**
- * Wire models, hand-written against `docs/api/openapi.yaml` (issue #63).
- *
- * They are deliberately separate from `:core:model`: the domain model is ours to change, the wire
- * format is the server's. Keeping them apart means a server-side rename is a mapping change in one
- * file rather than a refactor across the app.
- *
- * Nullable properties are the spec's optional fields. Every unknown field is dropped by
- * [StudyFlowJson], so a server that starts sending more data cannot break an installed client.
- */
+// Wire models, hand-written against `docs/api/openapi.yaml` (issue #63).
+//
+// They are deliberately separate from `:core:model`: the domain model is ours to change, the wire
+// format is the server's. Keeping them apart means a server-side rename is a mapping change in one
+// file rather than a refactor across the app.
+//
+// Nullable properties are the spec's optional fields. Every unknown field is dropped by
+// StudyFlowJson, so a server that starts sending more data cannot break an installed client.
+
+/** The structured error body any operation can return. */
 @Serializable
 public data class ApiErrorDto(
     val code: String,

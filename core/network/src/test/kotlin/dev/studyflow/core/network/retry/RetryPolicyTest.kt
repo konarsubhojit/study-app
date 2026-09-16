@@ -53,7 +53,7 @@ class RetryPolicyTest {
 
     @Test
     fun `transient failures are retried`() {
-        listOf(408, 429, 500, 502, 503, 504).forEach { status ->
+        listOf(408, 425, 429, 500, 502, 503, 504).forEach { status ->
             assertTrue(policy.isRetryable(status, idempotent = true), "expected $status to be retryable")
         }
     }

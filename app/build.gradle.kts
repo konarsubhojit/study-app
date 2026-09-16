@@ -11,13 +11,15 @@ val defaultApiBaseUrl = "https://api.studyflow.dev"
 val apiBaseUrl: String = providers.gradleProperty("studyflow.apiBaseUrl").getOrElse(defaultApiBaseUrl)
 
 extensions.configure<ApplicationExtension> {
+    val appVersionName = "1.0.0"
+
     defaultConfig {
         versionCode = 1
-        versionName = "1.0.0"
+        versionName = appVersionName
 
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         // The server uses this to decide when an installed build is too old to serve.
-        buildConfigField("String", "API_CLIENT_VERSION", "\"$versionName\"")
+        buildConfigField("String", "API_CLIENT_VERSION", "\"$appVersionName\"")
     }
 }
 
