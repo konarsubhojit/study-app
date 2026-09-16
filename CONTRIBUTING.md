@@ -99,10 +99,12 @@ goal, and a quarantined test with no progress on its issue should be fixed or re
 `<module>/build/reports/jacoco/` and Android modules under `<module>/build/reports/coverage/`. CI
 reads both and annotates each pull request with the coverage of the lines it changed.
 
-Coverage is a signal, not a target. There is no repository-wide percentage to defend, and a line
-covered by a test that asserts nothing is worth less than an uncovered line whose risk you have
-thought about. Use the number to notice code that nobody exercised and then decide, in the pull
-request, whether that matters.
+The only enforced number is a floor of 70% on the lines a pull request changed, which exists to
+catch code that arrived with no test at all. Everything else is a signal: there is no
+repository-wide percentage to defend, no ratchet on existing code, and a line covered by a test
+that asserts nothing is worth less than an uncovered line whose risk you have thought about. Use
+the report to notice what nobody exercised and then argue, in the pull request, about whether that
+matters — including when the floor is the wrong answer for a particular change.
 
 ## Quality gates
 

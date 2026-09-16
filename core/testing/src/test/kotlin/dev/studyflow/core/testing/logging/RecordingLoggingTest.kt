@@ -47,6 +47,16 @@ class RecordingLoggingTest {
     }
 
     @Test
+    fun `a reporter that is off records nothing`() {
+        val reporter = RecordingCrashReporter()
+        reporter.initialize(enabled = false, optedOut = false)
+
+        reporter.record(IllegalStateException("boom"))
+
+        assertEquals(emptyList<Throwable>(), reporter.recordedThrowables)
+    }
+
+    @Test
     fun `recorded throwables are available for assertions`() {
         val reporter = RecordingCrashReporter()
         reporter.initialize(enabled = true, optedOut = false)

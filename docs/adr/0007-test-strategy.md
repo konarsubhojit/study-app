@@ -55,9 +55,11 @@ annotated `@Flaky(issue = "#123")`, which tags it `flaky`; the default suite exc
 the nightly run includes only it. `@Disabled` and deletion are not substitutes: both lose the
 coverage *and* the memory of why.
 
-**Coverage is reported, gated on new code, and never a target.** JaCoCo XML is produced by `check`;
-CI annotates a pull request with the coverage of the lines it changed. There is no repository-wide
-percentage to defend and no ratchet on existing code.
+**Coverage is reported, gated on new code, and never a repository-wide target.** JaCoCo XML is
+produced by `check`; CI annotates a pull request with the coverage of the lines it changed and
+fails below a 70% floor on those lines. The floor is there to catch code that arrived with no test
+at all, not to be optimised: there is no overall percentage to defend and no ratchet on existing
+code.
 
 ## Consequences
 
@@ -66,8 +68,8 @@ percentage to defend and no ratchet on existing code.
 - The inner loop stays fast because nothing slow is allowed into `./gradlew test`.
 - A flake is visible and owned instead of being silently re-run. The cost is that a quarantined
   test protects nothing until it is fixed, so quarantine needs a tracking issue by construction.
-- Coverage on changed lines can be argued with. A reviewer may accept an uncovered line with a
-  reason; the number is evidence in that conversation, not the verdict.
+- Coverage on changed lines is a floor rather than a verdict. A change that trips it and should
+  not have is a conversation in the pull request — the number is evidence in that conversation.
 - Fakes are code that must be maintained alongside the interfaces they stand in for, and a fake
   that drifts from the real implementation is a false sense of safety — which is why contract-level
   integration tests at the module boundary remain part of the pyramid rather than optional.

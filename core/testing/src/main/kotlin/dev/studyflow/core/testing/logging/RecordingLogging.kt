@@ -48,7 +48,8 @@ public class RecordingAppLogger : AppLogger {
  *
  * The interesting assertions about crash reporting are negative ones — nothing is recorded when the
  * user has opted out — and those are impossible to make against a real SDK without a network and a
- * project on someone's dashboard.
+ * project on someone's dashboard. The fake therefore honours the flags it was initialised with
+ * rather than recording unconditionally: a reporter that is off does not report.
  */
 public class RecordingCrashReporter : CrashReporter {
     private val recorded = mutableListOf<Throwable>()
@@ -68,6 +69,8 @@ public class RecordingCrashReporter : CrashReporter {
     }
 
     override fun record(throwable: Throwable) {
-        recorded += throwable
+        if (isInitialized) {
+            recorded += throwable
+        }
     }
 }

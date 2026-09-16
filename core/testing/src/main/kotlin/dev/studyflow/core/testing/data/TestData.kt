@@ -18,19 +18,19 @@ import kotlinx.datetime.TimeZone
 import kotlin.time.Duration
 import kotlin.time.Instant
 
-/**
- * Data builders for the shared models.
- *
- * A test should read as the one fact it is about. Constructing a [Material] by hand costs eleven
- * arguments, ten of which are noise for any given test and all of which have to be revisited when
- * the model grows a field; a builder with defaults lets the test name the one value it cares about
- * and stay silent about the rest. The defaults are deliberately valid and boring — every model here
- * validates itself in `init`, so a builder that returned nonsense would fail in the fixture rather
- * than in the assertion.
- *
- * Instants line up with `FakeDevice`'s default start, so a fixture and a fake clock tell the same
- * story without either having to be configured.
- */
+// Data builders for the shared models.
+//
+// A test should read as the one fact it is about. Constructing a Material by hand costs eleven
+// arguments, ten of which are noise for any given test and all of which have to be revisited when
+// the model grows a field; a builder with defaults lets the test name the one value it cares about
+// and stay silent about the rest. The defaults are deliberately valid and boring — every model here
+// validates itself in `init`, so a builder that returned nonsense would fail in the fixture rather
+// than in the assertion.
+//
+// The instants line up with `FakeDevice`'s default start, so a fixture and a fake clock tell the
+// same story without either having to be configured.
+
+/** The wall-clock reading `FakeDevice` starts at. */
 public val TEST_WALL_CLOCK: Instant = Instant.parse("2026-03-01T09:00:00Z")
 
 /** The boot epoch `FakeDevice` starts in. */
