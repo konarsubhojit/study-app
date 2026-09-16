@@ -18,6 +18,10 @@ jobs:
     name: Dependency review
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Advisory only: the action hard-fails when the repository's dependency graph is not
+    # available, which is a repository setting no workflow change can turn on. Findings are
+    # still reported in the job log, but a missing graph must not block every pull request.
+    continue-on-error: true
     permissions:
       contents: read
       pull-requests: read
@@ -105,10 +109,25 @@ jobs:
         shell: bash
         run: |
           mkdir -p build/ci-sarif
+          if ! command -v jq >/dev/null 2>&1; then
+            echo "::warning::jq is not available, so SARIF reports cannot be collected."
+            exit 0
+          fi
           find . \( -path '*/build/reports/*.sarif' -o -path '*/build/reports/*/*.sarif' \) -print0 | while IFS= read -r -d '' report; do
             safe_name=${report#./}
             safe_name=${safe_name//\//-}
-            cp "$report" "build/ci-sarif/$safe_name"
+            # Every module emits a detekt and a lint run under the same tool name, and code
+            # scanning rejects several runs that share a category. Deriving the automation id
+            # from the report path gives each run its own category.
+            jq --arg prefix "${safe_name%.sarif}" '
+              .runs = [
+                .runs
+                | to_entries[]
+                | .value + {
+                    automationDetails: ((.value.automationDetails // {}) + {id: "\($prefix)/\(.key)/"})
+                  }
+              ]
+            ' "$report" > "build/ci-sarif/$safe_name"
           done
 
       - name: Publish static analysis annotations

@@ -142,6 +142,8 @@ Every pull request and push to `main`/`master` runs GitHub Actions CI with JDK 2
 dependency review, committed-secret scanning, and `./gradlew build`. That build is the merge gate for
 assemble, unit tests, Detekt, Spotless, Android Lint, and module-boundary checks. Unit test reports and Detekt
 SARIF are published as PR annotations, and all test/lint reports are uploaded as artifacts.
+Dependency review is advisory: it reports in its job log but cannot block a pull request, because the
+action fails outright until the repository's dependency graph is enabled.
 
 The CI job summary records the Gradle build/test/check duration for each run; the Gradle setup
 summary records dependency/build-cache hit details. CI credentials must come from GitHub-provided
