@@ -9,6 +9,7 @@ agp = "9.4.0"
 androidxActivity = "1.13.0"
 androidxComposeBom = "2026.09.00"
 androidxCore = "1.19.0"
+androidxDataStore = "1.2.0"
 androidxEspresso = "3.7.0"
 androidxHiltNavigationCompose = "1.4.0"
 androidxHiltWork = "1.4.0"
@@ -37,6 +38,8 @@ ktlint = "1.8.0"
 minSdk = "26"
 robolectric = "4.17"
 room = "2.8.5"
+protobuf = "4.29.3"
+protobufPlugin = "0.10.0"
 # Compose preview screenshot testing; the plugin line is still alpha but is the AGP-native option.
 screenshot = "0.0.1-alpha16"
 spotless = "8.10.2"
@@ -47,6 +50,7 @@ turbine = "1.2.1"
 [libraries]
 androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "androidxActivity" }
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "androidxCore" }
+androidx-datastore = { module = "androidx.datastore:datastore", version.ref = "androidxDataStore" }
 androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "androidxHiltNavigationCompose" }
 androidx-hilt-work = { module = "androidx.hilt:hilt-work", version.ref = "androidxHiltWork" }
 androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidxLifecycle" }
@@ -74,6 +78,8 @@ hilt-compiler = { module = "com.google.dagger:hilt-android-compiler", version.re
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
 
 screenshot-validation-api = { module = "com.android.tools.screenshot:screenshot-validation-api", version.ref = "screenshot" }
 
@@ -125,5 +131,6 @@ kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
 screenshot = { id = "com.android.compose.screenshot", version.ref = "screenshot" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }

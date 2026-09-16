@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+package dev.studyflow.core.datastore.proto;
+
+option java_multiple_files = true;
+option java_package = "dev.studyflow.core.datastore.proto";
+option optimize_for = LITE_RUNTIME;
+
+message ActiveTimerAnchor {
+  optional string session_id = 1;
+  optional int64 wall_clock_epoch_ms = 2;
+  optional int64 uptime_ms = 3;
+  optional string boot_id = 4;
+}
