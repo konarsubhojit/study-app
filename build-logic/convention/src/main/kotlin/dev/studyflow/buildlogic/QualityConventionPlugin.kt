@@ -65,10 +65,15 @@ public class QualityConventionPlugin : Plugin<Project> {
 
             // Compose has its own failure modes — unstable parameters, state hoisting, modifier
             // order — that the generic Kotlin rules cannot see, so the ruleset is added exactly to
-            // the modules that compile Compose code.
+            // the modules that compile Compose code. Its configuration has to travel with it: a
+            // module without the ruleset on its classpath fails on a `Compose` section it cannot
+            // resolve, which is why those deviations live in their own file.
             pluginManager.withPlugin("org.jetbrains.kotlin.plugin.compose") {
                 dependencies {
                     add("detektPlugins", libs.findLibrary("compose-detekt-rules").get())
+                }
+                extensions.configure<DetektExtension> {
+                    config.from(rootProject.layout.projectDirectory.file("config/detekt/compose.yml"))
                 }
             }
 

@@ -18,6 +18,8 @@ See the [README](README.md) for the current module map and
 
 - `:app` wires Android application concerns together.
 - `:feature:*` owns a user-facing vertical slice and may depend on `:core:*`, never another feature.
+- `:core:designsystem` owns the Material 3 theme and every design token; see
+  [the design system guide](docs/design-system.md).
 - `:core:model` contains dependency-free shared models.
 - `:core:domain` contains Android-free business rules and depends only on model and common code.
 - `:core:common` contains shared primitives such as clocks and coroutine dispatchers.
@@ -36,6 +38,9 @@ implementation into `:app`; `./gradlew checkModuleBoundaries` enforces the full 
 - **detekt**, using the project ruleset in `config/detekt/detekt.yml` plus the Compose rules on
   modules that compile Compose code.
 - **Android Lint** with `warningsAsErrors`, so a new warning fails the build.
+- **Compose preview screenshot tests** on modules that apply `studyflow.screenshot`. Re-record them
+  with `./gradlew :core:designsystem:updateDebugScreenshotTest` only when the image change is the
+  change you meant to make, and say so in the pull request.
 - **Module boundary and module graph** checks.
 
 Enable the opt-in formatting hint before your first commit if you want it; CI remains the real

@@ -18,6 +18,7 @@ dependencies {
     compileOnly(libs.kotlin.gradlePlugin)
     compileOnly(libs.ksp.gradlePlugin)
     compileOnly(libs.room.gradlePlugin)
+    compileOnly(libs.screenshot.gradlePlugin)
     compileOnly(libs.spotless.gradlePlugin)
 }
 
@@ -46,6 +47,10 @@ gradlePlugin {
         register("jvmLibrary") {
             id = "studyflow.jvm.library"
             implementationClass = "dev.studyflow.buildlogic.JvmLibraryConventionPlugin"
+        }
+        register("screenshot") {
+            id = "studyflow.screenshot"
+            implementationClass = "dev.studyflow.buildlogic.ScreenshotConventionPlugin"
         }
         register("room") {
             id = "studyflow.room"
