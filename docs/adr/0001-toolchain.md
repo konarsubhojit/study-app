@@ -12,16 +12,15 @@ turning into copy-pasted sludge.
 
 ## Decision
 
-**Gradle 9.7.1 via the wrapper, AGP 9.0.1, Kotlin 2.2.20, Android API 36, and JDK 21.**
+**Gradle 9.7.1 via the wrapper, AGP 9.0.1, Kotlin 2.4.20, Android API 36, and JDK 21.**
 
 The wrapper is committed, so the Gradle version is part of the source tree rather than part of each
 developer's machine. A Java *toolchain* is declared rather than relying on `JAVA_HOME`, so the
 bytecode target does not depend on which JDK happens to be first on the path.
 
-AGP 9.0.1 supports API 36, requires Gradle 9.1 or newer, and uses Kotlin 2.2.20 for its built-in
-Kotlin support. API 36 is the latest stable Android platform at this decision's date. The
-application namespace and application ID are both fixed as `dev.studyflow.app`; changing either
-after release has user-facing and distribution consequences.
+AGP 9.0.1 supports API 36 and requires Gradle 9.1 or newer. API 36 is the latest stable Android
+platform at this decision's date. The application namespace and application ID are both fixed as
+`dev.studyflow.app`; changing either after release has user-facing and distribution consequences.
 
 The baseline disables AGP's built-in Kotlin support because the existing pure-Kotlin modules use
 the standalone Kotlin JVM plugin. This manifest-only app has no Kotlin sources; future Android
