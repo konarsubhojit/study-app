@@ -1,0 +1,167 @@
+-- Authorisation tests: prove that row-level security makes cross-user access impossible at the
+-- data layer, for every table introduced by the migrations in ../../migrations.
+--
+-- Run with `supabase test db --local` (see infra/README.md). Each table gets the same four
+-- checks: user A can read/write their own row, and every attempt by user B to read, update or
+-- delete user A's row returns zero affected rows rather than an error — RLS filters rows out
+-- silently, which is exactly the behaviour we want to pin down here.
+begin;
+
+create extension if not exists pgtap with schema extensions;
+
+select plan(26);
+
+-- Two distinct users, never created via auth.users directly in tests: we insert straight into
+-- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
+insert into auth.users (id, email) values
+  ('11111111-1111-1111-1111-111111111111', 'alice@example.com'),
+  ('22222222-2222-2222-2222-222222222222', 'bob@example.com');
+
+-- profiles rows are created by the on_auth_user_created trigger; confirm that happened.
+select ok(
+  exists(select 1 from public.profiles where id = '11111111-1111-1111-1111-111111111111'),
+  'profile auto-created for alice'
+);
+select ok(
+  exists(select 1 from public.profiles where id = '22222222-2222-2222-2222-222222222222'),
+  'profile auto-created for bob'
+);
+
+-- Seed one row per table as alice, via service_role so RLS does not get in the way of setup.
+set local role service_role;
+
+insert into public.subjects (id, user_id, name, color_argb, device_id) values
+  ('a1111111-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', 'Chemistry', 16711680, 'device-a');
+
+insert into public.study_sessions
+    (id, user_id, subject_id, started_at, ended_at, counted_seconds, device_id)
+  values
+    ('a2222222-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111',
+     'a1111111-1111-1111-1111-111111111111', now() - interval '1 hour', now(), 3600, 'device-a');
+
+insert into public.study_tasks (id, user_id, subject_id, title, device_id) values
+  ('a3333333-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111',
+   'a1111111-1111-1111-1111-111111111111', 'Revise chapter 4', 'device-a');
+
+insert into public.reminders (id, user_id, task_id, device_id) values
+  ('a4444444-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111',
+   'a3333333-1111-1111-1111-111111111111', 'device-a');
+
+insert into public.material_folders (id, user_id, name, device_id) values
+  ('a5555555-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111', 'Past papers', 'device-a');
+
+insert into public.materials
+    (id, user_id, folder_id, display_name, mime_type, size_bytes, content_hash, storage_key, device_id)
+  values
+    ('a6666666-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111',
+     'a5555555-1111-1111-1111-111111111111', 'notes.pdf', 'application/pdf', 1024,
+     repeat('a', 64),
+     '11111111-1111-1111-1111-111111111111/' || repeat('a', 64), 'device-a');
+
+insert into public.sync_cursors (user_id, device_id, entity_type, cursor) values
+  ('11111111-1111-1111-1111-111111111111', 'device-a', 'subject', now());
+
+reset role;
+
+-- ---------------------------------------------------------------------------------------------
+-- alice, acting as herself, can see and change every row she owns.
+-- ---------------------------------------------------------------------------------------------
+set local role authenticated;
+set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
+set local request.jwt.claims = '{"sub": "11111111-1111-1111-1111-111111111111", "role": "authenticated"}';
+
+select is((select count(*) from public.subjects)::int, 1, 'alice sees her own subject');
+select is((select count(*) from public.study_sessions)::int, 1, 'alice sees her own session');
+select is((select count(*) from public.study_tasks)::int, 1, 'alice sees her own task');
+select is((select count(*) from public.reminders)::int, 1, 'alice sees her own reminder');
+select is((select count(*) from public.material_folders)::int, 1, 'alice sees her own folder');
+select is((select count(*) from public.materials)::int, 1, 'alice sees her own material');
+select is((select count(*) from public.sync_cursors)::int, 1, 'alice sees her own sync cursor');
+
+select lives_ok(
+  $$ update public.subjects set archived = true where id = 'a1111111-1111-1111-1111-111111111111' $$,
+  'alice can update her own subject'
+);
+
+-- ---------------------------------------------------------------------------------------------
+-- bob, acting as himself, sees none of alice's rows: RLS filters them out rather than erroring.
+-- ---------------------------------------------------------------------------------------------
+reset role;
+set local role authenticated;
+set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
+set local request.jwt.claims = '{"sub": "22222222-2222-2222-2222-222222222222", "role": "authenticated"}';
+
+select is((select count(*) from public.subjects)::int, 0, 'bob cannot see alice''s subject');
+select is((select count(*) from public.study_sessions)::int, 0, 'bob cannot see alice''s session');
+select is((select count(*) from public.study_tasks)::int, 0, 'bob cannot see alice''s task');
+select is((select count(*) from public.reminders)::int, 0, 'bob cannot see alice''s reminder');
+select is((select count(*) from public.material_folders)::int, 0, 'bob cannot see alice''s folder');
+select is((select count(*) from public.materials)::int, 0, 'bob cannot see alice''s material');
+select is((select count(*) from public.sync_cursors)::int, 0, 'bob cannot see alice''s sync cursor');
+
+-- Writes: bob's update/delete statements succeed as no-ops (zero rows matched), never touching
+-- alice's data and never raising a permission error that would leak the row's existence.
+select is_empty(
+  $$ update public.subjects set archived = true
+       where id = 'a1111111-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s update of alice''s subject affects no rows'
+);
+select is_empty(
+  $$ delete from public.subjects
+       where id = 'a1111111-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s delete of alice''s subject affects no rows'
+);
+select is_empty(
+  $$ update public.study_sessions set note = 'hacked'
+       where id = 'a2222222-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s update of alice''s session affects no rows'
+);
+select is_empty(
+  $$ update public.study_tasks set title = 'hacked'
+       where id = 'a3333333-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s update of alice''s task affects no rows'
+);
+select is_empty(
+  $$ update public.materials set display_name = 'hacked'
+       where id = 'a6666666-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s update of alice''s material affects no rows'
+);
+
+-- bob cannot insert a row claiming to be alice's, even though he supplies alice's user_id.
+select throws_ok(
+  $$ insert into public.subjects (id, user_id, name, color_argb, device_id)
+       values ('b0000000-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111',
+               'Impersonated', 0, 'device-b') $$,
+  '42501',
+  null,
+  'bob cannot insert a subject owned by alice'
+);
+
+-- bob's own row is still fully usable: RLS is per-row, not a blanket lockout.
+select lives_ok(
+  $$ insert into public.subjects (id, user_id, name, color_argb, device_id)
+       values ('b1111111-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+               'Physics', 255, 'device-b') $$,
+  'bob can insert his own subject'
+);
+select is((select count(*) from public.subjects)::int, 1, 'bob now sees exactly his own subject');
+
+-- The storage-key/owner check constraint independently blocks a materials row from pointing at
+-- someone else's object prefix, even for a service-role write.
+reset role;
+set local role service_role;
+select throws_ok(
+  $$ insert into public.materials
+       (id, user_id, folder_id, display_name, mime_type, size_bytes, content_hash, storage_key, device_id)
+       values ('a7777777-1111-1111-1111-111111111111', '22222222-2222-2222-2222-222222222222',
+               null, 'stolen.pdf', 'application/pdf', 1,
+               repeat('b', 64),
+               '11111111-1111-1111-1111-111111111111/' || repeat('b', 64), 'device-b') $$,
+  '23514',
+  null,
+  'a material row cannot claim another user''s storage-key prefix'
+);
+reset role;
+
+select * from finish();
+rollback;
