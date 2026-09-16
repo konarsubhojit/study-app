@@ -2,6 +2,8 @@ import com.android.build.api.dsl.ApplicationExtension
 
 plugins {
     id("studyflow.android.application")
+    id("studyflow.compose")
+    alias(libs.plugins.kotlin.serialization)
 }
 
 // Pointing the app at a local mock backend is a build flag rather than a code change (issue #63):
@@ -25,6 +27,7 @@ extensions.configure<ApplicationExtension> {
 
 dependencies {
     implementation(projects.core.common)
+    implementation(projects.core.designsystem)
     implementation(projects.core.network)
     implementation(projects.feature.auth)
     implementation(projects.feature.insights)
@@ -33,9 +36,12 @@ dependencies {
     implementation(projects.feature.tasks)
     implementation(projects.feature.timer)
     implementation(libs.androidx.hilt.work)
+    implementation(libs.androidx.navigation3.runtime)
+    implementation(libs.androidx.navigation3.ui)
     implementation(libs.androidx.startup.runtime)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.kotlinx.serialization.json)
     implementation(libs.timber)
 
     testImplementation(projects.core.testing)
