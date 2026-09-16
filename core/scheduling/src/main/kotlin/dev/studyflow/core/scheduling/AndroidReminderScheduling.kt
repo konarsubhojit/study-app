@@ -97,8 +97,7 @@ public class AndroidReminderPlatformScheduler(
         workManager.cancelUniqueWork(workName(reminderId))
     }
 
-    private fun delayMillis(plan: ReminderPlan): Long =
-        max(0L, plan.triggerAt.toEpochMilliseconds() - nowMillis())
+    private fun delayMillis(plan: ReminderPlan): Long = max(0L, plan.triggerAt.toEpochMilliseconds() - nowMillis())
 
     private fun operation(reminderId: String): PendingIntent =
         PendingIntent.getBroadcast(
@@ -126,7 +125,8 @@ public class AndroidReminderPlatformScheduler(
         }
 
     private fun reminderUri(reminderId: String): Uri =
-        Uri.Builder()
+        Uri
+            .Builder()
             .scheme("studyflow")
             .authority("reminders")
             .appendPath(reminderId)
@@ -145,18 +145,22 @@ public class ReminderDeliveryWorker(
 }
 
 public class ReminderAlarmReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent): Unit = Unit
+    override fun onReceive(
+        context: Context,
+        intent: Intent,
+    ): Unit = Unit
 }
 
 public const val EXTRA_REMINDER_ID: String = "dev.studyflow.core.scheduling.REMINDER_ID"
 
 public fun exactAlarmSettingsIntent(context: Context): Intent =
-    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+    Intent(ExactAlarmPermissionRationale.REQUEST_EXACT_ALARM_SETTINGS).apply {
         data = Uri.fromParts("package", context.packageName, null)
     }
 
 private fun workData(plan: ReminderPlan): Data =
-    Data.Builder()
+    Data
+        .Builder()
         .putString(EXTRA_REMINDER_ID, plan.reminderId)
         .putString("task_id", plan.taskId)
         .putLong("trigger_at_epoch_millis", plan.triggerAt.toEpochMilliseconds())

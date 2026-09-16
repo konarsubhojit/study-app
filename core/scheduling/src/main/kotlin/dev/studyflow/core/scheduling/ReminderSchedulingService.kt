@@ -46,8 +46,7 @@ public class ReminderSchedulingService(
         )
     }
 
-    public fun rescheduleAll(tasks: Collection<StudyTask>): List<ReminderScheduleResult> =
-        tasks.map(::schedule)
+    public fun rescheduleAll(tasks: Collection<StudyTask>): List<ReminderScheduleResult> = tasks.map(::schedule)
 
     public fun cancel(reminderId: String) {
         platformScheduler.cancel(reminderId)
@@ -95,8 +94,9 @@ public data class ExactAlarmPermissionRationale(
             if (ReminderDegradation.EXACT_ALARMS_DENIED in plan.degradations) {
                 ExactAlarmPermissionRationale(
                     title = "Allow exact reminders",
-                    message = "This reminder was scheduled with reduced precision because Android " +
-                        "does not currently allow exact alarms for StudyFlow.",
+                    message =
+                        "This reminder was scheduled with reduced precision because Android " +
+                            "does not currently allow exact alarms for StudyFlow.",
                     settingsAction = REQUEST_EXACT_ALARM_SETTINGS,
                 )
             } else {
@@ -112,8 +112,9 @@ public data class ReducedPrecisionBanner(
         public fun takeIfNeeded(plan: ReminderPlan): ReducedPrecisionBanner? =
             if (ReminderDegradation.EXACT_ALARMS_DENIED in plan.degradations) {
                 ReducedPrecisionBanner(
-                    message = "Exact alarms are off, so this reminder may arrive later than the " +
-                        "selected minute.",
+                    message =
+                        "Exact alarms are off, so this reminder may arrive later than the " +
+                            "selected minute.",
                 )
             } else {
                 null
