@@ -1,0 +1,45 @@
+# StudyFlow detekt rules.
+#
+# Built on top of the detekt defaults (`buildUponDefaultConfig = true`); only deviations are
+# listed here so upstream rule improvements are inherited automatically.
+
+build:
+  maxIssues: 0
+
+complexity:
+  LongParameterList:
+    # Domain value types are constructed explicitly rather than through builders.
+    functionThreshold: 8
+    constructorThreshold: 10
+  TooManyFunctions:
+    thresholdInClasses: 15
+    thresholdInFiles: 20
+    ignorePrivate: true
+
+style:
+  MaxLineLength:
+    maxLineLength: 120
+  ReturnCount:
+    # Guard clauses at the top of a function are clearer than nesting the happy path.
+    excludeGuardClauses: true
+  MagicNumber:
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreAnnotation: true
+    ignoreNamedArgument: true
+  ForbiddenComment:
+    # TODOs are tracked as GitHub issues; a bare comment should not fail the build.
+    active: false
+  UnusedPrivateMember:
+    active: true
+
+naming:
+  FunctionNaming:
+    # JUnit test names read as sentences.
+    excludes: ['**/test/**']
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: true
+  SwallowedException:
+    active: true

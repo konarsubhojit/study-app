@@ -1,1 +1,158 @@
-# study-app
+# StudyFlow
+
+An Android study-time tracker: a stopwatch that survives anything the platform does to it, a place
+to keep study materials of any type, and reminders that actually fire.
+
+This repository currently contains the **build foundation and the pure-Kotlin domain core**. See
+[Current state](#current-state) for exactly what is and is not here yet.
+
+## The three hard problems
+
+Most of the design effort goes into three things that look simple in a feature list and are not.
+
+### 1. A timer that survives app closure
+
+Android will kill the process. The device will reboot, doze for hours, and have its clock corrected
+by NTP or shuffled by DST. A stopwatch built on a ticking counter, a wall-clock delta, or a stored
+`elapsedMillis` column gets all of these wrong.
+
+StudyFlow **stores events and derives time**. A session is an append-only log of
+`STARTED`/`PAUSED`/`RESUMED`/`STOPPED`, and every event records *two* clocks plus a boot id:
+monotonic `elapsedRealtime` (immune to clock changes, meaningless across a reboot) and the wall
+clock (survives reboots, jumps freely). Elapsed time is recomputed by folding the log, never
+accumulated.
+
+Within a boot the monotonic delta is authoritative, so a clock change cannot add or erase study
+time. Across a reboot the two are incomparable, so the app refuses to guess: the gap is recorded as
+**unverified** and the user is asked, rather than fabricating hours or silently deleting real work.
+
+No `CountDownTimer`, no tick loop, no wake lock — the ticking digits are rendered by the system's
+notification chronometer from a single anchor.
+
+→ [ADR 0003](docs/adr/0003-timer-event-sourcing.md) ·
+[`TimerEngine`](core/domain/src/main/kotlin/dev/studyflow/core/domain/timer/TimerEngine.kt)
+
+### 2. Object storage for any file type
+
+Pick → stage + SHA-256 → Room row as `PENDING` → resumable chunked upload against **presigned part
+URLs** → verify the digest → `SYNCED`. No cloud credentials ever ship in the APK. Part boundaries
+are a pure function of file size, so an interrupted 700 MB upload resumes by resending one part, not
+the whole file, and the content hash makes uploads idempotent and deduplicated.
+
+Archives are treated as the attacker-controlled data structures they are: entry names are normalised
+and checked for zip slip (absolute paths, drive letters, `..` escapes, Windows separators, null
+bytes, colliding paths), and entry count, size and compression ratio are capped against zip bombs.
+
+The offline cache is LRU with two hard exceptions — it will never evict a file the user pinned, and
+never a file that has not finished uploading, because that local copy is the only copy.
+
+→ [ADR 0005](docs/adr/0005-object-storage.md) ·
+[`UploadPlanner`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/UploadPlanner.kt) ·
+[`ArchiveSafety`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/ArchiveSafety.kt) ·
+[`CachePlanner`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/CachePlanner.kt)
+
+### 3. Reminders that actually fire
+
+There is no single correct Android API for "remind me later", so the choice is a decision matrix:
+inexact/WorkManager for gentle nudges, `setExactAndAllowWhileIdle` for precise ones, `setAlarmClock`
+plus a full-screen intent for alarm-style. When the OS denies a capability the reminder degrades
+*visibly* — the plan reports `EXACT_ALARMS_DENIED`, `NOTIFICATIONS_DENIED` and friends so the UI can
+explain rather than silently fail.
+
+Recurrence is an RRULE-lite subset evaluated in **local time**, so "every day at 08:00" stays at
+08:00 across DST (the real interval being 23 or 25 hours, which the tests assert), and "the 31st"
+clamps to the last day of February instead of being skipped.
+
+→ [ADR 0004](docs/adr/0004-reminder-scheduling.md) ·
+[`ReminderScheduler`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/ReminderScheduler.kt) ·
+[`RecurrenceCalculator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/RecurrenceCalculator.kt)
+
+## Architecture
+
+Compose UI → ViewModel (UDF/MVI) → pure-Kotlin domain → data, with dependencies pointing inwards
+only and Room as the single source of truth for local state.
+
+```
+:app
+  └── :feature:*          timer, materials, tasks, dashboard, settings
+        └── :core:ui, :core:designsystem
+        └── :core:domain            ← pure Kotlin, no Android SDK
+              └── :core:model, :core:common
+        └── :core:database, :core:datastore, :core:network,
+            :core:storage, :core:notifications, :core:scheduling
+:build-logic               convention plugins (included build)
+:benchmark                 macrobenchmark + baseline profiles
+```
+
+`:core:model` and `:core:domain` are plain `kotlin("jvm")` modules, so "Android-free" is enforced by
+the compiler rather than by review, and the whole domain test suite runs on the JVM in seconds.
+
+The layering rules are **executable**: `./gradlew checkModuleBoundaries` fails the build on an
+illegal dependency with an explanation.
+
+```
+> Module dependency boundaries violated:
+    - :core:model -> :core:common: :core:model must stay dependency-free so every layer
+      (and a future KMP target) can share it.
+```
+
+→ [ADR 0002](docs/adr/0002-architecture-layering.md)
+
+## Building
+
+Requires a JDK; everything else comes from the wrapper.
+
+```bash
+./gradlew build          # compile, test, detekt, spotless, module boundaries
+./gradlew test           # unit tests only
+./gradlew spotlessApply  # fix formatting
+```
+
+All versions live in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) — no version literal
+appears in any build script. Shared configuration lives in `:build-logic` convention plugins, so a
+module's own build file is three lines.
+
+Explicit API mode and `allWarningsAsErrors` are on for every module.
+
+## Current state
+
+| Area | Status |
+|---|---|
+| Gradle foundation, convention plugins, module boundaries, CI | done |
+| `:core:model` — sessions, events, time anchors, tasks, recurrence, materials | done |
+| `:core:common` — dual-clock time abstraction, dispatchers | done |
+| `:core:domain` — timer, recurrence, reminder scheduling, upload, archive safety, cache | done |
+| `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation) | done |
+| Android app, Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
+
+The Android layers are deliberately not started yet: the environment this was bootstrapped in cannot
+reach Google's Maven repository, so AGP and AndroidX are unresolvable and an Android module would
+make the repository fail to build for everyone. The domain core was always specified to be
+Android-free, so building it first proves the riskiest logic before any UI exists to obscure it.
+Each platform concern has a seam waiting for it — an interface in `:core:common` or a pure planner
+in `:core:domain`.
+
+→ [ADR 0006](docs/adr/0006-bootstrap-scope.md)
+
+## Delivery plan
+
+Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
+
+| Phase | Epic |
+|---|---|
+| P0 Foundation — build, modules, CI | [#2](https://github.com/konarsubhojit/study-app/issues/2) |
+| P1 Core platform — design system, nav, Room, DataStore, time, notifications | [#3](https://github.com/konarsubhojit/study-app/issues/3) |
+| P2 MVP slices — timer, tasks/reminders, materials | [#4](https://github.com/konarsubhojit/study-app/issues/4), [#6](https://github.com/konarsubhojit/study-app/issues/6), [#5](https://github.com/konarsubhojit/study-app/issues/5) |
+| P3 Cloud — auth, BFF, presigned URLs, offline-first sync | [#7](https://github.com/konarsubhojit/study-app/issues/7) |
+| P4 Delight — dashboard, stats, streaks, widgets | [#8](https://github.com/konarsubhojit/study-app/issues/8) |
+| P5 Hardening — tests, performance, battery, a11y, security | [#9](https://github.com/konarsubhojit/study-app/issues/9) |
+| P6 Release — Play policy, staged rollout, observability | [#10](https://github.com/konarsubhojit/study-app/issues/10) |
+
+## Decision records
+
+- [0001 — Build toolchain and dependency pinning](docs/adr/0001-build-toolchain.md)
+- [0002 — Architecture layering and module boundaries](docs/adr/0002-architecture-layering.md)
+- [0003 — The timer is event-sourced and clock-derived](docs/adr/0003-timer-event-sourcing.md)
+- [0004 — Reminders use a scheduling decision matrix](docs/adr/0004-reminder-scheduling.md)
+- [0005 — Object storage: presigned URLs, content addressing, untrusted archives](docs/adr/0005-object-storage.md)
+- [0006 — Bootstrap scope: pure-Kotlin core first](docs/adr/0006-bootstrap-scope.md)

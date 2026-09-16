@@ -1,0 +1,24 @@
+# Single source of truth for formatting, read by ktlint (via Spotless), detekt and the IDE.
+# Without this, ktlint has no line-length limit and happily re-joins lines that detekt then
+# rejects, which makes `spotlessApply` and `detekt` fight each other forever.
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_size = 4
+indent_style = space
+insert_final_newline = true
+trim_trailing_whitespace = true
+max_line_length = 120
+
+[*.{kt,kts}]
+ktlint_code_style = ktlint_official
+ij_kotlin_allow_trailing_comma = true
+ij_kotlin_allow_trailing_comma_on_call_site = true
+
+[*.{yml,yaml,json,toml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
