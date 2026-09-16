@@ -59,6 +59,13 @@ private fun CompactDetailPreview() {
 @PreviewTest
 @Preview(widthDp = 700, heightDp = 640)
 @Composable
+private fun MediumListPreview() {
+    ListDetailSampler(hasSelection = false)
+}
+
+@PreviewTest
+@Preview(widthDp = 700, heightDp = 640)
+@Composable
 private fun MediumDetailPreview() {
     ListDetailSampler(hasSelection = true)
 }
@@ -68,4 +75,11 @@ private fun MediumDetailPreview() {
 @Composable
 private fun ExpandedListDetailPreview() {
     ListDetailSampler(hasSelection = true)
+}
+
+@PreviewTest
+@Preview(widthDp = 1024, heightDp = 640)
+@Composable
+private fun ExpandedNothingSelectedPreview() {
+    ListDetailSampler(hasSelection = false)
 }
