@@ -16,6 +16,9 @@ private const val FLAKY_TAG = "flaky"
 /** `-Pstudyflow.quarantine=true` flips a test task from "skip the flakes" to "run only the flakes". */
 private const val QUARANTINE_PROPERTY = "studyflow.quarantine"
 
+/** AGP's own JaCoCo report over the debug unit tests, created by `enableUnitTestCoverage`. */
+private const val ANDROID_UNIT_TEST_COVERAGE_TASK = "createDebugUnitTestCoverageReport"
+
 /**
  * Test conventions shared by JVM and Android modules (issues #11 and #65).
  *
@@ -85,6 +88,17 @@ public class TestConventionPlugin : Plugin<Project> {
                     add("androidTestImplementation", libs.findLibrary("androidx-test-junit").get())
                     add("androidTestImplementation", libs.findLibrary("androidx-test-espresso-core").get())
                 }
+
+                // AGP builds the report task itself once `enableUnitTestCoverage` is on; hooking it
+                // into `check` is what puts Android modules into the same coverage report CI reads.
+                // It is an error for that task to find no coverage data, so it only joins `check`
+                // for a module that has unit tests, and never when the run is filtered down to the
+                // quarantine, which is empty by design.
+                if (file("src/test").isDirectory && !quarantineOnly.get()) {
+                    tasks.named("check") {
+                        dependsOn(tasks.matching { it.name == ANDROID_UNIT_TEST_COVERAGE_TASK })
+                    }
+                }
             }
         }
     }
@@ -95,7 +109,8 @@ public class TestConventionPlugin : Plugin<Project> {
  *
  * The report depends on the test run and not the other way round, so `./gradlew test` — the inner
  * loop — stays a plain test run, while `check` also leaves an XML report behind for CI to read.
- * Android modules get the equivalent from AGP's own unit test coverage; see `configureAndroid`.
+ * Android modules get the equivalent from AGP's own unit test coverage, enabled in
+ * `configureAndroid` and wired into `check` above.
  */
 private fun Project.configureJvmCoverage() {
     pluginManager.apply("jacoco")

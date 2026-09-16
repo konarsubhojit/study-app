@@ -1,6 +1,7 @@
 package dev.studyflow.core.testing.coroutines
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.withContext
@@ -40,7 +41,7 @@ class TestDispatchersTest {
             var finished = false
 
             launch(dispatchers.default) {
-                kotlinx.coroutines.delay(8.hours)
+                delay(8.hours)
                 finished = true
             }
             testScheduler.advanceUntilIdle()

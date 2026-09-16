@@ -95,10 +95,9 @@ goal, and a quarantined test with no progress on its issue should be fixed or re
 
 ### Coverage
 
-`./gradlew check` writes JaCoCo XML and HTML reports for JVM modules under
-`<module>/build/reports/jacoco/`; Android modules report through
-`./gradlew createDebugUnitTestCoverageReport`. CI annotates each pull request with the coverage of
-the lines it changed.
+`./gradlew check` writes JaCoCo reports for every module: JVM modules under
+`<module>/build/reports/jacoco/` and Android modules under `<module>/build/reports/coverage/`. CI
+reads both and annotates each pull request with the coverage of the lines it changed.
 
 Coverage is a signal, not a target. There is no repository-wide percentage to defend, and a line
 covered by a test that asserts nothing is worth less than an uncovered line whose risk you have

@@ -113,7 +113,10 @@ jobs:
         continue-on-error: ${{ github.event.pull_request.head.repo.fork }}
         uses: madrapps/jacoco-report@v1.8.0
         with:
-          paths: ${{ github.workspace }}/**/build/reports/jacoco/**/*.xml
+          # JVM modules report under `jacoco/`, Android modules under AGP's `coverage/`.
+          paths: |
+            ${{ github.workspace }}/**/build/reports/jacoco/**/*.xml
+            ${{ github.workspace }}/**/build/reports/coverage/**/*.xml
           token: ${{ secrets.GITHUB_TOKEN }}
           title: Coverage of changed lines
           min-coverage-changed-files: 70
