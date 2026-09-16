@@ -149,6 +149,27 @@ The CI job summary records the Gradle build/test/check duration for each run; th
 summary records dependency/build-cache hit details. CI credentials must come from GitHub-provided
 tokens or repository secrets only; no secrets are committed to this repository.
 
+## Releasing
+
+The **Release bundle** workflow (`.github/workflows/release.yml`, manual dispatch) builds the
+signed Android App Bundle for the Play Console internal testing track. The upload key is decoded
+from repository secrets into a temporary directory for the length of the run; no keystore,
+password, or service-account file exists in this repository.
+
+```bash
+# Local release build; credentials come from a git-ignored keystore.properties or STUDYFLOW_UPLOAD_*.
+./gradlew :app:bundleRelease -Pstudyflow.requireReleaseSigning=true \
+  -Pstudyflow.versionName=0.1.0 -Pstudyflow.versionCode=1
+```
+
+Without credentials the release build type stays unsigned so a fresh clone still builds;
+`-Pstudyflow.requireReleaseSigning=true` makes missing credentials a build failure instead.
+
+- [Play Console setup and app signing](docs/release/play-console.md) — application id, Play App
+  Signing, upload key generation, secret storage, key recovery, internal testing track
+- [Store listing](docs/release/store-listing.md) — title, descriptions, graphics, categorisation,
+  content rating and data safety answers
+
 ## Current state
 
 | Area | Status |
@@ -159,6 +180,7 @@ tokens or repository secrets only; no secrets are committed to this repository.
 | `:core:domain` — timer, recurrence, reminder scheduling, upload, archive safety, cache | done |
 | `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation) | done |
 | `:app` — Android application baseline | done |
+| Release signing, Play Console and store listing documentation | done |
 | Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
 
 `:app` is intentionally manifest-only while the Android UI and platform integrations are deferred,
