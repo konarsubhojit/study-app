@@ -9,7 +9,6 @@ create table public.study_sessions (
   note text,
   started_at timestamptz not null,
   ended_at timestamptz not null,
-  status text not null default 'STOPPED' check (status = 'STOPPED'),
   counted_seconds numeric(12, 3) not null check (counted_seconds >= 0),
   unverified_seconds numeric(12, 3) not null default 0 check (unverified_seconds >= 0),
   device_id text not null,

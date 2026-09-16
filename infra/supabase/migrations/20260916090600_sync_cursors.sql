@@ -1,12 +1,19 @@
 -- Per-device sync progress. One row per (user, device, entity) tracks how far that device's last
 -- delta pull got, so the next pull can ask for "everything after this cursor" instead of the whole
 -- table (epic 7: "delta pull with cursor").
+--
+-- `entity_type` is an enum, not a free-form `text` + check constraint, so the set of syncable
+-- entities is a single named type other migrations and the API layer can reference — adding a new
+-- syncable table means adding a value here (`alter type ... add value`), rather than hunting down
+-- every place a table-name string might be duplicated.
+create type public.sync_entity_type as enum (
+  'subject', 'study_session', 'study_task', 'reminder', 'material', 'material_folder'
+);
+
 create table public.sync_cursors (
   user_id uuid not null references public.profiles (id) on delete cascade,
   device_id text not null,
-  entity_type text not null check (
-    entity_type in ('subject', 'study_session', 'study_task', 'reminder', 'material', 'material_folder')
-  ),
+  entity_type public.sync_entity_type not null,
   cursor timestamptz not null,
   updated_at timestamptz not null default now(),
   primary key (user_id, device_id, entity_type)
