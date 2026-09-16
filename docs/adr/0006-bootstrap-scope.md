@@ -18,7 +18,10 @@ now that the Android build baseline in ADR 0001 is resolvable and verified.
 Land the work that is genuinely verifiable, in the order the plan already specifies:
 
 - **P0 (#2)** — Gradle wrapper, version catalogue, convention plugins, executable module boundaries,
-  detekt, Spotless, CI. Complete.
+  detekt, Spotless, CI. Complete. The Android, Compose, Hilt and Room convention plugins were added
+  once Google's Maven repository became reachable, and verified against a throwaway application,
+  feature and database module (see [ADR 0001](0001-toolchain.md)); the modules themselves
+  still belong to the phases below.
 - **P1 (#3)** — `:core:model` and the `:core:common` time abstraction. Complete for the parts the
   domain needs; Room, DataStore and the design system are deferred.
 - **P2 (#4, #5, #6)** — the *domain core* of all three hard problems: the timer engine, the
@@ -37,4 +40,7 @@ portion with a manifest-only `:app`; Compose UI, Room schemas, Hilt wiring, fore
 
 - `./gradlew build` is green today and runs the full verification suite in seconds.
 - The original pure-Kotlin core remains a stable base for Android implementation work.
-- Android build-tool versions are now pinned and verified in `gradle/libs.versions.toml`.
+- The version catalogue contains only versions this build has actually resolved, including the
+  Android ones — pinned and verified rather than guessed.
+- `:feature:timer` can now be added against a domain layer that already handles reboots, clock skew,
+  DST and hostile archives, with a build file that applies one convention plugin.
