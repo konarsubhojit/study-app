@@ -41,11 +41,17 @@ class ColorSchemeChoiceTest {
     }
 
     @Test
-    fun `the dark request is honoured whatever the colour source`() {
-        val dark = ColorSchemeChoice.entries.filter { it.isDark }
+    fun `each scheme reports its brightness and its colour source`() {
+        assertFalse(ColorSchemeChoice.BrandLight.isDark)
+        assertFalse(ColorSchemeChoice.BrandLight.isDynamic)
 
-        assertEquals(listOf(ColorSchemeChoice.DynamicDark, ColorSchemeChoice.BrandDark), dark)
-        assertTrue(ColorSchemeChoice.DynamicDark.isDynamic)
+        assertTrue(ColorSchemeChoice.BrandDark.isDark)
         assertFalse(ColorSchemeChoice.BrandDark.isDynamic)
+
+        assertFalse(ColorSchemeChoice.DynamicLight.isDark)
+        assertTrue(ColorSchemeChoice.DynamicLight.isDynamic)
+
+        assertTrue(ColorSchemeChoice.DynamicDark.isDark)
+        assertTrue(ColorSchemeChoice.DynamicDark.isDynamic)
     }
 }
