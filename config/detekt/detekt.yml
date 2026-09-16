@@ -44,14 +44,6 @@ naming:
     # `@Composable` functions are PascalCase by convention: they read as UI elements, not calls.
     ignoreAnnotated: ['Composable']
 
-# The Compose ruleset (io.nlopez.compose.rules:detekt) is only loaded on modules that compile
-# Compose; these are the deviations from its defaults.
-Compose:
-  CompositionLocalAllowlist:
-    # Material 3 has no spacing scale, so the design system supplies one the same way the theme
-    # supplies colours. New CompositionLocals elsewhere stay a build failure.
-    allowedCompositionLocals: LocalSpacing
-
 exceptions:
   TooGenericExceptionCaught:
     active: true
