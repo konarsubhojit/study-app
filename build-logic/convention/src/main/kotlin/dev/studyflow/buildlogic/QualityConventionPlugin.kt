@@ -54,6 +54,19 @@ public class QualityConventionPlugin : Plugin<Project> {
 
             tasks.withType<Detekt>().configureEach {
                 jvmTarget = libs.findVersion("javaToolchain").get().requiredVersion
+                if (project.path !in setOf(":app", ":core:designsystem")) {
+                    classpath.setFrom(
+                        providers.provider {
+                            configurations.findByName(
+                                if (pluginManager.hasPlugin("com.android.base")) {
+                                    "debugCompileClasspath"
+                                } else {
+                                    "compileClasspath"
+                                },
+                            ) ?: files()
+                        },
+                    )
+                }
                 reports {
                     html.required.set(true)
                     xml.required.set(true)
