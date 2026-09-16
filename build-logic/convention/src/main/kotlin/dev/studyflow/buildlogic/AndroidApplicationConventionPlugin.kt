@@ -28,6 +28,12 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                 // that a module declares it in neither place.
                 defaultConfig.applicationId = namespace
                 defaultConfig.targetSdk = libs.findVersion("targetSdk").get().requiredVersion.toInt()
+                // Play rejects a bundle whose version code it has already seen, so CI passes the
+                // run's code with `-Pstudyflow.versionCode`; the defaults keep a local build usable.
+                defaultConfig.versionCode = providers.gradleProperty("studyflow.versionCode")
+                    .orNull?.toInt() ?: 1
+                defaultConfig.versionName = providers.gradleProperty("studyflow.versionName")
+                    .orNull ?: "0.1.0"
                 defaultConfig.buildConfigField("boolean", "CRASH_REPORTING_ENABLED", "false")
                 defaultConfig.buildConfigField("boolean", "CRASH_REPORTING_OPTED_OUT", "true")
 
@@ -44,6 +50,8 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                         proguardFiles(moduleRules)
                     }
                 }
+
+                configureReleaseSigning(this)
             }
 
             dependencies {

@@ -17,6 +17,12 @@ captures/
 *.dex
 .cxx/
 
+# Signing and store credentials — these must never be committed (docs/release/play-console.md)
+*.jks
+*.keystore
+keystore.properties
+play-service-account*.json
+
 # OS
 .DS_Store
 Thumbs.db
