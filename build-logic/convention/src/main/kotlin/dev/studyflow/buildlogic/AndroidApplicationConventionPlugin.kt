@@ -32,8 +32,7 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                 // Play rejects a bundle whose version code it has already seen, so CI passes the
                 // run's code with `-Pstudyflow.versionCode`; the defaults keep a local build usable.
                 defaultConfig.versionCode = versionCodeProperty()
-                defaultConfig.versionName = providers.gradleProperty("studyflow.versionName")
-                    .orNull ?: "0.1.0"
+                defaultConfig.versionName = versionNameProperty()
                 defaultConfig.buildConfigField("boolean", "CRASH_REPORTING_ENABLED", "false")
                 defaultConfig.buildConfigField("boolean", "CRASH_REPORTING_OPTED_OUT", "true")
 
@@ -76,5 +75,15 @@ private fun Project.versionCodeProperty(): Int {
         ?: throw GradleException("$VERSION_CODE_PROPERTY must be a positive integer, but was '$value'.")
 }
 
+/** As with the version code, a blank value is a mistake rather than a request for no name. */
+private fun Project.versionNameProperty(): String {
+    val value = providers.gradleProperty(VERSION_NAME_PROPERTY).orNull ?: return DEFAULT_VERSION_NAME
+    return value.ifBlank {
+        throw GradleException("$VERSION_NAME_PROPERTY must not be blank.")
+    }
+}
+
 private const val VERSION_CODE_PROPERTY = "studyflow.versionCode"
 private const val DEFAULT_VERSION_CODE = 1
+private const val VERSION_NAME_PROPERTY = "studyflow.versionName"
+private const val DEFAULT_VERSION_NAME = "0.1.0"

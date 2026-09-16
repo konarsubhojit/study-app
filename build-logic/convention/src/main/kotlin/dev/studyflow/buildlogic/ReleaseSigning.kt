@@ -25,7 +25,7 @@ import java.util.Properties
  */
 internal fun Project.configureReleaseSigning(extension: ApplicationExtension) {
     val credentials = resolveUploadKeyCredentials()
-    val required = providers.gradleProperty(REQUIRE_SIGNING_PROPERTY).orNull.toBoolean()
+    val required = releaseSigningRequired()
 
     if (credentials == null) {
         if (required) {
@@ -114,7 +114,21 @@ private fun Project.uploadKeyPropertiesFile(): Properties? {
     return Properties().apply { StringReader(contents).use(::load) }
 }
 
-private fun Project.failBuild(message: String): Nothing = throw GradleException("${path}: $message")
+/**
+ * A bare `-Pstudyflow.requireReleaseSigning` resolves to an empty value, and a typo must not be
+ * read as "not required" — the point of the flag is that an unsigned artifact becomes impossible.
+ */
+private fun Project.releaseSigningRequired(): Boolean {
+    val value = providers.gradleProperty(REQUIRE_SIGNING_PROPERTY).orNull ?: return false
+    if (value.isEmpty()) {
+        return true
+    }
+    return value.toBooleanStrictOrNull()
+        ?: failBuild("$REQUIRE_SIGNING_PROPERTY must be true or false, but was '$value'.")
+}
+
+private fun Project.failBuild(message: String): Nothing =
+    throw GradleException("Project $path: $message")
 
 private enum class CredentialKey(val propertyName: String, val environmentName: String) {
     STORE_FILE("storeFile", "${ENV_PREFIX}STORE_FILE"),

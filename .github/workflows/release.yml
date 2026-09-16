@@ -50,6 +50,23 @@ jobs:
         with:
           cache-read-only: true
 
+      - name: Validate release inputs
+        env:
+          VERSION_NAME: ${{ inputs.version-name }}
+          VERSION_CODE: ${{ inputs.version-code }}
+        run: |
+          set -euo pipefail
+          # The inputs reach a shell command line later, so they are validated rather than trusted,
+          # and validated before any secret is decoded to disk.
+          [[ "${VERSION_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "::error::version-name must look like 1.2.3."
+            exit 1
+          }
+          [[ "${VERSION_CODE}" =~ ^[1-9][0-9]*$ ]] || {
+            echo "::error::version-code must be a positive integer."
+            exit 1
+          }
+
       - name: Restore upload keystore
         env:
           UPLOAD_KEYSTORE_BASE64: ${{ secrets.UPLOAD_KEYSTORE_BASE64 }}
@@ -78,15 +95,6 @@ jobs:
           STUDYFLOW_UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-          # The inputs reach a shell command line, so they are validated rather than trusted.
-          [[ "${VERSION_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
-            echo "::error::version-name must look like 1.2.3."
-            exit 1
-          }
-          [[ "${VERSION_CODE}" =~ ^[1-9][0-9]*$ ]] || {
-            echo "::error::version-code must be a positive integer."
-            exit 1
-          }
           ./gradlew :app:bundleRelease \
             -Pstudyflow.requireReleaseSigning=true \
             -Pstudyflow.versionName="${VERSION_NAME}" \
