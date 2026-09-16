@@ -23,7 +23,10 @@ Land the work that is genuinely verifiable, in the order the plan already specif
 point where the network constraint begins:
 
 - **P0 (#2)** — Gradle wrapper, version catalogue, convention plugins, executable module boundaries,
-  detekt, Spotless, CI. Complete.
+  detekt, Spotless, CI. Complete. The Android, Compose, Hilt and Room convention plugins were added
+  once Google's Maven repository became reachable, and verified against a throwaway application,
+  feature and database module (see [ADR 0001](0001-build-toolchain.md)); the modules themselves
+  still belong to the phases below.
 - **P1 (#3)** — `:core:model` and the `:core:common` time abstraction. Complete for the parts the
   domain needs; Room, DataStore and the design system are deferred.
 - **P2 (#4, #5, #6)** — the *domain core* of all three hard problems: the timer engine, the
@@ -42,8 +45,8 @@ layer is an implementation of an already-tested contract rather than a redesign.
 ## Consequences
 
 - `./gradlew build` is green today and runs the full verification suite in seconds.
-- The version catalogue contains only versions this build has actually resolved; Android versions
-  get pinned when those modules land, verified rather than guessed.
+- The version catalogue contains only versions this build has actually resolved, including the
+  Android ones — verified rather than guessed.
 - The next contributor with network access can add `:app` and `:feature:timer` against a domain
   layer that already handles reboots, clock skew, DST and hostile archives.
 - The repository is not yet a runnable Android app. That is stated plainly in the README rather than

@@ -1,8 +1,8 @@
 ## Single source of truth for dependency versions (issue #12).
 ##
-## Only artifacts that this build actually resolves are listed here. Android/Compose
-## versions are pinned when the Android modules land, so that every version in this
-## catalogue has been verified against a real build rather than copied from a plan.
+## Only artifacts that this build actually resolves are listed here. The Android, Compose,
+## Hilt and Room versions were verified by building a throwaway app, feature and database
+## module against the convention plugins in :build-logic, not copied from a plan.
 
 [versions]
 agp = "9.4.0"
