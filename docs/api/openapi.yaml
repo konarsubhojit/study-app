@@ -1,0 +1,240 @@
+# StudyFlow backend API — the source of truth for the app/backend contract (issue #63).
+#
+# The client models in :core:network are hand-written against this document, and
+# OpenApiContractTest fails the build when the client calls an operation this file does not
+# describe. Changing the contract therefore starts here, not in Kotlin.
+openapi: 3.1.0
+info:
+  title: StudyFlow API
+  version: 1.0.0
+  description: |
+    Versioning and deprecation policy.
+
+    * The major version is part of the path (`/v1/...`). A breaking change ships as `/v2` and the
+      two versions run side by side.
+    * Within a major version the server may only add: new endpoints, new optional request fields
+      and new response fields. Clients ignore unknown response fields, so an additive change never
+      breaks an installed app.
+    * A deprecated operation keeps working for at least two release trains. It answers with a
+      `Deprecation` header and, once removed, with `410 Gone` carrying the `endpoint_removed`
+      error code.
+    * Every response carries `X-Minimum-Client-Version`. A client older than that version must stop
+      calling the API and show the force-upgrade screen; the server also answers
+      `426 Upgrade Required` if such a client keeps calling.
+servers:
+  - url: https://api.studyflow.dev
+    description: Production
+  - url: http://10.0.2.2:8080
+    description: Local mock backend, reachable from an emulator without a code change
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/auth/refresh:
+    post:
+      operationId: refreshTokens
+      summary: Exchange a refresh token for a new access token
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshRequest'
+      responses:
+        '200':
+          description: A new token pair
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/subjects:
+    get:
+      operationId: listSubjects
+      summary: The signed-in user's subjects
+      responses:
+        '200':
+          description: Every subject the user owns
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Subject'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/tasks:
+    get:
+      operationId: listTasks
+      summary: The signed-in user's study tasks
+      parameters:
+        - name: subjectId
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Restricts the result to one subject
+      responses:
+        '200':
+          description: Matching tasks
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Task'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/sessions:
+    post:
+      operationId: uploadSession
+      summary: Upload a finished study session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudySession'
+      responses:
+        '200':
+          description: The stored session, as the server sees it
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StudySession'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  headers:
+    MinimumClientVersion:
+      description: Oldest client version the server still serves, as `major.minor.patch`
+      schema:
+        type: string
+        examples: ['1.4.0']
+
+  responses:
+    Error:
+      description: A structured error. Clients map `code` to a message; they never show the status.
+      headers:
+        X-Minimum-Client-Version:
+          $ref: '#/components/headers/MinimumClientVersion'
+        Retry-After:
+          description: Seconds to wait before retrying, sent with 429 and 503
+          schema:
+            type: integer
+            format: int64
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+
+  schemas:
+    ApiError:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: string
+          description: Stable machine-readable code; new codes may appear at any time.
+          examples: ['invalid_credentials', 'quota_exceeded', 'endpoint_removed']
+        message:
+          type: string
+          description: Operator-facing detail. Never shown to the user verbatim.
+        details:
+          type: object
+          additionalProperties:
+            type: string
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    AuthTokens:
+      type: object
+      required: [accessToken, refreshToken, expiresInSeconds]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresInSeconds:
+          type: integer
+          format: int64
+
+    Subject:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        colorHex:
+          type: string
+          examples: ['#2E7D32']
+
+    Task:
+      type: object
+      required: [id, subjectId, title, completed]
+      properties:
+        id:
+          type: string
+        subjectId:
+          type: string
+        title:
+          type: string
+        completed:
+          type: boolean
+        dueAt:
+          type: string
+          format: date-time
+
+    StudySession:
+      type: object
+      required: [id, subjectId, startedAt, focusedSeconds]
+      properties:
+        id:
+          type: string
+        subjectId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        focusedSeconds:
+          type: integer
+          format: int64

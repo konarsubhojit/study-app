@@ -47,6 +47,10 @@ gradlePlugin {
             id = "studyflow.jvm.library"
             implementationClass = "dev.studyflow.buildlogic.JvmLibraryConventionPlugin"
         }
+        register("serialization") {
+            id = "studyflow.serialization"
+            implementationClass = "dev.studyflow.buildlogic.SerializationConventionPlugin"
+        }
         register("room") {
             id = "studyflow.room"
             implementationClass = "dev.studyflow.buildlogic.RoomConventionPlugin"
