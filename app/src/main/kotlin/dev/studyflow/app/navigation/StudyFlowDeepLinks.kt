@@ -33,6 +33,16 @@ internal object StudyFlowDeepLinks {
 
     internal fun uriFor(action: WidgetAction): Uri = uri(WIDGET, action.path)
 
+    internal fun routeForNewIntent(
+        uri: Uri?,
+        handledDeepLink: String?,
+    ): AppRoute? =
+        if (uri?.toString() == handledDeepLink) {
+            null
+        } else {
+            routeFor(uri)
+        }
+
     internal fun routeFor(uri: Uri?): AppRoute? {
         if (uri?.scheme != SCHEME) return null
         val segments = uri.pathSegments

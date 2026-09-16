@@ -13,6 +13,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -33,15 +34,13 @@ internal fun StudyFlowApp(
     registerDeepLinkHandler: ((AppRoute) -> Unit) -> Unit,
 ) {
     StudyFlowTheme {
-        val initialBackStack =
-            if (initialRoute == null || initialRoute == HomeRoute) {
-                arrayOf(HomeRoute)
-            } else {
-                arrayOf(HomeRoute, initialRoute)
-            }
-        val backStack = rememberNavBackStack(*initialBackStack)
+        val backStack = rememberNavBackStack(HomeRoute)
         val navigate: (AppRoute) -> Unit = { route ->
             if (backStack.lastOrNull() != route) backStack.add(route)
+        }
+
+        LaunchedEffect(initialRoute) {
+            initialRoute?.let(navigate)
         }
 
         DisposableEffect(backStack) {

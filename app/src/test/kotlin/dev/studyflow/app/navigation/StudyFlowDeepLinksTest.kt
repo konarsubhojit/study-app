@@ -64,6 +64,18 @@ class StudyFlowDeepLinksTest {
         assertNull(StudyFlowDeepLinks.routeFor(null))
     }
 
+    @Test
+    fun `restoration ignores a consumed link but handles a new link`() {
+        val consumed = StudyFlowDeepLinks.uriFor(TasksRoute(taskId = "old-task"))
+        val incoming = StudyFlowDeepLinks.uriFor(TasksRoute(taskId = "new-task"))
+
+        assertNull(StudyFlowDeepLinks.routeForNewIntent(consumed, consumed.toString()))
+        assertEquals(
+            TasksRoute(taskId = "new-task"),
+            StudyFlowDeepLinks.routeForNewIntent(incoming, consumed.toString()),
+        )
+    }
+
     private val WidgetAction.expectedRoute: AppRoute
         get() =
             when (this) {
