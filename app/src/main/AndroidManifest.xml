@@ -1,3 +1,29 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:label="StudyFlow" />
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <application
+        android:name=".StudyFlowApplication"
+        android:label="StudyFlow">
+        <service
+            android:name=".injection.StudyFlowInjectionService"
+            android:exported="false" />
+
+        <receiver
+            android:name=".injection.StudyFlowInjectionReceiver"
+            android:exported="false" />
+
+        <provider
+            android:name="androidx.startup.InitializationProvider"
+            android:authorities="${applicationId}.androidx-startup"
+            android:exported="false"
+            tools:node="merge">
+            <meta-data
+                android:name="androidx.work.WorkManagerInitializer"
+                tools:node="remove" />
+            <meta-data
+                android:name="dev.studyflow.app.startup.AppStartupInitializer"
+                android:value="androidx.startup" />
+        </provider>
+    </application>
 </manifest>
