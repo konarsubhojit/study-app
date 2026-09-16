@@ -36,6 +36,8 @@ paths:
       operationId: refreshTokens
       summary: Exchange a refresh token for a new access token
       security: []
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
       requestBody:
         required: true
         content:
@@ -61,6 +63,8 @@ paths:
     get:
       operationId: listSubjects
       summary: The signed-in user's subjects
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
       responses:
         '200':
           description: Every subject the user owns
@@ -81,6 +85,7 @@ paths:
       operationId: listTasks
       summary: The signed-in user's study tasks
       parameters:
+        - $ref: '#/components/parameters/ClientVersion'
         - name: subjectId
           in: query
           required: false
@@ -106,6 +111,8 @@ paths:
     post:
       operationId: uploadSession
       summary: Upload a finished study session
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
       requestBody:
         required: true
         content:
@@ -133,6 +140,16 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  parameters:
+    ClientVersion:
+      name: X-Client-Version
+      in: header
+      required: true
+      description: Version of the calling build, as `major.minor.patch`
+      schema:
+        type: string
+        examples: ['1.4.0']
 
   headers:
     MinimumClientVersion:

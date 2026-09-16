@@ -1,5 +1,7 @@
 package dev.studyflow.core.network.auth
 
+import java.util.concurrent.atomic.AtomicReference
+
 /**
  * The token pair the client holds on behalf of the signed-in user (issue #63).
  *
@@ -49,19 +51,24 @@ public fun interface TokenRefresher {
     public suspend fun refresh(refreshToken: String): AuthTokens?
 }
 
-/** An in-memory [TokenStore], for tests and for a build that has no persistence yet. */
+/**
+ * An in-memory [TokenStore], for tests and for a build that has no persistence yet.
+ *
+ * The reference is atomic because the store is a singleton, read and written from whichever thread
+ * a request or a token refresh happens to run on.
+ */
 public class InMemoryTokenStore(
     initial: AuthTokens? = null,
 ) : TokenStore {
-    private var current: AuthTokens? = initial
+    private val current = AtomicReference(initial)
 
-    override suspend fun tokens(): AuthTokens? = current
+    override suspend fun tokens(): AuthTokens? = current.get()
 
     override suspend fun update(tokens: AuthTokens) {
-        current = tokens
+        current.set(tokens)
     }
 
     override suspend fun clear() {
-        current = null
+        current.set(null)
     }
 }

@@ -22,18 +22,18 @@ class OpenApiContractTest {
             file.readText()
         }
 
+    /** Documented operations, as `path` to the HTTP methods declared under it. */
+    private val documentedOperations: Map<String, Set<String>> = parseOperations(specification)
+
     @Test
     fun `every endpoint the client calls is described by the specification`() {
         assertAll(
             ApiEndpoint.entries.map { endpoint ->
                 {
-                    val pathBlock =
-                        specification
-                            .substringAfter("\n  ${endpoint.path}:\n", missingDelimiterValue = "")
-                            .substringBefore("\n\n")
-                    assertTrue(pathBlock.isNotEmpty(), "${endpoint.path} is not described in $SPEC_PATH")
+                    val methods = documentedOperations[endpoint.path]
+                    assertTrue(methods != null, "${endpoint.path} is not described in $SPEC_PATH")
                     assertTrue(
-                        "\n$pathBlock".contains("\n    ${endpoint.method}:\n"),
+                        methods?.contains(endpoint.method) == true,
                         "${endpoint.method.uppercase()} ${endpoint.path} is not described in $SPEC_PATH",
                     )
                 }
@@ -42,18 +42,29 @@ class OpenApiContractTest {
     }
 
     @Test
-    fun `the specification documents the version the client speaks`() {
+    fun `the specification only documents the version the client speaks`() {
+        assertTrue(documentedOperations.isNotEmpty(), "No paths were found in $SPEC_PATH")
         assertTrue(
-            specification.contains("/$API_VERSION/"),
-            "The specification does not describe any $API_VERSION endpoint",
+            documentedOperations.keys.all { it.startsWith("/$API_VERSION/") },
+            "The specification describes paths outside $API_VERSION: ${documentedOperations.keys}",
         )
     }
 
     @Test
     fun `the specification documents the headers the client relies on`() {
-        assertTrue(
-            specification.contains(MINIMUM_CLIENT_VERSION_HEADER),
-            "The force-upgrade header is part of the contract and must be documented",
+        assertAll(
+            {
+                assertTrue(
+                    specification.contains(MINIMUM_CLIENT_VERSION_HEADER),
+                    "The force-upgrade header is part of the contract and must be documented",
+                )
+            },
+            {
+                assertTrue(
+                    specification.contains(CLIENT_VERSION_HEADER),
+                    "The client sends $CLIENT_VERSION_HEADER on every request, so it must be documented",
+                )
+            },
         )
     }
 
@@ -68,5 +79,42 @@ class OpenApiContractTest {
     private companion object {
         /** Tests run with the module directory as the working directory. */
         const val SPEC_PATH = "../../docs/api/openapi.yaml"
+        const val PATH_INDENT = 2
+        const val METHOD_INDENT = 4
+
+        val HTTP_METHODS = setOf("get", "put", "post", "delete", "options", "head", "patch", "trace")
+
+        /**
+         * Reads the `paths:` section by indentation.
+         *
+         * A YAML parser would be a dependency for a single test; indentation is enough to extract
+         * which methods sit under which path, and is not fooled by blank lines or ordering.
+         */
+        fun parseOperations(specification: String): Map<String, Set<String>> {
+            val operations = mutableMapOf<String, MutableSet<String>>()
+            var inPaths = false
+            var currentPath: String? = null
+
+            specification.lineSequence().forEach { line ->
+                val trimmed = line.trim()
+                if (trimmed.isEmpty() || trimmed.startsWith("#")) return@forEach
+
+                val indent = line.takeWhile(Char::isWhitespace).length
+                val key = trimmed.removeSuffix(":").trim('\'', '"')
+                if (indent == 0) {
+                    inPaths = trimmed == "paths:"
+                    return@forEach
+                }
+                if (!inPaths) return@forEach
+
+                if (indent == PATH_INDENT && trimmed.endsWith(":")) {
+                    currentPath = key
+                    operations.getOrPut(key) { mutableSetOf() }
+                } else if (indent == METHOD_INDENT && key in HTTP_METHODS) {
+                    currentPath?.let { path -> operations.getValue(path) += key }
+                }
+            }
+            return operations
+        }
     }
 }

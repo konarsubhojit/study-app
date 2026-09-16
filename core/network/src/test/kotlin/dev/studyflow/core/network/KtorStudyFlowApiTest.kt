@@ -141,6 +141,31 @@ class KtorStudyFlowApiTest {
         }
 
     @Test
+    fun `a write that times out is not replayed, because the server may have accepted it`() =
+        runTest {
+            val attempts = AtomicInteger()
+            val api =
+                MockBackend.api {
+                    attempts.incrementAndGet()
+                    throw IOException("connection reset after the request was sent")
+                }
+
+            val error =
+                api
+                    .uploadSession(
+                        StudySessionDto(
+                            id = "session-1",
+                            subjectId = "s1",
+                            startedAtIso = "2026-03-01T10:00:00Z",
+                            focusedSeconds = 1_500,
+                        ),
+                    ).errorOrNull()
+
+            assertEquals(1, attempts.get())
+            assertInstanceOf(ApiError.Offline::class.java, error)
+        }
+
+    @Test
     fun `a conflict is explained rather than retried`() =
         runTest {
             val api =

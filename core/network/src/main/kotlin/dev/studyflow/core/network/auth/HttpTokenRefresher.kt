@@ -18,6 +18,7 @@ import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
+import java.io.Closeable
 
 /**
  * Calls `POST /v1/auth/refresh` (issue #63).
@@ -32,7 +33,8 @@ import kotlinx.coroutines.CancellationException
 public class HttpTokenRefresher(
     engine: HttpClientEngine,
     private val config: ApiConfig,
-) : TokenRefresher {
+) : TokenRefresher,
+    Closeable {
     private val client: HttpClient =
         HttpClient(engine) {
             expectSuccess = false
@@ -58,6 +60,9 @@ public class HttpTokenRefresher(
         } catch (ignored: Throwable) {
             null
         }
+
+    /** Releases the client this refresher owns; the shared engine is left alone. */
+    override fun close(): Unit = client.close()
 }
 
 /** Maps the wire model onto the tokens the client holds. */

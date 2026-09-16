@@ -95,9 +95,12 @@ public fun studyFlowHttpClient(
                     idempotent = request.method in IDEMPOTENT_METHODS,
                 )
             }
-            // A connection that never produced a response cannot have changed server state, so
-            // replaying it is safe whatever the method was.
-            retryOnExceptionIf { _, cause -> cause !is CancellationException }
+            // A timeout can strike *after* the server processed the request, so an exception is
+            // no proof that nothing happened. Only a request that cannot duplicate data is
+            // replayed; cancellation is the caller leaving, never something to retry.
+            retryOnExceptionIf { request, cause ->
+                cause !is CancellationException && request.method in IDEMPOTENT_METHODS
+            }
 
             delayMillis { attempt ->
                 config.retry
@@ -114,8 +117,16 @@ public fun studyFlowHttpClient(
         }
     }
 
-/** Methods that carry no side effect, so replaying one cannot duplicate the user's data. */
-private val IDEMPOTENT_METHODS = setOf(HttpMethod.Get, HttpMethod.Head)
+/**
+ * Methods that carry no side effect, so replaying one cannot duplicate the user's data.
+ *
+ * Derived from [ApiEndpoint] rather than restated, so the client and the contract cannot disagree
+ * about which calls are safe to retry.
+ */
+private val IDEMPOTENT_METHODS: Set<HttpMethod> =
+    ApiEndpoint.entries
+        .filter(ApiEndpoint::isIdempotent)
+        .mapTo(mutableSetOf()) { HttpMethod.parse(it.method.uppercase()) }
 
 /** Path comparison that ignores the base URL, so the same rules hold for any environment. */
 private fun URLBuilder.hasPathOf(endpoint: ApiEndpoint): Boolean =

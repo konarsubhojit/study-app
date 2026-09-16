@@ -40,6 +40,7 @@ import kotlin.time.Duration.Companion.milliseconds
  * @property failWith when set, every call fails with this status instead of answering.
  * @property minimumClientVersion advertised in every response; set it above [clientVersion] to
  *   exercise the force-upgrade path.
+ * @property clientVersion the version the fake client reports, as a real build would.
  */
 public class FakeStudyFlowBackend(
     public var subjects: List<SubjectDto> = emptyList(),
