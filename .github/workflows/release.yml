@@ -65,12 +65,14 @@ jobs:
           chmod 700 "${keystore_dir}"
           printenv UPLOAD_KEYSTORE_BASE64 | base64 --decode > "${keystore_dir}/upload-keystore.jks"
           chmod 600 "${keystore_dir}/upload-keystore.jks"
-          echo "STUDYFLOW_UPLOAD_STORE_FILE=${keystore_dir}/upload-keystore.jks" >> "$GITHUB_ENV"
 
       - name: Build release bundle
         env:
           VERSION_NAME: ${{ inputs.version-name }}
           VERSION_CODE: ${{ inputs.version-code }}
+          # Scoped to this step: the keystore is deleted straight afterwards, so no later step
+          # should see a path to it.
+          STUDYFLOW_UPLOAD_STORE_FILE: ${{ runner.temp }}/signing/upload-keystore.jks
           STUDYFLOW_UPLOAD_STORE_PASSWORD: ${{ secrets.UPLOAD_KEYSTORE_PASSWORD }}
           STUDYFLOW_UPLOAD_KEY_ALIAS: ${{ secrets.UPLOAD_KEY_ALIAS }}
           STUDYFLOW_UPLOAD_KEY_PASSWORD: ${{ secrets.UPLOAD_KEY_PASSWORD }}

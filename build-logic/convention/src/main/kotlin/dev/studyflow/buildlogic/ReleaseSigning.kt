@@ -29,7 +29,7 @@ internal fun Project.configureReleaseSigning(extension: ApplicationExtension) {
 
     if (credentials == null) {
         if (required) {
-            error(
+            failBuild(
                 "Release signing is required but no upload key credentials were found. Provide " +
                     "$KEYSTORE_PROPERTIES_FILE or the $ENV_PREFIX* environment variables; see " +
                     "docs/release/play-console.md.",
@@ -42,9 +42,11 @@ internal fun Project.configureReleaseSigning(extension: ApplicationExtension) {
         return
     }
 
-    val storeFile = file(credentials.storeFile)
+    // Relative paths resolve against the root project, where `keystore.properties` lives, rather
+    // than against `:app`, so both sources agree on what a relative path means.
+    val storeFile = rootProject.file(credentials.storeFile)
     if (!storeFile.isFile) {
-        error(
+        failBuild(
             "Upload keystore '${credentials.storeFile}' does not exist. The keystore is never " +
                 "committed; see docs/release/play-console.md for how to restore it.",
         )
@@ -87,7 +89,7 @@ private fun Project.resolveUploadKeyCredentials(): UploadKeyCredentials? {
         return null
     }
     if (missing.isNotEmpty()) {
-        error(
+        failBuild(
             "Incomplete upload key credentials: missing " +
                 missing.joinToString { "${it.propertyName}/${it.environmentName}" } +
                 ". See docs/release/play-console.md.",
@@ -112,7 +114,7 @@ private fun Project.uploadKeyPropertiesFile(): Properties? {
     return Properties().apply { StringReader(contents).use(::load) }
 }
 
-private fun Project.error(message: String): Nothing = throw GradleException("${path}: $message")
+private fun Project.failBuild(message: String): Nothing = throw GradleException("${path}: $message")
 
 private enum class CredentialKey(val propertyName: String, val environmentName: String) {
     STORE_FILE("storeFile", "${ENV_PREFIX}STORE_FILE"),
