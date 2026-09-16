@@ -2,6 +2,10 @@
 #
 # Built on top of the detekt defaults (`buildUponDefaultConfig = true`); only deviations are
 # listed here so upstream rule improvements are inherited automatically.
+#
+# Modules that compile Compose additionally load the Compose ruleset
+# (io.nlopez.compose.rules:detekt) with its own defaults; add a `Compose:` section here to deviate
+# from those.
 
 build:
   maxIssues: 0
