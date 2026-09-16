@@ -277,5 +277,6 @@ class RecurrenceCalculatorTest {
             .map { it.toLocalDateTime(london).toString() }
             .toList()
 
-    private fun LocalDateTime.toInstantIn(zone: TimeZone): Instant = RecurrenceCalculator.occurrences(null, this, zone).first()
+    private fun LocalDateTime.toInstantIn(zone: TimeZone): Instant =
+        RecurrenceCalculator.occurrences(null, this, zone).first()
 }

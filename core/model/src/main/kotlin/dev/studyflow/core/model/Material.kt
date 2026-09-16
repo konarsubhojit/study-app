@@ -155,6 +155,9 @@ public enum class MaterialKind {
                 "vnd.ms-excel" to SPREADSHEET,
                 "vnd.openxmlformats-officedocument.spreadsheetml.sheet" to SPREADSHEET,
                 "vnd.oasis.opendocument.spreadsheet" to SPREADSHEET,
+                // Tabular text is far more useful in a sheet previewer than in a text viewer.
+                "csv" to SPREADSHEET,
+                "tab-separated-values" to SPREADSHEET,
                 "vnd.ms-powerpoint" to PRESENTATION,
                 "vnd.openxmlformats-officedocument.presentationml.presentation" to PRESENTATION,
                 "vnd.oasis.opendocument.presentation" to PRESENTATION,

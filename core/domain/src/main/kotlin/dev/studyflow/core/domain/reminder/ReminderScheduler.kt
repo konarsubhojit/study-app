@@ -105,21 +105,38 @@ public object ReminderScheduler {
         capabilities: SchedulingCapabilities,
     ): Set<ReminderDegradation> =
         buildSet {
+            val timeCritical = reminder.precision != ReminderPrecision.GENTLE
+            val alarmStyle = reminder.precision == ReminderPrecision.ALARM
+
             if (!capabilities.notificationsEnabled) {
                 add(ReminderDegradation.NOTIFICATIONS_DENIED)
             }
-            if (reminder.precision != ReminderPrecision.GENTLE &&
-                !capabilities.canScheduleExactAlarms &&
-                !(reminder.precision == ReminderPrecision.ALARM && capabilities.canUseAlarmClock)
-            ) {
+            if (timeCritical && !canFirePrecisely(reminder, capabilities)) {
                 add(ReminderDegradation.EXACT_ALARMS_DENIED)
             }
-            if (reminder.precision == ReminderPrecision.ALARM && !capabilities.canUseFullScreenIntent) {
+            if (alarmStyle && !capabilities.canUseFullScreenIntent) {
                 add(ReminderDegradation.FULL_SCREEN_INTENT_DENIED)
             }
-            if (reminder.precision != ReminderPrecision.GENTLE && capabilities.batteryOptimised) {
+            if (timeCritical && capabilities.batteryOptimised) {
                 add(ReminderDegradation.BATTERY_OPTIMISED)
             }
+        }
+
+    /**
+     * Whether the chosen precision can still be honoured to the minute.
+     *
+     * An alarm-style reminder has a second route to precision — `setAlarmClock` needs no
+     * exact-alarm permission — so losing that permission only degrades it if the alarm-clock route
+     * is unavailable too.
+     */
+    private fun canFirePrecisely(
+        reminder: Reminder,
+        capabilities: SchedulingCapabilities,
+    ): Boolean =
+        when (reminder.precision) {
+            ReminderPrecision.GENTLE -> true
+            ReminderPrecision.EXACT -> capabilities.canScheduleExactAlarms
+            ReminderPrecision.ALARM -> capabilities.canUseAlarmClock || capabilities.canScheduleExactAlarms
         }
 }
 
