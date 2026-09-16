@@ -57,7 +57,7 @@ public class AndroidReminderPlatformScheduler(
     private val alarmManager: AlarmManager =
         context.getSystemService(AlarmManager::class.java),
     private val workManager: WorkManager = WorkManager.getInstance(context),
-    private val showIntentFactory: (String) -> Intent = { _ ->
+    private val showIntentFactory: () -> Intent = {
         context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: Intent(Intent.ACTION_MAIN).setPackage(context.packageName).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
@@ -127,7 +127,7 @@ public class AndroidReminderPlatformScheduler(
         PendingIntent.getActivity(
             context,
             PendingIntentSlot.SHOW.requestCode,
-            showIntentFactory(reminderId).withReminderId(reminderId),
+            showIntentFactory().withReminderId(reminderId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 

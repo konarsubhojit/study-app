@@ -5,7 +5,7 @@
 
     <application>
         <receiver
-            android:name=".ReminderAlarmReceiver"
+            android:name="dev.studyflow.core.scheduling.ReminderAlarmReceiver"
             android:exported="false" />
     </application>
 </manifest>
