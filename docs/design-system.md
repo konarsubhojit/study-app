@@ -91,4 +91,4 @@ checked in under `src/screenshotTestDebug/reference`.
 
 Re-record only when the change to the images is the change you meant to make, and say so in the pull
 request. The covered variants are light, dark, dynamic light, dynamic dark, 200% font scale, and the
-list/detail layout at phone and tablet widths.
+list/detail layout at compact, medium and expanded widths.

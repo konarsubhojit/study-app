@@ -38,6 +38,10 @@ class ColorSchemeChoiceTest {
             ColorSchemeChoice.BrandLight,
             ColorSchemeChoice.of(darkTheme = false, dynamicColorRequested = false, dynamicColorSupported = true),
         )
+        assertEquals(
+            ColorSchemeChoice.BrandDark,
+            ColorSchemeChoice.of(darkTheme = true, dynamicColorRequested = false, dynamicColorSupported = true),
+        )
     }
 
     @Test
