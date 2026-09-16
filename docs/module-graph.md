@@ -29,6 +29,7 @@ graph TD
     feature_settings[":feature:settings"]
     feature_tasks[":feature:tasks"]
     feature_timer[":feature:timer"]
+    app --> core_common
     app --> feature_auth
     app --> feature_insights
     app --> feature_materials
