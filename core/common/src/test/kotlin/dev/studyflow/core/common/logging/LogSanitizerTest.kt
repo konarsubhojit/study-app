@@ -6,15 +6,10 @@ import org.junit.jupiter.api.Test
 
 class LogSanitizerTest {
     @Test
-    fun `release logs drop user supplied content and filenames`() {
-        val message = "Upload alice@example.com from /storage/emulated/0/Documents/chemistry-notes.pdf"
-
+    fun `release message keeps only safe diagnostic level when there is no throwable`() {
         val scrubbed = LogSanitizer.scrubReleaseMessage(LogLevel.Error)
 
         assertEquals("level=Error", scrubbed)
-        assertFalse(scrubbed.contains("alice"))
-        assertFalse(scrubbed.contains("chemistry-notes.pdf"))
-        assertFalse(scrubbed.contains(message))
     }
 
     @Test
