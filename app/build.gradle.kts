@@ -14,4 +14,6 @@ dependencies {
     implementation(libs.androidx.startup.runtime)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.timber)
+
+    testImplementation(projects.core.testing)
 }

@@ -65,6 +65,7 @@ graph TD
 
 | Module | Test dependency |
 |---|---|
+| `:app` | `:core:testing` |
 | `:core:domain` | `:core:testing` |
 | `:feature:auth` | `:core:testing` |
 | `:feature:insights` | `:core:testing` |
