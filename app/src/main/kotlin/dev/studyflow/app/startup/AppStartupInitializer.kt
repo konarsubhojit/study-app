@@ -16,7 +16,7 @@ class AppStartupInitializer : Initializer<Unit> {
                 Trace.endSection()
             }
         } else {
-            AndroidLogging.install(debug = BuildConfig.DEBUG)
+            AndroidLogging.install(debug = false)
         }
     }
 
