@@ -6,13 +6,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/**
- * The Material 3 type scale, expressed once (issue #17).
- *
- * Sizes are declared in `sp` and never in `dp`, so the whole scale grows with the system font
- * setting; screens are expected to survive 200% font scale because no size is pinned. Features read
- * `MaterialTheme.typography` and never construct a [TextStyle] with a literal size of their own.
- */
+/** One line of the scale; sizes are in `sp` so they follow the system font setting. */
 private fun typeStyle(
     size: Int,
     lineHeight: Int,
@@ -27,7 +21,15 @@ private fun typeStyle(
         letterSpacing = letterSpacing.sp,
     )
 
-/** The StudyFlow type scale: the Material 3 baseline, with medium weight on titles and labels. */
+/**
+ * The Material 3 type scale, expressed once (issue #17).
+ *
+ * Sizes are declared in `sp` and never in `dp`, so the whole scale grows with the system font
+ * setting; screens are expected to survive 200% font scale because no size is pinned. Features read
+ * `MaterialTheme.typography` and never construct a [TextStyle] with a literal size of their own.
+ *
+ * The StudyFlow scale is the Material 3 baseline, with medium weight on titles and labels.
+ */
 public val StudyFlowTypography: Typography =
     Typography(
         displayLarge = typeStyle(size = 57, lineHeight = 64, letterSpacing = -0.25),
