@@ -22,7 +22,7 @@ class ListDetailStrategyTest {
         )
     }
 
-    @ParameterizedTest(name = "{0} shows only the list until something is selected")
+    @ParameterizedTest(name = "{0} shows one pane at a time")
     @CsvSource("Compact", "Medium")
     fun `a narrow window shows one pane at a time`(widthClass: WindowWidthClass) {
         assertEquals(ListDetailStrategy.ListOnly, ListDetailStrategy.of(widthClass, hasSelection = false))

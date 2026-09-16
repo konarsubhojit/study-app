@@ -16,9 +16,9 @@ import dev.studyflow.core.designsystem.theme.spacing
 /**
  * Screenshot tests for the adaptive list/detail layout (issue #17).
  *
- * The previews are rendered at a phone width and at a tablet width, which is the cheapest way to
- * keep the window-size-class branch honest: a regression that shows one pane on a tablet, or two
- * cramped panes on a phone, changes these images.
+ * The previews are rendered at a phone, a large-phone and a tablet width, which is the cheapest way
+ * to keep the window-size-class branch honest: a regression that shows one pane on a tablet, or two
+ * cramped panes on anything narrower, changes these images.
  */
 @Composable
 private fun ListDetailSampler(hasSelection: Boolean) {
@@ -53,6 +53,13 @@ private fun CompactListPreview() {
 @Preview(widthDp = 411, heightDp = 640)
 @Composable
 private fun CompactDetailPreview() {
+    ListDetailSampler(hasSelection = true)
+}
+
+@PreviewTest
+@Preview(widthDp = 700, heightDp = 640)
+@Composable
+private fun MediumDetailPreview() {
     ListDetailSampler(hasSelection = true)
 }
 
