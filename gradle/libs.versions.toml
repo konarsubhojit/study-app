@@ -1,0 +1,35 @@
+## Single source of truth for dependency versions (issue #12).
+##
+## Only artifacts that this build actually resolves are listed here. Android/Compose
+## versions are pinned when the Android modules land, so that every version in this
+## catalogue has been verified against a real build rather than copied from a plan.
+
+[versions]
+detekt = "1.23.8"
+javaToolchain = "21"
+junit = "5.14.0"
+kotlin = "2.4.20"
+kotlinxCoroutines = "1.11.0"
+ktlint = "1.8.0"
+spotless = "8.10.2"
+turbine = "1.2.1"
+
+[libraries]
+kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+turbine = { module = "app.cash.turbine:turbine", version.ref = "turbine" }
+
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junit" }
+junit-jupiter-params = { module = "org.junit.jupiter:junit-jupiter-params", version.ref = "junit" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+
+# Referenced from build-logic so the convention plugins can apply these without
+# repeating version numbers.
+detekt-gradlePlugin = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detekt" }
+spotless-gradlePlugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }
+
+[plugins]
+detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
