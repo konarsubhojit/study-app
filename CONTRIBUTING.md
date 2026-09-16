@@ -27,6 +27,39 @@ See the [README](README.md) for the current module map and
 Add shared behavior to the narrowest suitable `:core` module. Do not bypass a boundary by moving
 implementation into `:app`; `./gradlew checkModuleBoundaries` enforces the full rules.
 
+## Quality gates
+
+`./gradlew check` is the single entry point and runs everything CI runs:
+
+- **Spotless/ktlint** formatting, configured from `.editorconfig`. Run `./gradlew spotlessApply` to
+  fix formatting instead of hand-editing whitespace.
+- **detekt**, using the project ruleset in `config/detekt/detekt.yml` plus the Compose rules on
+  modules that compile Compose code.
+- **Android Lint** with `warningsAsErrors`, so a new warning fails the build.
+- **Module boundary and module graph** checks.
+
+Enable the opt-in formatting hint before your first commit if you want it; CI remains the real
+gate, so nothing breaks if you do not:
+
+```bash
+git config core.hooksPath config/git-hooks
+```
+
+The hook only reports formatting; `git commit --no-verify` skips it for one commit.
+
+### Baselines
+
+A baseline records findings that already existed when a gate was introduced, so the gate can be
+turned on without an unrelated cleanup in the same pull request. The only checked-in baseline is
+`app/lint-baseline.xml`, which holds the missing launcher icon of the application skeleton.
+
+Baselines are never a place to hide a new finding:
+
+- A baseline is read only when the file is checked in; the build never generates one silently.
+- Fix new findings. Do not run `./gradlew updateLintBaseline` to make a fresh failure disappear.
+- Removing an entry from a baseline, by fixing the underlying issue, is always welcome; adding one
+  needs a reason in the pull request description.
+
 ## Coding conventions
 
 - Follow `.editorconfig`; run `./gradlew spotlessApply` to apply Kotlin formatting.

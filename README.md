@@ -107,10 +107,17 @@ is required.
 ```bash
 git clone https://github.com/konarsubhojit/study-app.git
 cd study-app
-./gradlew build          # compile, test, detekt, spotless, module boundaries
+./gradlew build          # compile, test, and everything `check` runs
+./gradlew check          # ktlint, detekt, Android Lint, module boundaries
 ./gradlew test           # unit tests only
 ./gradlew spotlessApply  # fix formatting
 ```
+
+`./gradlew check` is the single quality entry point: Spotless/ktlint formatting, detekt with the
+project ruleset (`config/detekt/detekt.yml`) and the Compose rules, Android Lint with
+`warningsAsErrors`, and the module-boundary checks. Baselines cover pre-existing findings only and
+are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md), which also describes the opt-in pre-commit
+formatting hint.
 
 For module conventions, branch strategy, and the Definition of Done, see
 [`CONTRIBUTING.md`](CONTRIBUTING.md).
@@ -133,7 +140,7 @@ adding a module changes nothing but `settings.gradle.kts`.
 
 Every pull request and push to `main`/`master` runs GitHub Actions CI with JDK 21, Gradle caching,
 dependency review, committed-secret scanning, and `./gradlew build`. That build is the merge gate for
-assemble, unit tests, Detekt, Spotless, and module-boundary checks. Unit test reports and Detekt
+assemble, unit tests, Detekt, Spotless, Android Lint, and module-boundary checks. Unit test reports and Detekt
 SARIF are published as PR annotations, and all test/lint reports are uploaded as artifacts.
 
 The CI job summary records the Gradle build/test/check duration for each run; the Gradle setup
