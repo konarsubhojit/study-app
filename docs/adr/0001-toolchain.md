@@ -77,17 +77,22 @@ return type, which is what makes a `:core:*` module's surface reviewable.
 **Quality gates run as part of `check`**, so `./gradlew build` is the single command that verifies
 everything: compilation, unit tests, detekt, Spotless and the module-boundary rules.
 
+**Dependabot checks Gradle and GitHub Actions weekly.** Updates are grouped by ecosystem to reduce
+pull-request noise. Dependabot pull requests use the same `pull_request` workflow as contributor
+changes, so they must pass the complete build before merge.
+
 **`.editorconfig` is the single formatting source of truth.** ktlint (via Spotless) and detekt both
 read it. Without it ktlint has no line-length limit and re-joins lines that detekt then rejects,
 and the two tools fight forever.
 
 ## Consequences
 
-- A contributor runs `./gradlew build` and gets the same result as CI, with no local setup beyond a
-  JDK.
+- A contributor runs `./gradlew build` and gets the same result as CI with JDK 21 and Android SDK
+  37 installed.
 - Adding a module means adding one line to `settings.gradle.kts` and a build script that applies a
   convention plugin and lists dependencies — `:app`'s is two lines.
-- Bumping a dependency is a one-line change in the catalogue, and Dependabot/Renovate can do it.
+- Bumping a dependency is a one-line change in the catalogue, and Dependabot proposes updates
+  automatically.
 - Warnings-as-errors means a compiler upgrade can break the build. That is the point; the
   alternative is discovering the deprecation two years later.
 - The Android, Compose, Hilt and Room versions in the catalogue were verified by building a

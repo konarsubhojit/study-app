@@ -1,0 +1,46 @@
+name: Bug report
+description: Report reproducible incorrect behavior
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve StudyFlow.
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Describe what happened and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Tap …
+        3. Observe …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: App version or commit
+      placeholder: v1.0.0 or commit SHA
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Device and Android version
+      placeholder: Pixel 9, Android 16
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or screenshots
+      description: Remove credentials and personal information before attaching anything.
+      render: shell

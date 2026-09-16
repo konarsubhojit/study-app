@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
@@ -17,7 +17,7 @@ jobs:
   build:
     name: Build and verify
     # Pull requests stay on GitHub-hosted runners: this repository is public, so a
-    # fork PR must never execute on the self-hosted machine. Pushes to master run
+    # fork PR must never execute on the self-hosted machine. Default-branch pushes run
     # on the dedicated runner, which has a warm Gradle cache.
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
@@ -39,7 +39,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           # Only the default branch may seed the shared cache, so a PR cannot poison it.
-          cache-read-only: ${{ github.ref != 'refs/heads/master' }}
+          cache-read-only: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
 
       # `build` covers assemble, unit tests, detekt, spotless and the module-boundary check,
       # so a single failing gate fails the PR with a specific report rather than a generic error.

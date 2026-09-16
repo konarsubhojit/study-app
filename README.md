@@ -101,13 +101,19 @@ illegal dependency with an explanation.
 
 ## Building
 
-Requires a JDK; everything else comes from the wrapper.
+Install JDK 21 and Android SDK 37. Use the committed Gradle wrapper; no separate Gradle installation
+is required.
 
 ```bash
+git clone https://github.com/konarsubhojit/study-app.git
+cd study-app
 ./gradlew build          # compile, test, detekt, spotless, module boundaries
 ./gradlew test           # unit tests only
 ./gradlew spotlessApply  # fix formatting
 ```
+
+For module conventions, branch strategy, and the Definition of Done, see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ```bash
 # Compose stability and recomposition reports, for performance work only.
@@ -160,6 +166,7 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 
 ## Decision records
 
+- [ADR template](docs/adr/template.md)
 - [0001 — Build toolchain and dependency pinning](docs/adr/0001-toolchain.md)
 - [0002 — Architecture layering and module boundaries](docs/adr/0002-architecture-layering.md)
 - [0003 — The timer is event-sourced and clock-derived](docs/adr/0003-timer-event-sourcing.md)
