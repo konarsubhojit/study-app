@@ -57,7 +57,7 @@ public class AndroidReminderPlatformScheduler(
     private val alarmManager: AlarmManager =
         context.getSystemService(AlarmManager::class.java),
     private val workManager: WorkManager = WorkManager.getInstance(context),
-    private val showIntentFactory: (String) -> Intent = { reminderId ->
+    private val showIntentFactory: (String) -> Intent = { _ ->
         context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: Intent(Intent.ACTION_MAIN).setPackage(context.packageName).apply {
                 addCategory(Intent.CATEGORY_LAUNCHER)
@@ -66,7 +66,7 @@ public class AndroidReminderPlatformScheduler(
     private val onExactAlarmDenied: (SecurityException) -> Unit = {},
     private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) : ReminderPlatformScheduler {
-    override fun scheduleInexact(plan: ReminderPlan) {
+    override fun scheduleInexact(plan: ReminderPlan): PlatformScheduleOutcome {
         val request =
             OneTimeWorkRequestBuilder<ReminderDeliveryWorker>()
                 .setInputData(workData(plan))
@@ -79,22 +79,24 @@ public class AndroidReminderPlatformScheduler(
             ExistingWorkPolicy.REPLACE,
             request,
         )
+        return PlatformScheduleOutcome.SCHEDULED
     }
 
-    override fun scheduleExact(plan: ReminderPlan) {
+    override fun scheduleExact(plan: ReminderPlan): PlatformScheduleOutcome =
         try {
             alarmManager.setExactAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP,
                 plan.triggerAt.toEpochMilliseconds(),
                 operation(plan.reminderId),
             )
+            PlatformScheduleOutcome.SCHEDULED
         } catch (exception: SecurityException) {
             onExactAlarmDenied(exception)
             scheduleInexact(plan)
+            PlatformScheduleOutcome.FALLBACK_TO_INEXACT
         }
-    }
 
-    override fun scheduleAlarmClock(plan: ReminderPlan) {
+    override fun scheduleAlarmClock(plan: ReminderPlan): PlatformScheduleOutcome {
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(
                 plan.triggerAt.toEpochMilliseconds(),
@@ -102,6 +104,7 @@ public class AndroidReminderPlatformScheduler(
             ),
             operation(plan.reminderId),
         )
+        return PlatformScheduleOutcome.SCHEDULED
     }
 
     override fun cancel(reminderId: String) {
@@ -133,14 +136,6 @@ public class AndroidReminderPlatformScheduler(
             data = reminderUri(reminderId)
             putExtra(EXTRA_REMINDER_ID, reminderId)
         }
-
-    private fun reminderUri(reminderId: String): Uri =
-        Uri
-            .Builder()
-            .scheme("studyflow")
-            .authority("reminders")
-            .appendPath(reminderId)
-            .build()
 
     private companion object {
         private const val ACTION_DELIVER_REMINDER = "dev.studyflow.core.scheduling.DELIVER_REMINDER"
@@ -200,12 +195,14 @@ private fun workTag(reminderId: String): String = "reminder-id:$reminderId"
 
 private fun Intent.withReminderId(reminderId: String): Intent =
     apply {
-        data =
-            Uri
-                .Builder()
-                .scheme("studyflow")
-                .authority("reminders")
-                .appendPath(reminderId)
-                .build()
+        data = reminderUri(reminderId)
         putExtra(EXTRA_REMINDER_ID, reminderId)
     }
+
+private fun reminderUri(reminderId: String): Uri =
+    Uri
+        .Builder()
+        .scheme("studyflow")
+        .authority("reminders")
+        .appendPath(reminderId)
+        .build()

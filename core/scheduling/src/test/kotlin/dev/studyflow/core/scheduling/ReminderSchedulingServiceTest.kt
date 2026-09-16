@@ -72,6 +72,17 @@ class ReminderSchedulingServiceTest {
     }
 
     @Test
+    fun `exact alarm race fallback is surfaced in the scheduling result`() {
+        platform.nextExactOutcome = PlatformScheduleOutcome.FALLBACK_TO_INEXACT
+
+        val result = service.schedule(task(ReminderPrecision.EXACT))
+
+        assertEquals(ReminderDelivery.INEXACT, result.scheduledPlan().delivery)
+        assertNotNull(result.scheduled().permissionRationale)
+        assertNotNull(result.scheduled().banner)
+    }
+
+    @Test
     fun `repeated rescheduling never stacks duplicate platform registrations`() {
         repeat(3) { service.schedule(task(ReminderPrecision.GENTLE)) }
 
@@ -141,20 +152,26 @@ class ReminderSchedulingServiceTest {
     private class RecordingPlatformScheduler : ReminderPlatformScheduler {
         val calls = mutableListOf<String>()
         val activeReminderIds = mutableSetOf<String>()
+        var nextExactOutcome = PlatformScheduleOutcome.SCHEDULED
 
-        override fun scheduleInexact(plan: ReminderPlan) {
+        override fun scheduleInexact(plan: ReminderPlan): PlatformScheduleOutcome {
             calls += "inexact:${plan.reminderId}"
             activeReminderIds += plan.reminderId
+            return PlatformScheduleOutcome.SCHEDULED
         }
 
-        override fun scheduleExact(plan: ReminderPlan) {
+        override fun scheduleExact(plan: ReminderPlan): PlatformScheduleOutcome {
             calls += "exact:${plan.reminderId}"
             activeReminderIds += plan.reminderId
+            return nextExactOutcome.also {
+                nextExactOutcome = PlatformScheduleOutcome.SCHEDULED
+            }
         }
 
-        override fun scheduleAlarmClock(plan: ReminderPlan) {
+        override fun scheduleAlarmClock(plan: ReminderPlan): PlatformScheduleOutcome {
             calls += "alarm:${plan.reminderId}"
             activeReminderIds += plan.reminderId
+            return PlatformScheduleOutcome.SCHEDULED
         }
 
         override fun cancel(reminderId: String) {

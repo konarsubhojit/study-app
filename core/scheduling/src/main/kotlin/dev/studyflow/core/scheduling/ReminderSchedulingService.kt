@@ -33,16 +33,18 @@ public class ReminderSchedulingService(
         }
 
         platformScheduler.cancel(plan.reminderId)
-        when (plan.delivery) {
-            ReminderDelivery.INEXACT -> platformScheduler.scheduleInexact(plan)
-            ReminderDelivery.EXACT -> platformScheduler.scheduleExact(plan)
-            ReminderDelivery.ALARM_CLOCK -> platformScheduler.scheduleAlarmClock(plan)
-        }
+        val outcome =
+            when (plan.delivery) {
+                ReminderDelivery.INEXACT -> platformScheduler.scheduleInexact(plan)
+                ReminderDelivery.EXACT -> platformScheduler.scheduleExact(plan)
+                ReminderDelivery.ALARM_CLOCK -> platformScheduler.scheduleAlarmClock(plan)
+            }
+        val effectivePlan = plan.withOutcome(outcome)
 
         return ReminderScheduleResult.Scheduled(
-            plan = plan,
-            permissionRationale = ExactAlarmPermissionRationale.takeIfNeeded(plan),
-            banner = ReducedPrecisionBanner.takeIfNeeded(plan),
+            plan = effectivePlan,
+            permissionRationale = ExactAlarmPermissionRationale.takeIfNeeded(effectivePlan),
+            banner = ReducedPrecisionBanner.takeIfNeeded(effectivePlan),
         )
     }
 
@@ -60,13 +62,18 @@ public fun interface SchedulingCapabilitiesProvider {
 
 /** Platform-specific registration primitives. Implementations must replace existing ids. */
 public interface ReminderPlatformScheduler {
-    public fun scheduleInexact(plan: ReminderPlan)
+    public fun scheduleInexact(plan: ReminderPlan): PlatformScheduleOutcome
 
-    public fun scheduleExact(plan: ReminderPlan)
+    public fun scheduleExact(plan: ReminderPlan): PlatformScheduleOutcome
 
-    public fun scheduleAlarmClock(plan: ReminderPlan)
+    public fun scheduleAlarmClock(plan: ReminderPlan): PlatformScheduleOutcome
 
     public fun cancel(reminderId: String)
+}
+
+public enum class PlatformScheduleOutcome {
+    SCHEDULED,
+    FALLBACK_TO_INEXACT,
 }
 
 public sealed interface ReminderScheduleResult {
@@ -82,8 +89,8 @@ public sealed interface ReminderScheduleResult {
 }
 
 public data class ExactAlarmPermissionRationale(
-    val title: String,
-    val message: String,
+    val titleKey: ReminderSchedulingMessageKey,
+    val messageKey: ReminderSchedulingMessageKey,
     val settingsAction: String,
 ) {
     public companion object {
@@ -93,10 +100,8 @@ public data class ExactAlarmPermissionRationale(
         public fun takeIfNeeded(plan: ReminderPlan): ExactAlarmPermissionRationale? =
             if (ReminderDegradation.EXACT_ALARMS_DENIED in plan.degradations) {
                 ExactAlarmPermissionRationale(
-                    title = "Allow exact reminders",
-                    message =
-                        "This reminder was scheduled with reduced precision because Android " +
-                            "does not currently allow exact alarms for StudyFlow.",
+                    titleKey = ReminderSchedulingMessageKey.EXACT_ALARM_PERMISSION_TITLE,
+                    messageKey = ReminderSchedulingMessageKey.EXACT_ALARM_PERMISSION_MESSAGE,
                     settingsAction = REQUEST_EXACT_ALARM_SETTINGS,
                 )
             } else {
@@ -106,18 +111,36 @@ public data class ExactAlarmPermissionRationale(
 }
 
 public data class ReducedPrecisionBanner(
-    val message: String,
+    val messageKey: ReminderSchedulingMessageKey,
 ) {
     public companion object {
         public fun takeIfNeeded(plan: ReminderPlan): ReducedPrecisionBanner? =
             if (ReminderDegradation.EXACT_ALARMS_DENIED in plan.degradations) {
                 ReducedPrecisionBanner(
-                    message =
-                        "Exact alarms are off, so this reminder may arrive later than the " +
-                            "selected minute.",
+                    messageKey = ReminderSchedulingMessageKey.REDUCED_PRECISION_BANNER,
                 )
             } else {
                 null
             }
     }
 }
+
+public enum class ReminderSchedulingMessageKey {
+    EXACT_ALARM_PERMISSION_TITLE,
+    EXACT_ALARM_PERMISSION_MESSAGE,
+    REDUCED_PRECISION_BANNER,
+}
+
+private fun ReminderPlan.withOutcome(outcome: PlatformScheduleOutcome): ReminderPlan =
+    when (outcome) {
+        PlatformScheduleOutcome.SCHEDULED -> {
+            this
+        }
+
+        PlatformScheduleOutcome.FALLBACK_TO_INEXACT -> {
+            copy(
+                delivery = ReminderDelivery.INEXACT,
+                degradations = degradations + ReminderDegradation.EXACT_ALARMS_DENIED,
+            )
+        }
+    }
