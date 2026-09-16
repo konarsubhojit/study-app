@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(32);
+select plan(35);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -120,14 +120,29 @@ select is_empty(
   'bob''s update of alice''s session affects no rows'
 );
 select is_empty(
+  $$ delete from public.study_sessions
+       where id = 'a2222222-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s delete of alice''s session affects no rows'
+);
+select is_empty(
   $$ update public.study_tasks set title = 'hacked'
        where id = 'a3333333-1111-1111-1111-111111111111' returning 1 $$,
   'bob''s update of alice''s task affects no rows'
 );
 select is_empty(
+  $$ delete from public.study_tasks
+       where id = 'a3333333-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s delete of alice''s task affects no rows'
+);
+select is_empty(
   $$ update public.materials set display_name = 'hacked'
        where id = 'a6666666-1111-1111-1111-111111111111' returning 1 $$,
   'bob''s update of alice''s material affects no rows'
+);
+select is_empty(
+  $$ delete from public.materials
+       where id = 'a6666666-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s delete of alice''s material affects no rows'
 );
 select is_empty(
   $$ update public.reminders set lead_time_seconds = 999
