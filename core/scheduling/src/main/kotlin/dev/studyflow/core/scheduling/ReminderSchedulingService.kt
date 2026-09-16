@@ -50,6 +50,17 @@ public class ReminderSchedulingService(
 
     public fun rescheduleAll(tasks: Collection<StudyTask>): List<ReminderScheduleResult> = tasks.map(::schedule)
 
+    public fun replace(
+        previousReminderId: String?,
+        task: StudyTask,
+    ): ReminderScheduleResult {
+        val nextReminderId = task.reminder?.id
+        if (previousReminderId != null && previousReminderId != nextReminderId) {
+            platformScheduler.cancel(previousReminderId)
+        }
+        return schedule(task)
+    }
+
     public fun cancel(reminderId: String) {
         platformScheduler.cancel(reminderId)
     }
@@ -98,7 +109,7 @@ public data class ExactAlarmPermissionRationale(
             "android.settings.REQUEST_SCHEDULE_EXACT_ALARM"
 
         public fun takeIfNeeded(plan: ReminderPlan): ExactAlarmPermissionRationale? =
-            if (ReminderDegradation.EXACT_ALARMS_DENIED in plan.degradations) {
+            if (plan.hasExactAlarmDenial) {
                 ExactAlarmPermissionRationale(
                     titleKey = ReminderSchedulingMessageKey.EXACT_ALARM_PERMISSION_TITLE,
                     messageKey = ReminderSchedulingMessageKey.EXACT_ALARM_PERMISSION_MESSAGE,
@@ -115,7 +126,7 @@ public data class ReducedPrecisionBanner(
 ) {
     public companion object {
         public fun takeIfNeeded(plan: ReminderPlan): ReducedPrecisionBanner? =
-            if (ReminderDegradation.EXACT_ALARMS_DENIED in plan.degradations) {
+            if (plan.hasExactAlarmDenial) {
                 ReducedPrecisionBanner(
                     messageKey = ReminderSchedulingMessageKey.REDUCED_PRECISION_BANNER,
                 )
@@ -144,3 +155,6 @@ private fun ReminderPlan.withOutcome(outcome: PlatformScheduleOutcome): Reminder
             )
         }
     }
+
+private val ReminderPlan.hasExactAlarmDenial: Boolean
+    get() = ReminderDegradation.EXACT_ALARMS_DENIED in degradations

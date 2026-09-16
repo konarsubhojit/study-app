@@ -10,6 +10,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
+import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
@@ -92,6 +93,7 @@ public class AndroidReminderPlatformScheduler(
             PlatformScheduleOutcome.SCHEDULED
         } catch (exception: SecurityException) {
             onExactAlarmDenied(exception)
+            alarmManager.cancel(operation(plan.reminderId))
             scheduleInexact(plan)
             PlatformScheduleOutcome.FALLBACK_TO_INEXACT
         }
@@ -117,7 +119,7 @@ public class AndroidReminderPlatformScheduler(
     private fun operation(reminderId: String): PendingIntent =
         PendingIntent.getBroadcast(
             context,
-            0,
+            requestCode(reminderId, PendingIntentSlot.DELIVERY),
             reminderIntent(reminderId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -125,7 +127,7 @@ public class AndroidReminderPlatformScheduler(
     private fun showIntent(reminderId: String): PendingIntent =
         PendingIntent.getActivity(
             context,
-            0,
+            requestCode(reminderId, PendingIntentSlot.SHOW),
             showIntentFactory(reminderId).withReminderId(reminderId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -152,7 +154,10 @@ public class ReminderDeliveryWorker(
     context: Context,
     parameters: WorkerParameters,
 ) : Worker(context, parameters) {
-    override fun doWork(): Result = Result.success()
+    override fun doWork(): Result {
+        Log.w(TAG, "TODO: deliver WorkManager reminder notification")
+        return Result.success()
+    }
 }
 
 /**
@@ -165,7 +170,9 @@ public class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(
         context: Context,
         intent: Intent,
-    ): Unit = Unit
+    ) {
+        Log.w(TAG, "TODO: deliver AlarmManager reminder notification")
+    }
 }
 
 public const val EXTRA_REMINDER_ID: String = "dev.studyflow.core.scheduling.REMINDER_ID"
@@ -193,6 +200,11 @@ private fun workName(reminderId: String): String = "reminder:$reminderId"
 
 private fun workTag(reminderId: String): String = "reminder-id:$reminderId"
 
+private fun requestCode(
+    reminderId: String,
+    slot: PendingIntentSlot,
+): Int = (REQUEST_CODE_MULTIPLIER * reminderId.hashCode()) + slot.ordinal
+
 private fun Intent.withReminderId(reminderId: String): Intent =
     apply {
         data = reminderUri(reminderId)
@@ -206,3 +218,11 @@ private fun reminderUri(reminderId: String): Uri =
         .authority("reminders")
         .appendPath(reminderId)
         .build()
+
+private enum class PendingIntentSlot {
+    DELIVERY,
+    SHOW,
+}
+
+private const val TAG: String = "ReminderScheduling"
+private const val REQUEST_CODE_MULTIPLIER: Int = 31

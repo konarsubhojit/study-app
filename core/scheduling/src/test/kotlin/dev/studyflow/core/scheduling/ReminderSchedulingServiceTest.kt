@@ -125,6 +125,20 @@ class ReminderSchedulingServiceTest {
     }
 
     @Test
+    fun `replace cancels a changed reminder id before scheduling the new one`() {
+        service.replace("reminder-old", task(ReminderPrecision.GENTLE))
+
+        assertEquals(
+            listOf(
+                "cancel:reminder-old",
+                "cancel:reminder-task-1",
+                "inexact:reminder-task-1",
+            ),
+            platform.calls,
+        )
+    }
+
+    @Test
     fun `explicit cancel removes exact alarm and inexact work for the reminder id`() {
         service.cancel("reminder-task-1")
 
