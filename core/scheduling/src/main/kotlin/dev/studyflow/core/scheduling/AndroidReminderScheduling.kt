@@ -9,7 +9,6 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
-import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.Data
@@ -119,7 +118,7 @@ public class AndroidReminderPlatformScheduler(
     private fun operation(reminderId: String): PendingIntent =
         PendingIntent.getBroadcast(
             context,
-            requestCode(PendingIntentSlot.DELIVERY),
+            PendingIntentSlot.DELIVERY.requestCode,
             reminderIntent(reminderId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -127,7 +126,7 @@ public class AndroidReminderPlatformScheduler(
     private fun showIntent(reminderId: String): PendingIntent =
         PendingIntent.getActivity(
             context,
-            requestCode(PendingIntentSlot.SHOW),
+            PendingIntentSlot.SHOW.requestCode,
             showIntentFactory(reminderId).withReminderId(reminderId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -201,8 +200,6 @@ private fun workName(reminderId: String): String = "reminder:$reminderId"
 
 private fun workTag(reminderId: String): String = "reminder-id:$reminderId"
 
-private fun requestCode(slot: PendingIntentSlot): Int = slot.requestCode
-
 private fun Intent.withReminderId(reminderId: String): Intent =
     apply {
         data = reminderUri(reminderId)
@@ -222,6 +219,7 @@ private enum class PendingIntentSlot {
     SHOW,
     ;
 
+    // Reminder identity lives in each intent's data URI; these codes only separate intent roles.
     val requestCode: Int
         get() = ordinal
 }
