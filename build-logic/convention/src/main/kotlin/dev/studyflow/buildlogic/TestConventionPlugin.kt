@@ -10,7 +10,13 @@ import org.gradle.kotlin.dsl.withType
 import org.gradle.testing.jacoco.plugins.JacocoPluginExtension
 import org.gradle.testing.jacoco.tasks.JacocoReport
 
-/** JUnit tag of `dev.studyflow.core.testing.quarantine.Flaky`; that class's test keeps the two in step. */
+/**
+ * JUnit tag carried by `dev.studyflow.core.testing.quarantine.Flaky`.
+ *
+ * Duplicated as a literal because `:build-logic` is a separate build and cannot depend on
+ * `:core:testing`; the annotation's own test pins the tag on its side, so changing it there without
+ * changing it here silently stops quarantining. Change both or neither.
+ */
 private const val FLAKY_TAG = "flaky"
 
 /** `-Pstudyflow.quarantine=true` flips a test task from "skip the flakes" to "run only the flakes". */

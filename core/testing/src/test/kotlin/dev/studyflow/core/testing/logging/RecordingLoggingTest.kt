@@ -17,7 +17,7 @@ class RecordingLoggingTest {
         logger.error("timer", "session lost", IllegalStateException("boom"))
 
         assertEquals(listOf("session started", "session lost"), logger.messages.map { it.message })
-        assertEquals(listOf("session lost"), logger.messagesAt(LogLevel.Error))
+        assertEquals(listOf("session lost"), logger.messageTextsAt(LogLevel.Error))
         assertEquals(
             "boom",
             logger.messages

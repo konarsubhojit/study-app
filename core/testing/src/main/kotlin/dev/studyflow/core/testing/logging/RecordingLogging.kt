@@ -34,8 +34,8 @@ public class RecordingAppLogger : AppLogger {
         recorded += LoggedMessage(level = level, tag = tag, message = message, throwable = throwable)
     }
 
-    /** The messages logged at [level], which is usually all a test cares about. */
-    public fun messagesAt(level: LogLevel): List<String> = recorded.filter { it.level == level }.map { it.message }
+    /** The message texts logged at [level], which is usually all a test cares about. */
+    public fun messageTextsAt(level: LogLevel): List<String> = recorded.filter { it.level == level }.map { it.message }
 
     /** Forgets everything recorded so far. */
     public fun clear() {
