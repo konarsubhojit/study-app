@@ -19,6 +19,9 @@ complexity:
 style:
   MaxLineLength:
     maxLineLength: 120
+  ReturnCount:
+    # Guard clauses at the top of a function are clearer than nesting the happy path.
+    excludeGuardClauses: true
   MagicNumber:
     ignorePropertyDeclaration: true
     ignoreCompanionObjectPropertyDeclaration: true
