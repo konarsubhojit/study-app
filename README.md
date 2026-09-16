@@ -109,9 +109,15 @@ git clone https://github.com/konarsubhojit/study-app.git
 cd study-app
 ./gradlew build          # compile, test, and everything `check` runs
 ./gradlew check          # ktlint, detekt, Android Lint, module boundaries
-./gradlew test           # unit tests only
+./gradlew test           # unit tests only (the inner loop; quarantined flakes excluded)
 ./gradlew spotlessApply  # fix formatting
 ```
+
+The slow suite is deliberately separate: `./gradlew pixel6Api34DebugAndroidTest` runs instrumented
+tests on a Gradle Managed Device and `./gradlew test -Pstudyflow.quarantine=true` runs the
+quarantined flaky tests. Both run nightly, never on a pull request. The test pyramid, the shared
+fakes in `:core:testing`, the quarantine policy and the coverage policy are described in
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and [ADR 0007](docs/adr/0007-test-strategy.md).
 
 `./gradlew check` is the single quality entry point: Spotless/ktlint formatting, detekt with the
 project ruleset (`config/detekt/detekt.yml`) and the Compose rules, Android Lint with
@@ -157,7 +163,7 @@ tokens or repository secrets only; no secrets are committed to this repository.
 | `:core:model` — sessions, events, time anchors, tasks, recurrence, materials | done |
 | `:core:common` — dual-clock time abstraction, dispatchers | done |
 | `:core:domain` — timer, recurrence, reminder scheduling, upload, archive safety, cache | done |
-| `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation) | done |
+| `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation), coroutine rules, logging fakes, data builders, flaky quarantine | done |
 | `:app` — Android application baseline | done |
 | Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
 

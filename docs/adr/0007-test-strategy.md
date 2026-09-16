@@ -39,7 +39,10 @@ fake in the same change as the interface, not afterwards. Data builders keep a f
 one field the test is about.
 
 **`:core:testing` stays a plain JVM module.** It is depended on by `:core:domain`, which must not
-see the Android SDK. Android-only helpers therefore live next to the Android code they support.
+see the Android SDK. Android-only helpers therefore live next to the Android code they support: a
+Hilt test runner belongs to the module that first has a Hilt graph to replace, and an in-memory Room
+rule belongs to `:core:database` once it has entities. Adding either before then would be untestable
+scaffolding pinned to a schema nobody has written.
 
 **Robolectric for Android-dependent logic, Gradle Managed Devices for the rest.** Robolectric runs
 in the JVM suite; it is a JUnit 4 runner, so the vintage engine executes it on the same JUnit
