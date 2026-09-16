@@ -1,7 +1,7 @@
 ## Single source of truth for dependency versions (issue #12).
 ##
-## Only artifacts that this build actually resolves are listed here. The Android, Compose,
-## Hilt and Room versions were verified by building a throwaway app, feature and database
+## Every plugin, library and SDK version resolved by this build is declared here. The Android,
+## Compose, Hilt and Room versions were verified by building a throwaway app, feature and database
 ## module against the convention plugins in :build-logic, not copied from a plan.
 
 [versions]
@@ -13,6 +13,7 @@ androidxEspresso = "3.7.0"
 androidxHiltNavigationCompose = "1.4.0"
 androidxLifecycle = "2.11.0"
 androidxTestJunit = "1.3.0"
+# Compose BOM 2026.09.00 requires consumers to compile against API 37 or later.
 compileSdk = "37"
 detekt = "1.23.8"
 hilt = "2.60.1"
@@ -81,7 +82,6 @@ android-library = { id = "com.android.library", version.ref = "agp" }
 compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 room = { id = "androidx.room", version.ref = "room" }

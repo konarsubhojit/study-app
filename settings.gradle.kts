@@ -1,8 +1,8 @@
 pluginManagement {
     includeBuild("build-logic")
     repositories {
-        gradlePluginPortal()
         google()
+        gradlePluginPortal()
         mavenCentral()
     }
 }
@@ -13,10 +13,6 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
     }
-}
-
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
 rootProject.name = "studyflow"
@@ -30,3 +26,6 @@ include(":core:model")
 include(":core:common")
 include(":core:domain")
 include(":core:testing")
+
+// The installable application. Adding a module needs a line here and nothing else (issue #11).
+include(":app")

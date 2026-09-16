@@ -22,6 +22,10 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
             extensions.configure<ApplicationExtension> {
                 configureAndroid(this)
 
+                // The application ID is the identity Play Store and every installed device uses;
+                // changing it after release orphans existing installs. It matches the namespace so
+                // that a module declares it in neither place.
+                defaultConfig.applicationId = namespace
                 defaultConfig.targetSdk = libs.findVersion("targetSdk").get().requiredVersion.toInt()
 
                 buildTypes.getByName("release") {

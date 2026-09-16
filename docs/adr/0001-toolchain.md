@@ -10,22 +10,28 @@ byte-for-byte, and that will not quietly drift as dependencies publish new versi
 grow from four pure-Kotlin modules today into a multi-module Android app without the build scripts
 turning into copy-pasted sludge.
 
-A practical constraint shaped part of this decision: the environment this repository was
-bootstrapped in cannot reach `dl.google.com` or `maven.google.com`, so the Android Gradle Plugin and
-every AndroidX artifact are unreachable. See [ADR 0006](0006-bootstrap-scope.md).
-
 ## Decision
 
-**Gradle 9.7.1 via the wrapper, JDK 21 toolchain, Kotlin 2.x with the K2 compiler.**
+**Gradle 9.7.1 via the wrapper, AGP 9.4.0, Kotlin 2.4.20 with the K2 compiler, Android API 37, and
+JDK 21.**
 
 The wrapper is committed, so the Gradle version is part of the source tree rather than part of each
 developer's machine. A Java *toolchain* is declared rather than relying on `JAVA_HOME`, so the
 bytecode target does not depend on which JDK happens to be first on the path.
 
+`compileSdk` is 37 because Compose BOM 2026.09.00 refuses to be consumed by a module compiled
+against an older platform. `:app`'s namespace and application ID are both `dev.studyflow.app`, and
+neither is written in a build file: the conventions derive the namespace from the module path and
+the application ID from the namespace. The application ID is the identity the Play Store and every
+installed device use, so pinning it in one derived place is what stops it being changed casually.
+
+**AGP's built-in Kotlin support is used, not disabled.** From AGP 9 the Android plugins compile
+Kotlin themselves, so the Android conventions do not apply `org.jetbrains.kotlin.android`; the
+`android.builtInKotlin=false` opt-out is removed in AGP 10 anyway. The pure-Kotlin `:core:*` modules
+are unaffected — they use the standalone Kotlin JVM plugin, which is a per-module choice.
+
 **All versions live in `gradle/libs.versions.toml`.** No version literal appears in any build
-script, including `build-logic`'s own. Only artifacts this build actually resolves are listed, so
-every version in the catalogue has been verified against a real build rather than transcribed from
-a plan.
+script, including `build-logic`'s own.
 
 **Shared build configuration lives in `:build-logic` as convention plugins**, not in `subprojects {}`
 or `allprojects {}` blocks:
@@ -64,9 +70,6 @@ permanent build-file edit that nobody remembers to revert.
 **KSP, never kapt.** kapt has to generate Java stubs for every Kotlin source before an annotation
 processor sees them; KSP reads the Kotlin AST directly.
 
-**From AGP 9 the Android plugins compile Kotlin themselves**, so the Android conventions do not
-apply `org.jetbrains.kotlin.android`.
-
 **`allWarningsAsErrors` is on for every module.** A warning that is allowed to persist is a warning
 nobody reads. Explicit API mode forces every public declaration to carry an explicit visibility and
 return type, which is what makes a `:core:*` module's surface reviewable.
@@ -90,3 +93,5 @@ and the two tools fight forever.
   throwaway application, feature and Room module against these conventions — an APK, an R8-minified
   release, Android Lint, JUnit 5 unit tests, an exported Room schema and Compose reports — which was
   then deleted. Nothing in the catalogue is a guess.
+- `:app` is a manifest-only Android baseline that builds today; UI and AndroidX dependencies arrive
+  with the features that need them, and its build file stays two lines when they do.
