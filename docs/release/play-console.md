@@ -110,7 +110,9 @@ keyPassword=…
 
 The same four values may be supplied as the `STUDYFLOW_UPLOAD_STORE_FILE`,
 `STUDYFLOW_UPLOAD_STORE_PASSWORD`, `STUDYFLOW_UPLOAD_KEY_ALIAS` and
-`STUDYFLOW_UPLOAD_KEY_PASSWORD` environment variables instead.
+`STUDYFLOW_UPLOAD_KEY_PASSWORD` environment variables instead; the file wins per value, so the
+keystore path can live in the file and the passwords in the environment. A relative `storeFile`
+resolves against the repository root.
 
 With no credentials at all the release build type stays **unsigned**, so a fresh clone can still
 run `assembleRelease`. `-Pstudyflow.requireReleaseSigning=true` turns that convenience off: missing

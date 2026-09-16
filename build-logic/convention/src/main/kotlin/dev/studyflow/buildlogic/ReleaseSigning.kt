@@ -16,6 +16,9 @@ import java.util.Properties
  * 1. a `keystore.properties` file outside version control (git-ignored, for local release builds),
  * 2. `STUDYFLOW_UPLOAD_*` environment variables (GitHub Actions secrets, for CI).
  *
+ * The order applies per value, so a machine may keep the keystore path in the file and the
+ * passwords in the environment; only a set that is incomplete across *both* sources is an error.
+ *
  * With no credentials at all the release build type stays unsigned, so anybody can clone the
  * repository and run `assembleRelease`. That is a convenience, never a release path: pass
  * `-Pstudyflow.requireReleaseSigning=true` (as the release workflow does) to turn a missing or
