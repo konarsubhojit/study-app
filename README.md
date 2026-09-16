@@ -101,19 +101,33 @@ illegal dependency with an explanation.
 
 ## Building
 
-Requires a JDK; everything else comes from the wrapper.
+Install JDK 21 and Android SDK 37. Use the committed Gradle wrapper; no separate Gradle installation
+is required.
 
 ```bash
+git clone https://github.com/konarsubhojit/study-app.git
+cd study-app
 ./gradlew build          # compile, test, detekt, spotless, module boundaries
 ./gradlew test           # unit tests only
 ./gradlew spotlessApply  # fix formatting
 ```
 
-All versions live in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) — no version literal
-appears in any build script. Shared configuration lives in `:build-logic` convention plugins, so a
-module's own build file is three lines.
+For module conventions, branch strategy, and the Definition of Done, see
+[`CONTRIBUTING.md`](CONTRIBUTING.md).
 
-Explicit API mode and `allWarningsAsErrors` are on for every module.
+```bash
+# Compose stability and recomposition reports, for performance work only.
+./gradlew assembleRelease -Pstudyflow.composeCompilerReports=true
+```
+
+All versions live in [`gradle/libs.versions.toml`](gradle/libs.versions.toml) — no version literal
+appears in any build script. Shared configuration lives in `:build-logic` convention plugins
+(`studyflow.jvm.library`, `studyflow.android.application`, `studyflow.android.library`,
+`studyflow.android.feature`, `studyflow.compose`, `studyflow.hilt`, `studyflow.room`,
+`studyflow.test`), so a module's own build file applies a plugin and lists its dependencies, and
+adding a module changes nothing but `settings.gradle.kts`.
+
+`allWarningsAsErrors` is on for every module; explicit API mode is on for `:core:*`.
 
 ## CI
 
@@ -130,15 +144,17 @@ tokens or repository secrets only; no secrets are committed to this repository.
 
 | Area | Status |
 |---|---|
-| Gradle foundation, convention plugins, module boundaries, CI | done |
+| Gradle foundation, convention plugins (JVM, Android, Compose, Hilt, Room), module boundaries, CI | done |
 | `:core:model` — sessions, events, time anchors, tasks, recurrence, materials | done |
 | `:core:common` — dual-clock time abstraction, dispatchers | done |
 | `:core:domain` — timer, recurrence, reminder scheduling, upload, archive safety, cache | done |
 | `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation) | done |
-| Android app build baseline | done |
+| `:app` — Android application baseline | done |
 | Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
 
-`:app` is intentionally manifest-only while the Android UI and platform integrations are deferred.
+`:app` is intentionally manifest-only while the Android UI and platform integrations are deferred,
+but the build that will carry them is in place: the Android, Compose, Hilt and Room convention
+plugins were verified against a throwaway app, feature and database module before it was deleted.
 The domain core remains Android-free, so building it first proves the riskiest logic before any UI
 exists to obscure it. Each platform concern has a seam waiting for it — an interface in
 `:core:common` or a pure planner in `:core:domain`.
@@ -161,6 +177,7 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 
 ## Decision records
 
+- [ADR template](docs/adr/template.md)
 - [0001 — Build toolchain and dependency pinning](docs/adr/0001-toolchain.md)
 - [0002 — Architecture layering and module boundaries](docs/adr/0002-architecture-layering.md)
 - [0003 — The timer is event-sourced and clock-derived](docs/adr/0003-timer-event-sourcing.md)
