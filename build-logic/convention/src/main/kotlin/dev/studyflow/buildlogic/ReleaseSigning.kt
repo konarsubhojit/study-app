@@ -56,8 +56,9 @@ internal fun Project.configureReleaseSigning(extension: ApplicationExtension) {
             storePassword = credentials.storePassword
             keyAlias = credentials.keyAlias
             keyPassword = credentials.keyPassword
-            // Both schemes: v1 keeps API 26 installs verifiable, v2 is what Play expects.
-            enableV1Signing = true
+            // `minSdk` is 26, so every target supports APK Signature Scheme v2; the legacy JAR
+            // signature would only add size.
+            enableV1Signing = false
             enableV2Signing = true
         }
         buildTypes.getByName(RELEASE) {

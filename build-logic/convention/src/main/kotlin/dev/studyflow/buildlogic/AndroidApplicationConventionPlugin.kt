@@ -1,6 +1,7 @@
 package dev.studyflow.buildlogic
 
 import com.android.build.api.dsl.ApplicationExtension
+import org.gradle.api.GradleException
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
@@ -30,8 +31,7 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                 defaultConfig.targetSdk = libs.findVersion("targetSdk").get().requiredVersion.toInt()
                 // Play rejects a bundle whose version code it has already seen, so CI passes the
                 // run's code with `-Pstudyflow.versionCode`; the defaults keep a local build usable.
-                defaultConfig.versionCode = providers.gradleProperty("studyflow.versionCode")
-                    .orNull?.toInt() ?: 1
+                defaultConfig.versionCode = versionCodeProperty()
                 defaultConfig.versionName = providers.gradleProperty("studyflow.versionName")
                     .orNull ?: "0.1.0"
                 defaultConfig.buildConfigField("boolean", "CRASH_REPORTING_ENABLED", "false")
@@ -68,3 +68,13 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
         }
     }
 }
+
+/** Defaults to 1 so a clone builds; CI overrides it per release with `-Pstudyflow.versionCode`. */
+private fun Project.versionCodeProperty(): Int {
+    val value = providers.gradleProperty(VERSION_CODE_PROPERTY).orNull ?: return DEFAULT_VERSION_CODE
+    return value.toIntOrNull()?.takeIf { it > 0 }
+        ?: throw GradleException("$VERSION_CODE_PROPERTY must be a positive integer, but was '$value'.")
+}
+
+private const val VERSION_CODE_PROPERTY = "studyflow.versionCode"
+private const val DEFAULT_VERSION_CODE = 1
