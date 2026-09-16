@@ -17,11 +17,12 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.Worker
 import androidx.work.WorkerParameters
+import dev.studyflow.core.common.time.SystemWallClock
+import dev.studyflow.core.common.time.WallClock
 import dev.studyflow.core.domain.reminder.ReminderPlan
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
-import kotlin.time.Clock
 
 public class AndroidSchedulingCapabilitiesProvider(
     private val context: Context,
@@ -64,7 +65,7 @@ public class AndroidReminderPlatformScheduler(
             }
     },
     private val onExactAlarmDenied: (SecurityException) -> Unit = {},
-    private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
+    private val wallClock: WallClock = SystemWallClock,
 ) : ReminderPlatformScheduler {
     override fun scheduleInexact(plan: ReminderPlan): PlatformScheduleOutcome {
         val request =
@@ -113,7 +114,8 @@ public class AndroidReminderPlatformScheduler(
         workManager.cancelUniqueWork(workName(reminderId))
     }
 
-    private fun delayMillis(plan: ReminderPlan): Long = max(0L, plan.triggerAt.toEpochMilliseconds() - nowMillis())
+    private fun delayMillis(plan: ReminderPlan): Long =
+        max(0L, plan.triggerAt.toEpochMilliseconds() - wallClock.now().toEpochMilliseconds())
 
     private fun operation(reminderId: String): PendingIntent =
         PendingIntent.getBroadcast(

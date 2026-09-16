@@ -12,8 +12,16 @@ import kotlin.time.Instant
  * Correct for "when did this happen", wrong for "how long did this take": it moves whenever NTP
  * syncs, the user edits the date, or the carrier pushes a time update.
  */
-public fun interface WallClock {
+public fun interface Clock {
     public fun now(): Instant
+}
+
+/** Compatibility name for [Clock]. */
+public typealias WallClock = Clock
+
+/** Reads the device wall clock. */
+public object SystemWallClock : Clock {
+    override fun now(): Instant = Instant.fromEpochMilliseconds(System.currentTimeMillis())
 }
 
 /**
@@ -26,9 +34,12 @@ public fun interface WallClock {
  * Note the deliberate choice of `elapsedRealtime` over `uptimeMillis`: the latter stops during deep
  * sleep, which would silently under-count every study session on a device left alone for an hour.
  */
-public fun interface UptimeClock {
+public fun interface ElapsedRealtimeSource {
     public fun uptime(): Duration
 }
+
+/** Compatibility name for [ElapsedRealtimeSource]. */
+public typealias UptimeClock = ElapsedRealtimeSource
 
 /** Supplies an identifier that changes on every reboot, scoping [UptimeClock] readings to a boot. */
 public fun interface BootIdProvider {
@@ -43,6 +54,11 @@ public fun interface BootIdProvider {
  */
 public fun interface TimeZoneProvider {
     public fun current(): TimeZone
+}
+
+/** Reads the device's current time zone. */
+public object SystemTimeZoneProvider : TimeZoneProvider {
+    override fun current(): TimeZone = TimeZone.currentSystemDefault()
 }
 
 /**

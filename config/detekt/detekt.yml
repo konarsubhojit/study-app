@@ -10,6 +10,16 @@
 build:
   maxIssues: 0
 
+coroutines:
+  InjectDispatcher:
+    excludes: ['**/core/common/**']
+  RedundantSuspendModifier:
+    active: false
+
+potential-bugs:
+  UnreachableCode:
+    active: false
+
 complexity:
   LongParameterList:
     # Domain value types are constructed explicitly rather than through builders.
@@ -25,6 +35,22 @@ complexity:
     ignorePrivate: true
 
 style:
+  ForbiddenMethodCall:
+    active: true
+    methods:
+      - 'java.lang.System.currentTimeMillis'
+      - 'kotlin.System.currentTimeMillis'
+      - 'kotlin.time.Clock.System.now'
+      - 'android.os.SystemClock.currentThreadTimeMillis'
+      - 'android.os.SystemClock.elapsedRealtime'
+      - 'android.os.SystemClock.elapsedRealtimeNanos'
+      - 'android.os.SystemClock.uptimeMillis'
+    excludes: ['**/core/common/**']
+  ForbiddenImport:
+    active: true
+    imports:
+      - 'android.os.SystemClock'
+    excludes: ['**/core/common/**']
   MaxLineLength:
     maxLineLength: 120
   ReturnCount:
