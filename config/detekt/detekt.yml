@@ -37,6 +37,8 @@ naming:
   FunctionNaming:
     # JUnit test names read as sentences.
     excludes: ['**/test/**']
+    # `@Composable` functions are PascalCase by convention: they read as UI elements, not calls.
+    ignoreAnnotated: ['Composable']
 
 exceptions:
   TooGenericExceptionCaught:
