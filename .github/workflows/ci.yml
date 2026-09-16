@@ -22,12 +22,12 @@ jobs:
     runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Set up JDK
         # Pre-installed on the self-hosted runner.
         if: github.event_name == 'pull_request'
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v6
         with:
           distribution: temurin
           # Keep in step with `javaToolchain` in gradle/libs.versions.toml.
@@ -36,7 +36,7 @@ jobs:
       - name: Set up Gradle
         # The self-hosted runner has a persistent ~/.gradle cache.
         if: github.event_name == 'pull_request'
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v6
         with:
           # Only the default branch may seed the shared cache, so a PR cannot poison it.
           cache-read-only: ${{ github.ref != format('refs/heads/{0}', github.event.repository.default_branch) }}
@@ -48,7 +48,7 @@ jobs:
 
       - name: Upload reports
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reports
           path: |
