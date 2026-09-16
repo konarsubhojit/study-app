@@ -20,6 +20,10 @@ deadline.
 Dependencies point inwards only. Room is the single source of truth for local state; network,
 object storage and system schedulers sit behind interfaces owned by the domain.
 
+Composable functions are stateless renderers: they receive immutable UI state and callbacks, and
+never own screen business state. ViewModels own UI state and one-off effects; use cases own
+business logic and map implementation exceptions to the domain's user-safe error model.
+
 **Module map:**
 
 ```
