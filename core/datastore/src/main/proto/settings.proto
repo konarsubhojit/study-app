@@ -1,0 +1,32 @@
+syntax = "proto2";
+
+package dev.studyflow.core.datastore.proto;
+
+option java_multiple_files = true;
+option java_package = "dev.studyflow.core.datastore.proto";
+option optimize_for = LITE_RUNTIME;
+
+enum Theme {
+  THEME_SYSTEM = 0;
+  THEME_LIGHT = 1;
+  THEME_DARK = 2;
+}
+
+enum SyncMode {
+  SYNC_MODE_WIFI_ONLY = 0;
+  SYNC_MODE_ANY_NETWORK = 1;
+  SYNC_MODE_MANUAL = 2;
+}
+
+message UserSettings {
+  optional Theme theme = 1 [default = THEME_SYSTEM];
+  optional uint32 default_focus_minutes = 2 [default = 25];
+  optional uint32 default_break_minutes = 3 [default = 5];
+  optional bool reminders_enabled = 4 [default = false];
+  optional uint32 reminder_hour = 5 [default = 9];
+  optional uint32 reminder_minute = 6 [default = 0];
+  optional uint64 storage_quota_bytes = 7 [default = 1073741824];
+  optional SyncMode sync_mode = 8 [default = SYNC_MODE_WIFI_ONLY];
+
+  reserved 9 to 15;
+}
