@@ -54,8 +54,8 @@ public class RecordingAppLogger : AppLogger {
 public class RecordingCrashReporter : CrashReporter {
     private val recorded = mutableListOf<Throwable>()
 
-    /** True once [initialize] has been called with reporting enabled and no opt-out. */
-    public var isInitialized: Boolean = false
+    /** True while reporting is switched on: [initialize] was called with it enabled and no opt-out. */
+    public var isReporting: Boolean = false
         private set
 
     /** Throwables passed to [record], oldest first. */
@@ -65,11 +65,11 @@ public class RecordingCrashReporter : CrashReporter {
         enabled: Boolean,
         optedOut: Boolean,
     ) {
-        isInitialized = enabled && !optedOut
+        isReporting = enabled && !optedOut
     }
 
     override fun record(throwable: Throwable) {
-        if (isInitialized) {
+        if (isReporting) {
             recorded += throwable
         }
     }

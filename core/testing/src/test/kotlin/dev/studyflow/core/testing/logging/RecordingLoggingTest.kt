@@ -38,12 +38,12 @@ class RecordingLoggingTest {
     }
 
     @Test
-    fun `the crash reporter stays uninitialised when the user opted out`() {
+    fun `the crash reporter stays off when the user opted out`() {
         val reporter = RecordingCrashReporter()
 
         reporter.initialize(enabled = true, optedOut = true)
 
-        assertFalse(reporter.isInitialized)
+        assertFalse(reporter.isReporting)
     }
 
     @Test
@@ -64,7 +64,7 @@ class RecordingLoggingTest {
 
         reporter.record(failure)
 
-        assertTrue(reporter.isInitialized)
+        assertTrue(reporter.isReporting)
         assertEquals(listOf(failure), reporter.recordedThrowables)
     }
 }

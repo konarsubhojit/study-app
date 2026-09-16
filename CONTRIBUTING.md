@@ -95,11 +95,11 @@ goal, and a quarantined test with no progress on its issue should be fixed or re
 
 ### Coverage
 
-`./gradlew check` writes JaCoCo reports for every module: JVM modules under
+`./gradlew check` writes JaCoCo reports for every module with unit tests: JVM modules under
 `<module>/build/reports/jacoco/` and Android modules under `<module>/build/reports/coverage/`. CI
-reads both and annotates each pull request with the coverage of the lines it changed.
+reads both and annotates each pull request with the coverage of the files it changed.
 
-The only enforced number is a floor of 70% on the lines a pull request changed, which exists to
+The only enforced number is a floor of 70% on the files a pull request changed, which exists to
 catch code that arrived with no test at all. Everything else is a signal: there is no
 repository-wide percentage to defend, no ratchet on existing code, and a line covered by a test
 that asserts nothing is worth less than an uncovered line whose risk you have thought about. Use

@@ -17,8 +17,8 @@ complexity:
     constructorThreshold: 10
     # A test data builder mirrors a model field for field, and every parameter has a default, so
     # the call site names only what the test is about. That is the opposite of the problem this
-    # rule exists to catch.
-    ignoreDefaultParameters: true
+    # rule exists to catch, so it is waived for test code only.
+    excludes: ['**/src/test/**', '**/src/androidTest/**', '**/core/testing/**']
   TooManyFunctions:
     thresholdInClasses: 15
     thresholdInFiles: 20
