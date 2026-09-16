@@ -17,4 +17,8 @@ android {
         sourceCompatibility = javaVersion
         targetCompatibility = javaVersion
     }
+
+    lint {
+        sarifReport = true
+    }
 }

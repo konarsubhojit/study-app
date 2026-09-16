@@ -97,18 +97,18 @@ jobs:
           fail-on-empty: false
           fail-on-error: false
 
-      - name: Collect Detekt SARIF reports
+      - name: Collect SARIF reports
         if: ${{ !cancelled() }}
         shell: bash
         run: |
           mkdir -p build/ci-sarif
-          find . -path '*/build/reports/detekt/*.sarif' -print0 | while IFS= read -r -d '' report; do
+          find . \( -path '*/build/reports/*.sarif' -o -path '*/build/reports/*/*.sarif' \) -print0 | while IFS= read -r -d '' report; do
             safe_name=${report#./}
             safe_name=${safe_name//\//-}
             cp "$report" "build/ci-sarif/$safe_name"
           done
 
-      - name: Publish Detekt annotations
+      - name: Publish static analysis annotations
         if: ${{ !cancelled() && hashFiles('build/ci-sarif/*.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v3
         with:
