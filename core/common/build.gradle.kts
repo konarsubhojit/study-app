@@ -1,5 +1,5 @@
 plugins {
-    id("studyflow.kotlin.library")
+    id("studyflow.jvm.library")
 }
 
 dependencies {

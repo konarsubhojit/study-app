@@ -11,16 +11,49 @@ java {
 }
 
 dependencies {
-    implementation(libs.kotlin.gradlePlugin)
+    compileOnly(libs.android.gradlePlugin)
+    compileOnly(libs.compose.gradlePlugin)
     compileOnly(libs.detekt.gradlePlugin)
+    compileOnly(libs.hilt.gradlePlugin)
+    compileOnly(libs.kotlin.gradlePlugin)
+    compileOnly(libs.ksp.gradlePlugin)
+    compileOnly(libs.room.gradlePlugin)
     compileOnly(libs.spotless.gradlePlugin)
 }
 
 gradlePlugin {
     plugins {
-        register("kotlinLibrary") {
-            id = "studyflow.kotlin.library"
-            implementationClass = "dev.studyflow.buildlogic.KotlinLibraryConventionPlugin"
+        register("androidApplication") {
+            id = "studyflow.android.application"
+            implementationClass = "dev.studyflow.buildlogic.AndroidApplicationConventionPlugin"
+        }
+        register("androidLibrary") {
+            id = "studyflow.android.library"
+            implementationClass = "dev.studyflow.buildlogic.AndroidLibraryConventionPlugin"
+        }
+        register("androidFeature") {
+            id = "studyflow.android.feature"
+            implementationClass = "dev.studyflow.buildlogic.AndroidFeatureConventionPlugin"
+        }
+        register("compose") {
+            id = "studyflow.compose"
+            implementationClass = "dev.studyflow.buildlogic.ComposeConventionPlugin"
+        }
+        register("hilt") {
+            id = "studyflow.hilt"
+            implementationClass = "dev.studyflow.buildlogic.HiltConventionPlugin"
+        }
+        register("jvmLibrary") {
+            id = "studyflow.jvm.library"
+            implementationClass = "dev.studyflow.buildlogic.JvmLibraryConventionPlugin"
+        }
+        register("room") {
+            id = "studyflow.room"
+            implementationClass = "dev.studyflow.buildlogic.RoomConventionPlugin"
+        }
+        register("test") {
+            id = "studyflow.test"
+            implementationClass = "dev.studyflow.buildlogic.TestConventionPlugin"
         }
         register("quality") {
             id = "studyflow.quality"

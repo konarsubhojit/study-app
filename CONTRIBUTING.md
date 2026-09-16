@@ -2,7 +2,7 @@
 
 ## Set up the project
 
-Install JDK 21 and Android SDK 36, then clone and verify the repository:
+Install JDK 21 and Android SDK 37, then clone and verify the repository:
 
 ```bash
 git clone https://github.com/konarsubhojit/study-app.git
