@@ -45,6 +45,14 @@ class ReminderSchedulingServiceTest {
     }
 
     @Test
+    fun `alarm reminders use the alarm-clock platform primitive`() {
+        val result = service.schedule(task(ReminderPrecision.ALARM))
+
+        assertEquals(listOf("cancel:reminder-task-1", "alarm:reminder-task-1"), platform.calls)
+        assertEquals(ReminderDelivery.ALARM_CLOCK, result.scheduledPlan().delivery)
+    }
+
+    @Test
     fun `revoking exact alarm permission mid-flight replaces the exact registration with inexact`() {
         service.schedule(task(ReminderPrecision.EXACT))
         capabilities = SchedulingCapabilities(canScheduleExactAlarms = false)
@@ -73,6 +81,31 @@ class ReminderSchedulingServiceTest {
     }
 
     @Test
+    fun `rescheduleAll schedules each outstanding task with fresh capabilities`() {
+        val results =
+            service.rescheduleAll(
+                listOf(
+                    task(ReminderPrecision.GENTLE, id = "gentle"),
+                    task(ReminderPrecision.EXACT, id = "exact"),
+                ),
+            )
+
+        assertEquals(
+            listOf(
+                "cancel:reminder-gentle",
+                "inexact:reminder-gentle",
+                "cancel:reminder-exact",
+                "exact:reminder-exact",
+            ),
+            platform.calls,
+        )
+        assertEquals(
+            listOf(ReminderDelivery.INEXACT, ReminderDelivery.EXACT),
+            results.map { it.scheduledPlan().delivery },
+        )
+    }
+
+    @Test
     fun `completed tasks cancel any existing reminder instead of scheduling`() {
         val result = service.schedule(task(ReminderPrecision.GENTLE).copy(completedAt = now))
 
@@ -93,13 +126,16 @@ class ReminderSchedulingServiceTest {
 
     private fun ReminderScheduleResult.scheduledPlan(): ReminderPlan = scheduled().plan
 
-    private fun task(precision: ReminderPrecision): StudyTask =
+    private fun task(
+        precision: ReminderPrecision,
+        id: String = "task-1",
+    ): StudyTask =
         StudyTask(
-            id = "task-1",
+            id = id,
             title = "Revise chapter 4",
             dueAt = LocalDateTime(2026, 3, 2, 8, 0),
             timeZone = TimeZone.of("Europe/London"),
-            reminder = Reminder(id = "reminder-task-1", precision = precision),
+            reminder = Reminder(id = "reminder-$id", precision = precision),
         )
 
     private class RecordingPlatformScheduler : ReminderPlatformScheduler {

@@ -57,6 +57,13 @@ public class AndroidReminderPlatformScheduler(
     private val alarmManager: AlarmManager =
         context.getSystemService(AlarmManager::class.java),
     private val workManager: WorkManager = WorkManager.getInstance(context),
+    private val showIntentFactory: (String) -> Intent = { reminderId ->
+        context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?: Intent(Intent.ACTION_MAIN).setPackage(context.packageName).apply {
+                addCategory(Intent.CATEGORY_LAUNCHER)
+            }
+    },
+    private val onExactAlarmDenied: (SecurityException) -> Unit = {},
     private val nowMillis: () -> Long = { Clock.System.now().toEpochMilliseconds() },
 ) : ReminderPlatformScheduler {
     override fun scheduleInexact(plan: ReminderPlan) {
@@ -75,11 +82,16 @@ public class AndroidReminderPlatformScheduler(
     }
 
     override fun scheduleExact(plan: ReminderPlan) {
-        alarmManager.setExactAndAllowWhileIdle(
-            AlarmManager.RTC_WAKEUP,
-            plan.triggerAt.toEpochMilliseconds(),
-            operation(plan.reminderId),
-        )
+        try {
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                plan.triggerAt.toEpochMilliseconds(),
+                operation(plan.reminderId),
+            )
+        } catch (exception: SecurityException) {
+            onExactAlarmDenied(exception)
+            scheduleInexact(plan)
+        }
     }
 
     override fun scheduleAlarmClock(plan: ReminderPlan) {
@@ -111,9 +123,7 @@ public class AndroidReminderPlatformScheduler(
         PendingIntent.getActivity(
             context,
             0,
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.fromParts("package", context.packageName, reminderId)
-            },
+            showIntentFactory(reminderId).withReminderId(reminderId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -137,6 +147,12 @@ public class AndroidReminderPlatformScheduler(
     }
 }
 
+/**
+ * Placeholder worker for WorkManager-triggered reminders.
+ *
+ * Notification rendering is intentionally left to the notification feature; this worker is the
+ * stable scheduling hand-off point and carries the reminder metadata that delivery will consume.
+ */
 public class ReminderDeliveryWorker(
     context: Context,
     parameters: WorkerParameters,
@@ -144,6 +160,12 @@ public class ReminderDeliveryWorker(
     override fun doWork(): Result = Result.success()
 }
 
+/**
+ * Placeholder receiver for AlarmManager-triggered reminders.
+ *
+ * Notification rendering is intentionally left to the notification feature; this receiver is the
+ * stable scheduling hand-off point and receives [EXTRA_REMINDER_ID].
+ */
 public class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(
         context: Context,
@@ -152,6 +174,11 @@ public class ReminderAlarmReceiver : BroadcastReceiver() {
 }
 
 public const val EXTRA_REMINDER_ID: String = "dev.studyflow.core.scheduling.REMINDER_ID"
+public const val EXTRA_TASK_ID: String = "dev.studyflow.core.scheduling.TASK_ID"
+public const val EXTRA_TRIGGER_AT_EPOCH_MILLIS: String =
+    "dev.studyflow.core.scheduling.TRIGGER_AT_EPOCH_MILLIS"
+public const val EXTRA_OCCURRENCE_AT_EPOCH_MILLIS: String =
+    "dev.studyflow.core.scheduling.OCCURRENCE_AT_EPOCH_MILLIS"
 
 public fun exactAlarmSettingsIntent(context: Context): Intent =
     Intent(ExactAlarmPermissionRationale.REQUEST_EXACT_ALARM_SETTINGS).apply {
@@ -162,11 +189,23 @@ private fun workData(plan: ReminderPlan): Data =
     Data
         .Builder()
         .putString(EXTRA_REMINDER_ID, plan.reminderId)
-        .putString("task_id", plan.taskId)
-        .putLong("trigger_at_epoch_millis", plan.triggerAt.toEpochMilliseconds())
-        .putLong("occurrence_at_epoch_millis", plan.occurrenceAt.toEpochMilliseconds())
+        .putString(EXTRA_TASK_ID, plan.taskId)
+        .putLong(EXTRA_TRIGGER_AT_EPOCH_MILLIS, plan.triggerAt.toEpochMilliseconds())
+        .putLong(EXTRA_OCCURRENCE_AT_EPOCH_MILLIS, plan.occurrenceAt.toEpochMilliseconds())
         .build()
 
 private fun workName(reminderId: String): String = "reminder:$reminderId"
 
 private fun workTag(reminderId: String): String = "reminder-id:$reminderId"
+
+private fun Intent.withReminderId(reminderId: String): Intent =
+    apply {
+        data =
+            Uri
+                .Builder()
+                .scheme("studyflow")
+                .authority("reminders")
+                .appendPath(reminderId)
+                .build()
+        putExtra(EXTRA_REMINDER_ID, reminderId)
+    }
