@@ -9,6 +9,7 @@ import dev.studyflow.core.network.auth.AuthTokens
 import dev.studyflow.core.network.auth.InMemoryTokenStore
 import dev.studyflow.core.network.auth.TokenStore
 import dev.studyflow.core.network.http.studyFlowHttpClient
+import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.model.StudyFlowJson
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
@@ -104,7 +105,8 @@ public class FakeStudyFlowBackend(
             }
 
             else -> {
-                respondJson("""{"code":"not_found","message":"$path"}""", HttpStatusCode.NotFound)
+                val error = ApiErrorDto(code = "not_found", message = path)
+                respondJson(StudyFlowJson.encodeToString(error), HttpStatusCode.NotFound)
             }
         }
     }

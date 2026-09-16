@@ -40,7 +40,7 @@ object NetworkModule {
             baseUrl = BuildConfig.API_BASE_URL,
             clientVersion =
                 requireNotNull(ClientVersion.parseOrNull(BuildConfig.API_CLIENT_VERSION)) {
-                    "versionName '${BuildConfig.API_CLIENT_VERSION}' is not a major.minor.patch version"
+                    "API_CLIENT_VERSION '${BuildConfig.API_CLIENT_VERSION}' is not a major.minor.patch version"
                 },
         )
 
