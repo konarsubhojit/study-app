@@ -16,6 +16,7 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {
         with(target) {
             pluginManager.apply("com.android.application")
+            pluginManager.apply("studyflow.hilt")
             pluginManager.apply("studyflow.quality")
             pluginManager.apply("studyflow.test")
 
@@ -27,6 +28,9 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                 // that a module declares it in neither place.
                 defaultConfig.applicationId = namespace
                 defaultConfig.targetSdk = libs.findVersion("targetSdk").get().requiredVersion.toInt()
+                defaultConfig.buildConfigField("boolean", "CRASH_REPORTING_ENABLED", "false")
+
+                buildFeatures.buildConfig = true
 
                 buildTypes.getByName("release") {
                     isMinifyEnabled = true
