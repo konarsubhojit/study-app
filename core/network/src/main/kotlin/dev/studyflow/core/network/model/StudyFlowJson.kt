@@ -14,9 +14,10 @@ import kotlinx.serialization.json.Json
  * optional fields, and `encodeDefaults = false` keeps request bodies to what the caller actually
  * set.
  */
-public val StudyFlowJson: Json = Json {
-    ignoreUnknownKeys = true
-    explicitNulls = false
-    encodeDefaults = false
-    isLenient = false
-}
+public val StudyFlowJson: Json =
+    Json {
+        ignoreUnknownKeys = true
+        explicitNulls = false
+        encodeDefaults = false
+        isLenient = false
+    }

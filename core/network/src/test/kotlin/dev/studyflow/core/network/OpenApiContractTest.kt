@@ -15,20 +15,22 @@ import java.io.File
  */
 @DisplayName("OpenAPI contract")
 class OpenApiContractTest {
-    private val specification: String = run {
-        val file = File(SPEC_PATH)
-        assertTrue(file.exists(), "Missing API specification at ${file.absolutePath}")
-        file.readText()
-    }
+    private val specification: String =
+        run {
+            val file = File(SPEC_PATH)
+            assertTrue(file.exists(), "Missing API specification at ${file.absolutePath}")
+            file.readText()
+        }
 
     @Test
     fun `every endpoint the client calls is described by the specification`() {
         assertAll(
             ApiEndpoint.entries.map { endpoint ->
                 {
-                    val pathBlock = specification
-                        .substringAfter("\n  ${endpoint.path}:\n", missingDelimiterValue = "")
-                        .substringBefore("\n\n")
+                    val pathBlock =
+                        specification
+                            .substringAfter("\n  ${endpoint.path}:\n", missingDelimiterValue = "")
+                            .substringBefore("\n\n")
                     assertTrue(pathBlock.isNotEmpty(), "${endpoint.path} is not described in $SPEC_PATH")
                     assertTrue(
                         "\n$pathBlock".contains("\n    ${endpoint.method}:\n"),

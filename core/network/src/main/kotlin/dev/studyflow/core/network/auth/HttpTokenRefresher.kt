@@ -33,30 +33,32 @@ public class HttpTokenRefresher(
     engine: HttpClientEngine,
     private val config: ApiConfig,
 ) : TokenRefresher {
-    private val client: HttpClient = HttpClient(engine) {
-        expectSuccess = false
-        install(ContentNegotiation) { json(StudyFlowJson) }
-        install(HttpTimeout) {
-            connectTimeoutMillis = config.connectTimeout.inWholeMilliseconds
-            socketTimeoutMillis = config.socketTimeout.inWholeMilliseconds
-            requestTimeoutMillis = config.requestTimeout.inWholeMilliseconds
+    private val client: HttpClient =
+        HttpClient(engine) {
+            expectSuccess = false
+            install(ContentNegotiation) { json(StudyFlowJson) }
+            install(HttpTimeout) {
+                connectTimeoutMillis = config.connectTimeout.inWholeMilliseconds
+                socketTimeoutMillis = config.socketTimeout.inWholeMilliseconds
+                requestTimeoutMillis = config.requestTimeout.inWholeMilliseconds
+            }
         }
-    }
 
     @Suppress("TooGenericExceptionCaught", "SwallowedException")
-    override suspend fun refresh(refreshToken: String): AuthTokens? = try {
-        val response: HttpResponse = client.post(config.urlOf(ApiEndpoint.RefreshTokens)) {
-            contentType(ContentType.Application.Json)
-            setBody(RefreshRequestDto(refreshToken))
+    override suspend fun refresh(refreshToken: String): AuthTokens? =
+        try {
+            val response: HttpResponse =
+                client.post(config.urlOf(ApiEndpoint.RefreshTokens)) {
+                    contentType(ContentType.Application.Json)
+                    setBody(RefreshRequestDto(refreshToken))
+                }
+            if (response.status.isSuccess()) response.body<AuthTokensDto>().toAuthTokens() else null
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (ignored: Throwable) {
+            null
         }
-        if (response.status.isSuccess()) response.body<AuthTokensDto>().toAuthTokens() else null
-    } catch (cancellation: CancellationException) {
-        throw cancellation
-    } catch (ignored: Throwable) {
-        null
-    }
 }
 
 /** Maps the wire model onto the tokens the client holds. */
-public fun AuthTokensDto.toAuthTokens(): AuthTokens =
-    AuthTokens(accessToken = accessToken, refreshToken = refreshToken)
+public fun AuthTokensDto.toAuthTokens(): AuthTokens = AuthTokens(accessToken = accessToken, refreshToken = refreshToken)

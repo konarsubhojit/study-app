@@ -19,9 +19,10 @@ import org.junit.jupiter.api.Test
 class ForwardCompatibilityTest {
     @Test
     fun `an unknown field added server-side is ignored`() {
-        val futureSubject = """
+        val futureSubject =
+            """
             {"id":"s1","name":"Maths","colorHex":"#2E7D32","icon":"calculator","syllabusVersion":7}
-        """.trimIndent()
+            """.trimIndent()
 
         val subject = StudyFlowJson.decodeFromString<SubjectDto>(futureSubject)
 
@@ -30,10 +31,11 @@ class ForwardCompatibilityTest {
 
     @Test
     fun `an unknown nested object added server-side is ignored`() {
-        val futureTask = """
+        val futureTask =
+            """
             {"id":"t1","subjectId":"s1","title":"Read chapter 4","completed":false,
              "reminder":{"kind":"smart","leadMinutes":15},"tags":["exam","week3"]}
-        """.trimIndent()
+            """.trimIndent()
 
         val task = StudyFlowJson.decodeFromString<TaskDto>(futureTask)
 
@@ -42,15 +44,17 @@ class ForwardCompatibilityTest {
     }
 
     @Test
-    fun `an older client still completes a call against a newer server`() = runTest {
-        val api = MockBackend.api {
-            json("""[{"id":"s1","name":"Maths","archived":false,"stats":{"streakDays":4}}]""")
+    fun `an older client still completes a call against a newer server`() =
+        runTest {
+            val api =
+                MockBackend.api {
+                    json("""[{"id":"s1","name":"Maths","archived":false,"stats":{"streakDays":4}}]""")
+                }
+
+            val result = api.subjects()
+
+            assertEquals(listOf(SubjectDto(id = "s1", name = "Maths")), result.valueOrNull())
         }
-
-        val result = api.subjects()
-
-        assertEquals(listOf(SubjectDto(id = "s1", name = "Maths")), result.valueOrNull())
-    }
 
     @Test
     fun `an optional field the client does not set is left out of the request body`() {

@@ -9,9 +9,13 @@ import dev.studyflow.core.network.error.ApiError
  * reminds a caller that a failure exists, and `when` over [ApiError] is exhaustive.
  */
 public sealed interface ApiResult<out T> {
-    public data class Success<T>(val value: T) : ApiResult<T>
+    public data class Success<T>(
+        val value: T,
+    ) : ApiResult<T>
 
-    public data class Failure(val error: ApiError) : ApiResult<Nothing>
+    public data class Failure(
+        val error: ApiError,
+    ) : ApiResult<Nothing>
 
     /** The value, or `null` when the call failed. */
     public fun valueOrNull(): T? = (this as? Success)?.value
@@ -21,16 +25,18 @@ public sealed interface ApiResult<out T> {
 }
 
 /** Transforms a successful value, leaving a failure untouched. */
-public inline fun <T, R> ApiResult<T>.map(transform: (T) -> R): ApiResult<R> = when (this) {
-    is ApiResult.Success -> ApiResult.Success(transform(value))
-    is ApiResult.Failure -> this
-}
+public inline fun <T, R> ApiResult<T>.map(transform: (T) -> R): ApiResult<R> =
+    when (this) {
+        is ApiResult.Success -> ApiResult.Success(transform(value))
+        is ApiResult.Failure -> this
+    }
 
 /** Collapses both branches into one value, typically a UI state. */
 public inline fun <T, R> ApiResult<T>.fold(
     onSuccess: (T) -> R,
     onFailure: (ApiError) -> R,
-): R = when (this) {
-    is ApiResult.Success -> onSuccess(value)
-    is ApiResult.Failure -> onFailure(error)
-}
+): R =
+    when (this) {
+        is ApiResult.Success -> onSuccess(value)
+        is ApiResult.Failure -> onFailure(error)
+    }

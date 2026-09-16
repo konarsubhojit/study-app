@@ -49,8 +49,9 @@ public data class RetryPolicy(
         require(attempt >= 1) { "attempt must be at least 1, was $attempt" }
 
         val exponent = (attempt - 1).coerceAtMost(MAX_EXPONENT)
-        val backoffMillis = (baseDelay.inWholeMilliseconds.toDouble() * (1 shl exponent))
-            .coerceAtMost(maxDelay.inWholeMilliseconds.toDouble())
+        val backoffMillis =
+            (baseDelay.inWholeMilliseconds.toDouble() * (1 shl exponent))
+                .coerceAtMost(maxDelay.inWholeMilliseconds.toDouble())
         val floorMillis = backoffMillis * (1.0 - jitterFactor)
         val jittered = floorMillis + random.nextDouble() * (backoffMillis - floorMillis)
 
@@ -59,8 +60,10 @@ public data class RetryPolicy(
     }
 
     /** True when replaying the request could plausibly succeed and cannot duplicate user data. */
-    public fun isRetryable(status: Int, idempotent: Boolean): Boolean =
-        idempotent && (status in RETRYABLE_STATUSES || status in 500..599 && status != NOT_IMPLEMENTED)
+    public fun isRetryable(
+        status: Int,
+        idempotent: Boolean,
+    ): Boolean = idempotent && (status in RETRYABLE_STATUSES || (status in SERVER_ERRORS && status != NOT_IMPLEMENTED))
 
     public companion object {
         private const val DEFAULT_MAX_RETRIES = 3
@@ -68,5 +71,6 @@ public data class RetryPolicy(
         private const val MAX_EXPONENT = 16
         private const val NOT_IMPLEMENTED = 501
         private val RETRYABLE_STATUSES = setOf(408, 425, 429)
+        private val SERVER_ERRORS = 500..599
     }
 }

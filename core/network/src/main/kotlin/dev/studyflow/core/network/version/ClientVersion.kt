@@ -25,6 +25,9 @@ public data class ClientVersion(
     override fun toString(): String = "$major.$minor.$patch"
 
     public companion object {
+        /** `major.minor.patch` — anything with more components is not a client version. */
+        private const val COMPONENT_COUNT = 3
+
         /**
          * Parses `major.minor.patch`, tolerating a missing minor or patch and a build suffix.
          *
@@ -33,10 +36,11 @@ public data class ClientVersion(
         public fun parseOrNull(raw: String?): ClientVersion? {
             val trimmed = raw?.trim()?.substringBefore('-')?.substringBefore('+') ?: return null
             if (trimmed.isEmpty()) return null
+
             val parts = trimmed.split('.')
-            if (parts.size > 3) return null
-            val numbers = parts.map { it.toIntOrNull() ?: return null }
-            if (numbers.any { it < 0 }) return null
+            val numbers = parts.mapNotNull { part -> part.toIntOrNull()?.takeIf { it >= 0 } }
+            if (numbers.size != parts.size || numbers.size > COMPONENT_COUNT) return null
+
             return ClientVersion(
                 major = numbers[0],
                 minor = numbers.getOrElse(1) { 0 },
@@ -59,6 +63,8 @@ public object MinimumClientPolicy {
      * @param minimumSupported the header value the server sent, if any.
      * @return true when the app must stop calling the API and show the upgrade screen.
      */
-    public fun isUpgradeRequired(current: ClientVersion, minimumSupported: ClientVersion?): Boolean =
-        minimumSupported != null && current < minimumSupported
+    public fun isUpgradeRequired(
+        current: ClientVersion,
+        minimumSupported: ClientVersion?,
+    ): Boolean = minimumSupported != null && current < minimumSupported
 }

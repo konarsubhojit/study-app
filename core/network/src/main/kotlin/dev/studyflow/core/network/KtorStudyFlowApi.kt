@@ -32,8 +32,7 @@ public class KtorStudyFlowApi(
     private val client: HttpClient,
     private val config: ApiConfig,
 ) : StudyFlowApi {
-    override suspend fun subjects(): ApiResult<List<SubjectDto>> =
-        execute(ApiEndpoint.ListSubjects)
+    override suspend fun subjects(): ApiResult<List<SubjectDto>> = execute(ApiEndpoint.ListSubjects)
 
     override suspend fun tasks(subjectId: String?): ApiResult<List<TaskDto>> =
         execute(ApiEndpoint.ListTasks) {
@@ -51,18 +50,20 @@ public class KtorStudyFlowApi(
     private suspend inline fun <reified T> execute(
         endpoint: ApiEndpoint,
         crossinline configure: HttpRequestBuilder.() -> Unit = {},
-    ): ApiResult<T> = try {
-        val response = client.request(config.urlOf(endpoint)) {
-            method = HttpMethod.parse(endpoint.method.uppercase())
-            configure()
+    ): ApiResult<T> =
+        try {
+            val response =
+                client.request(config.urlOf(endpoint)) {
+                    method = HttpMethod.parse(endpoint.method.uppercase())
+                    configure()
+                }
+            interpret(response)
+        } catch (cancellation: CancellationException) {
+            // Cancellation is the caller leaving the screen, never a failure to report to them.
+            throw cancellation
+        } catch (failure: Throwable) {
+            ApiResult.Failure(ApiErrorMapper.fromThrowable(failure))
         }
-        interpret(response)
-    } catch (cancellation: CancellationException) {
-        // Cancellation is the caller leaving the screen, never a failure to report to them.
-        throw cancellation
-    } catch (failure: Throwable) {
-        ApiResult.Failure(ApiErrorMapper.fromThrowable(failure))
-    }
 
     private suspend inline fun <reified T> interpret(response: HttpResponse): ApiResult<T> {
         val minimumSupported = ClientVersion.parseOrNull(response.headers[MINIMUM_CLIENT_VERSION_HEADER])
@@ -94,8 +95,9 @@ public class KtorStudyFlowApi(
  * error code is a worse outcome only for diagnostics, never for the user.
  */
 @Suppress("TooGenericExceptionCaught", "SwallowedException")
-private suspend fun HttpResponse.errorBodyOrNull(): ApiErrorDto? = try {
-    body<ApiErrorDto>()
-} catch (ignored: Throwable) {
-    null
-}
+private suspend fun HttpResponse.errorBodyOrNull(): ApiErrorDto? =
+    try {
+        body<ApiErrorDto>()
+    } catch (ignored: Throwable) {
+        null
+    }

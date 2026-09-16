@@ -15,58 +15,66 @@ import org.junit.jupiter.api.Test
 @DisplayName("FakeStudyFlowBackend")
 class FakeStudyFlowBackendTest {
     @Test
-    fun `a feature test reads seeded data through the real client`() = runTest {
-        val backend = FakeStudyFlowBackend(subjects = listOf(SubjectDto(id = "s1", name = "Maths")))
+    fun `a feature test reads seeded data through the real client`() =
+        runTest {
+            val backend = FakeStudyFlowBackend(subjects = listOf(SubjectDto(id = "s1", name = "Maths")))
 
-        val result = backend.api().subjects()
+            val result = backend.api().subjects()
 
-        assertEquals(listOf("Maths"), result.valueOrNull()?.map { it.name })
-        assertEquals(listOf("/v1/subjects"), backend.requestedPaths)
-    }
-
-    @Test
-    fun `the subject filter documented for tasks is honoured`() = runTest {
-        val backend = FakeStudyFlowBackend(
-            tasks = listOf(
-                TaskDto(id = "t1", subjectId = "s1", title = "Read"),
-                TaskDto(id = "t2", subjectId = "s2", title = "Revise"),
-            ),
-        )
-
-        val result = backend.api().tasks(subjectId = "s2")
-
-        assertEquals(listOf("t2"), result.valueOrNull()?.map { it.id })
-    }
+            assertEquals(listOf("Maths"), result.valueOrNull()?.map { it.name })
+            assertEquals(listOf("/v1/subjects"), backend.requestedPaths)
+        }
 
     @Test
-    fun `an uploaded session is recorded so a test can assert on it`() = runTest {
-        val backend = FakeStudyFlowBackend()
-        val session = StudySessionDto("session-1", "s1", "2026-03-01T10:00:00Z", focusedSeconds = 1_500)
+    fun `the subject filter documented for tasks is honoured`() =
+        runTest {
+            val backend =
+                FakeStudyFlowBackend(
+                    tasks =
+                        listOf(
+                            TaskDto(id = "t1", subjectId = "s1", title = "Read"),
+                            TaskDto(id = "t2", subjectId = "s2", title = "Revise"),
+                        ),
+                )
 
-        val result = backend.api().uploadSession(session)
+            val result = backend.api().tasks(subjectId = "s2")
 
-        assertEquals(session, result.valueOrNull())
-        assertEquals(listOf(session), backend.uploadedSessions)
-    }
-
-    @Test
-    fun `a failing backend surfaces a user-facing error, not a status code`() = runTest {
-        val backend = FakeStudyFlowBackend(failWith = HttpStatusCode.ServiceUnavailable)
-
-        val error = backend.api().subjects().errorOrNull()
-
-        assertInstanceOf(ApiError.Server::class.java, error)
-    }
+            assertEquals(listOf("t2"), result.valueOrNull()?.map { it.id })
+        }
 
     @Test
-    fun `the force-upgrade path can be exercised without a server`() = runTest {
-        val backend = FakeStudyFlowBackend(
-            clientVersion = ClientVersion(1, 0, 0),
-            minimumClientVersion = ClientVersion(2, 0, 0),
-        )
+    fun `an uploaded session is recorded so a test can assert on it`() =
+        runTest {
+            val backend = FakeStudyFlowBackend()
+            val session = StudySessionDto("session-1", "s1", "2026-03-01T10:00:00Z", focusedSeconds = 1_500)
 
-        val error = backend.api().subjects().errorOrNull()
+            val result = backend.api().uploadSession(session)
 
-        assertInstanceOf(ApiError.UpgradeRequired::class.java, error)
-    }
+            assertEquals(session, result.valueOrNull())
+            assertEquals(listOf(session), backend.uploadedSessions)
+        }
+
+    @Test
+    fun `a failing backend surfaces a user-facing error, not a status code`() =
+        runTest {
+            val backend = FakeStudyFlowBackend(failWith = HttpStatusCode.ServiceUnavailable)
+
+            val error = backend.api().subjects().errorOrNull()
+
+            assertInstanceOf(ApiError.Server::class.java, error)
+        }
+
+    @Test
+    fun `the force-upgrade path can be exercised without a server`() =
+        runTest {
+            val backend =
+                FakeStudyFlowBackend(
+                    clientVersion = ClientVersion(1, 0, 0),
+                    minimumClientVersion = ClientVersion(2, 0, 0),
+                )
+
+            val error = backend.api().subjects().errorOrNull()
+
+            assertInstanceOf(ApiError.UpgradeRequired::class.java, error)
+        }
 }

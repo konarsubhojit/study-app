@@ -2,9 +2,9 @@ package dev.studyflow.core.network.error
 
 import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.version.ClientVersion
-import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.serialization.JsonConvertException
 import kotlinx.serialization.SerializationException
 import java.io.IOException
@@ -44,15 +44,23 @@ public object ApiErrorMapper {
         val code = body?.code
         return when (status) {
             UNAUTHORIZED -> ApiError.Unauthorized(code)
+
             FORBIDDEN -> ApiError.Forbidden(code)
+
             NOT_FOUND -> ApiError.NotFound(code)
+
             REQUEST_TIMEOUT -> ApiError.Timeout()
+
             CONFLICT -> ApiError.Conflict(code)
+
             // A removed endpoint and a client the server refuses to serve are the same problem for
             // the user: this build cannot talk to the backend any more, so send them to the store.
             GONE, UPGRADE_REQUIRED -> ApiError.UpgradeRequired(minimumSupported, code)
+
             TOO_MANY_REQUESTS -> ApiError.RateLimited(retryAfter, code)
+
             in serverErrors -> ApiError.Server(code)
+
             else -> ApiError.Unexpected(code)
         }
     }
@@ -63,14 +71,23 @@ public object ApiErrorMapper {
      * Coroutine cancellation is never an API error and must be rethrown by the caller before this
      * is reached.
      */
-    public fun fromThrowable(throwable: Throwable): ApiError = when (throwable) {
-        is HttpRequestTimeoutException, is ConnectTimeoutException, is SocketTimeoutException ->
-            ApiError.Timeout(throwable)
+    public fun fromThrowable(throwable: Throwable): ApiError =
+        when (throwable) {
+            is HttpRequestTimeoutException, is ConnectTimeoutException, is SocketTimeoutException -> {
+                ApiError.Timeout(throwable)
+            }
 
-        // A contract breach — a missing or mistyped field — not an unknown field, which is ignored.
-        is JsonConvertException, is SerializationException -> ApiError.Malformed(throwable)
+            // A contract breach — a missing or mistyped field — not an unknown field, which is ignored.
+            is JsonConvertException, is SerializationException -> {
+                ApiError.Malformed(throwable)
+            }
 
-        is IOException -> ApiError.Offline(throwable)
-        else -> ApiError.Unexpected(cause = throwable)
-    }
+            is IOException -> {
+                ApiError.Offline(throwable)
+            }
+
+            else -> {
+                ApiError.Unexpected(cause = throwable)
+            }
+        }
 }

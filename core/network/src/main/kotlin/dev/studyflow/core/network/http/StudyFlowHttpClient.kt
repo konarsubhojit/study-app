@@ -46,71 +46,73 @@ public fun studyFlowHttpClient(
     tokenStore: TokenStore,
     tokenRefresher: TokenRefresher? = null,
     json: Json = StudyFlowJson,
-): HttpClient = HttpClient(engine) {
-    expectSuccess = false
+): HttpClient =
+    HttpClient(engine) {
+        expectSuccess = false
 
-    install(ContentNegotiation) {
-        json(json)
-    }
+        install(ContentNegotiation) {
+            json(json)
+        }
 
-    install(HttpTimeout) {
-        connectTimeoutMillis = config.connectTimeout.inWholeMilliseconds
-        socketTimeoutMillis = config.socketTimeout.inWholeMilliseconds
-        requestTimeoutMillis = config.requestTimeout.inWholeMilliseconds
-    }
+        install(HttpTimeout) {
+            connectTimeoutMillis = config.connectTimeout.inWholeMilliseconds
+            socketTimeoutMillis = config.socketTimeout.inWholeMilliseconds
+            requestTimeoutMillis = config.requestTimeout.inWholeMilliseconds
+        }
 
-    install(Auth) {
-        bearer {
-            loadTokens { tokenStore.tokens()?.toBearerTokens() }
+        install(Auth) {
+            bearer {
+                loadTokens { tokenStore.tokens()?.toBearerTokens() }
 
-            refreshTokens {
-                val refreshToken = oldTokens?.refreshToken ?: tokenStore.tokens()?.refreshToken
-                val refreshed = refreshToken?.let { tokenRefresher?.refresh(it) }
-                if (refreshed == null) {
-                    // The refresh token is spent: dropping it now means the next call reports
-                    // "sign in again" instead of looping through refresh on every request.
-                    tokenStore.clear()
-                    null
-                } else {
-                    tokenStore.update(refreshed)
-                    refreshed.toBearerTokens()
+                refreshTokens {
+                    val refreshToken = oldTokens?.refreshToken ?: tokenStore.tokens()?.refreshToken
+                    val refreshed = refreshToken?.let { tokenRefresher?.refresh(it) }
+                    if (refreshed == null) {
+                        // The refresh token is spent: dropping it now means the next call reports
+                        // "sign in again" instead of looping through refresh on every request.
+                        tokenStore.clear()
+                        null
+                    } else {
+                        tokenStore.update(refreshed)
+                        refreshed.toBearerTokens()
+                    }
+                }
+
+                // The refresh call must stay anonymous, or a stale access token would be attached to
+                // the very request meant to replace it.
+                sendWithoutRequest { request ->
+                    !request.url.hasPathOf(ApiEndpoint.RefreshTokens)
                 }
             }
+        }
 
-            // The refresh call must stay anonymous, or a stale access token would be attached to
-            // the very request meant to replace it.
-            sendWithoutRequest { request ->
-                !request.url.hasPathOf(ApiEndpoint.RefreshTokens)
+        install(HttpRequestRetry) {
+            maxRetries = config.retry.maxRetries
+
+            retryIf { request, response ->
+                config.retry.isRetryable(
+                    status = response.status.value,
+                    idempotent = request.method in IDEMPOTENT_METHODS,
+                )
+            }
+            // A connection that never produced a response cannot have changed server state, so
+            // replaying it is safe whatever the method was.
+            retryOnExceptionIf { _, cause -> cause !is CancellationException }
+
+            delayMillis { attempt ->
+                config.retry
+                    .delayFor(
+                        attempt = attempt,
+                        retryAfter = response?.headers?.get(HttpHeaders.RetryAfter)?.toLongOrNull(),
+                    ).inWholeMilliseconds
             }
         }
-    }
 
-    install(HttpRequestRetry) {
-        maxRetries = config.retry.maxRetries
-
-        retryIf { request, response ->
-            config.retry.isRetryable(
-                status = response.status.value,
-                idempotent = request.method in IDEMPOTENT_METHODS,
-            )
-        }
-        // A connection that never produced a response cannot have changed server state, so
-        // replaying it is safe whatever the method was.
-        retryOnExceptionIf { _, cause -> cause !is CancellationException }
-
-        delayMillis { attempt ->
-            config.retry.delayFor(
-                attempt = attempt,
-                retryAfter = response?.headers?.get(HttpHeaders.RetryAfter)?.toLongOrNull(),
-            ).inWholeMilliseconds
+        defaultRequest {
+            contentType(ContentType.Application.Json)
+            header(CLIENT_VERSION_HEADER, config.clientVersion.toString())
         }
     }
-
-    defaultRequest {
-        contentType(ContentType.Application.Json)
-        header(CLIENT_VERSION_HEADER, config.clientVersion.toString())
-    }
-}
 
 /** Methods that carry no side effect, so replaying one cannot duplicate the user's data. */
 private val IDEMPOTENT_METHODS = setOf(HttpMethod.Get, HttpMethod.Head)

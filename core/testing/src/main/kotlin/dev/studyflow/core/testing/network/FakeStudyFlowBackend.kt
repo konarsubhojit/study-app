@@ -21,8 +21,10 @@ import io.ktor.client.engine.mock.respond
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
+import io.ktor.http.ContentType
+import io.ktor.http.Headers
+import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
-import io.ktor.http.headersOf
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -52,24 +54,27 @@ public class FakeStudyFlowBackend(
     /** Requested paths, so a test can assert that a repository did — or did not — call out. */
     public val requestedPaths: MutableList<String> = mutableListOf()
 
-    private val config = ApiConfig(
-        baseUrl = BASE_URL,
-        clientVersion = clientVersion,
-        // Tests must not spend seconds sleeping between retries.
-        retry = RetryPolicy(maxRetries = 1, baseDelay = 1.milliseconds, maxDelay = 2.milliseconds),
-    )
+    private val config =
+        ApiConfig(
+            baseUrl = BASE_URL,
+            clientVersion = clientVersion,
+            // Tests must not spend seconds sleeping between retries.
+            retry = RetryPolicy(maxRetries = 1, baseDelay = 1.milliseconds, maxDelay = 2.milliseconds),
+        )
 
     /** A [StudyFlowApi] backed by this fake, ready to hand to a repository under test. */
     public fun api(
         tokenStore: TokenStore = InMemoryTokenStore(AuthTokens("test-access", "test-refresh")),
-    ): StudyFlowApi = KtorStudyFlowApi(
-        client = studyFlowHttpClient(
-            engine = MockEngine { request -> handle(request) },
+    ): StudyFlowApi =
+        KtorStudyFlowApi(
+            client =
+                studyFlowHttpClient(
+                    engine = MockEngine { request -> handle(request) },
+                    config = config,
+                    tokenStore = tokenStore,
+                ),
             config = config,
-            tokenStore = tokenStore,
-        ),
-        config = config,
-    )
+        )
 
     private suspend fun MockRequestHandleScope.handle(request: HttpRequestData): HttpResponseData {
         val path = request.url.encodedPath
@@ -80,7 +85,9 @@ public class FakeStudyFlowBackend(
         }
 
         return when (path) {
-            ApiEndpoint.ListSubjects.path -> respondJson(StudyFlowJson.encodeToString(subjects))
+            ApiEndpoint.ListSubjects.path -> {
+                respondJson(StudyFlowJson.encodeToString(subjects))
+            }
 
             ApiEndpoint.ListTasks.path -> {
                 val subjectId = request.url.parameters["subjectId"]
@@ -95,7 +102,9 @@ public class FakeStudyFlowBackend(
                 respondJson(StudyFlowJson.encodeToString(session))
             }
 
-            else -> respondJson("""{"code":"not_found","message":"$path"}""", HttpStatusCode.NotFound)
+            else -> {
+                respondJson("""{"code":"not_found","message":"$path"}""", HttpStatusCode.NotFound)
+            }
         }
     }
 
@@ -103,11 +112,12 @@ public class FakeStudyFlowBackend(
         body: String,
         status: HttpStatusCode = HttpStatusCode.OK,
     ): HttpResponseData {
-        val headers = buildList {
-            add("Content-Type" to listOf("application/json"))
-            minimumClientVersion?.let { add(MINIMUM_CLIENT_VERSION_HEADER to listOf(it.toString())) }
-        }
-        return respond(content = body, status = status, headers = headersOf(*headers.toTypedArray()))
+        val headers =
+            Headers.build {
+                append(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+                minimumClientVersion?.let { append(MINIMUM_CLIENT_VERSION_HEADER, it.toString()) }
+            }
+        return respond(content = body, status = status, headers = headers)
     }
 
     private companion object {

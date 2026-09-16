@@ -50,7 +50,9 @@ public fun interface TokenRefresher {
 }
 
 /** An in-memory [TokenStore], for tests and for a build that has no persistence yet. */
-public class InMemoryTokenStore(initial: AuthTokens? = null) : TokenStore {
+public class InMemoryTokenStore(
+    initial: AuthTokens? = null,
+) : TokenStore {
     private var current: AuthTokens? = initial
 
     override suspend fun tokens(): AuthTokens? = current

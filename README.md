@@ -68,6 +68,32 @@ clamps to the last day of February instead of being skipped.
 [`ReminderScheduler`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/ReminderScheduler.kt) ·
 [`RecurrenceCalculator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/RecurrenceCalculator.kt)
 
+## Talking to the backend
+
+The app/backend contract is written down in [`docs/api/openapi.yaml`](docs/api/openapi.yaml) and
+checked by a test: the client calls endpoints declared as values, so a path the specification does
+not describe fails the build rather than returning 404 on a user's phone.
+
+Responses are parsed with `ignoreUnknownKeys`, so a field the server adds after a build shipped
+cannot break it — an acceptance test proves exactly that. Every failure, from a refused connection
+to a `503`, is mapped to a closed set of errors carrying a user-facing message, so no status code
+can reach the UI. Retries are exponential with jitter, capped, and limited to idempotent requests,
+because replaying a session upload would duplicate the user's study data. A 401 refreshes the token
+once and replays the request; a spent refresh token signs the user out instead of looping. Every
+response is checked against `X-Minimum-Client-Version`, so a build the server is about to stop
+serving gets a friendly upgrade prompt rather than a wall of failures.
+
+Running against a local mock backend is a build flag, not a code change:
+
+```bash
+./gradlew installDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080
+```
+
+→ [ADR 0007](docs/adr/0007-api-contract-and-network-client.md) ·
+[`KtorStudyFlowApi`](core/network/src/main/kotlin/dev/studyflow/core/network/KtorStudyFlowApi.kt) ·
+[`ApiErrorMapper`](core/network/src/main/kotlin/dev/studyflow/core/network/error/ApiErrorMapper.kt) ·
+[`RetryPolicy`](core/network/src/main/kotlin/dev/studyflow/core/network/retry/RetryPolicy.kt)
+
 ## Architecture
 
 Compose UI → ViewModel (UDF/MVI) → pure-Kotlin domain → data, with dependencies pointing inwards
@@ -157,7 +183,8 @@ tokens or repository secrets only; no secrets are committed to this repository.
 | `:core:model` — sessions, events, time anchors, tasks, recurrence, materials | done |
 | `:core:common` — dual-clock time abstraction, dispatchers | done |
 | `:core:domain` — timer, recurrence, reminder scheduling, upload, archive safety, cache | done |
-| `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation) | done |
+| `:core:network` — OpenAPI contract, typed Ktor client, auth refresh, retries, error mapping | done |
+| `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation), `FakeStudyFlowBackend` | done |
 | `:app` — Android application baseline | done |
 | Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
 
