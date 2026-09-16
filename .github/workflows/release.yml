@@ -109,6 +109,8 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: studyflow-${{ inputs.version-name }}-${{ inputs.version-code }}-aab
+          # `mapping.txt` exists because the release build type shrinks with R8; Play needs it to
+          # deobfuscate crash reports, so a missing file should fail the run rather than pass.
           path: |
             app/build/outputs/bundle/release/*.aab
             app/build/outputs/mapping/release/mapping.txt
