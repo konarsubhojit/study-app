@@ -51,7 +51,7 @@ or `allprojects {}` blocks:
 
 Cross-project configuration blocks defeat configuration caching and make a module's real
 configuration impossible to read from its own build file. With convention plugins a module's build
-script is three lines and says exactly what it is.
+script is a few lines and says exactly what it is.
 
 A feature module's whole build file is `plugins { id("studyflow.android.feature") }` plus the
 dependencies that are actually specific to it, and adding one touches no file above it except
@@ -85,7 +85,8 @@ and the two tools fight forever.
 
 - A contributor runs `./gradlew build` and gets the same result as CI, with no local setup beyond a
   JDK.
-- Adding a module means adding one line to `settings.gradle.kts` and a three-line build script.
+- Adding a module means adding one line to `settings.gradle.kts` and a build script that applies a
+  convention plugin and lists dependencies — `:app`'s is two lines.
 - Bumping a dependency is a one-line change in the catalogue, and Dependabot/Renovate can do it.
 - Warnings-as-errors means a compiler upgrade can break the build. That is the point; the
   alternative is discovering the deprecation two years later.
