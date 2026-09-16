@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [master]
+    branches: [main, master]
   pull_request:
   workflow_dispatch:
 
@@ -14,19 +14,48 @@ permissions:
   contents: read
 
 jobs:
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: moderate
+
+  secret-scan:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for committed secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   build:
-    name: Build and verify
-    # Pull requests stay on GitHub-hosted runners: this repository is public, so a
-    # fork PR must never execute on the self-hosted machine. Pushes to master run
-    # on the dedicated runner, which has a warm Gradle cache.
-    runs-on: ${{ github.event_name == 'pull_request' && 'ubuntu-latest' || 'self-hosted' }}
+    name: Build, test, and check
+    runs-on: ubuntu-latest
     timeout-minutes: 30
+    permissions:
+      contents: read
+      checks: write
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up JDK
-        # Pre-installed on the self-hosted runner.
-        if: github.event_name == 'pull_request'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -34,17 +63,56 @@ jobs:
           java-version: '21'
 
       - name: Set up Gradle
-        # The self-hosted runner has a persistent ~/.gradle cache.
-        if: github.event_name == 'pull_request'
         uses: gradle/actions/setup-gradle@v4
         with:
-          # Only the default branch may seed the shared cache, so a PR cannot poison it.
-          cache-read-only: ${{ github.ref != 'refs/heads/master' }}
+          # Only protected/default branch builds may seed the shared cache; PRs read it.
+          cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
-      # `build` covers assemble, unit tests, detekt, spotless and the module-boundary check,
-      # so a single failing gate fails the PR with a specific report rather than a generic error.
-      - name: Build, test and lint
-        run: ./gradlew build --stacktrace
+      - name: Build, test, and check
+        id: gradle-build
+        shell: bash
+        run: |
+          start_epoch=$(date +%s)
+          ./gradlew build --build-cache --configuration-cache --stacktrace
+          end_epoch=$(date +%s)
+          echo "duration_seconds=$((end_epoch - start_epoch))" >> "$GITHUB_OUTPUT"
+
+      - name: Record CI timing
+        if: ${{ success() }}
+        run: |
+          {
+            echo "### CI timing"
+            echo ""
+            echo "Gradle build/test/check duration: ${{ steps.gradle-build.outputs.duration_seconds }} seconds"
+            echo "Gradle dependency and build cache details are listed in the Set up Gradle job summary."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Publish unit test annotations
+        if: ${{ !cancelled() }}
+        uses: dorny/test-reporter@v3
+        with:
+          name: JVM unit tests
+          path: '**/build/test-results/test*/TEST-*.xml'
+          reporter: java-junit
+          fail-on-empty: false
+          fail-on-error: false
+
+      - name: Collect Detekt SARIF reports
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          mkdir -p build/ci-sarif
+          find . -path '*/build/reports/detekt/*.sarif' -print0 | while IFS= read -r -d '' report; do
+            safe_name=${report#./}
+            safe_name=${safe_name//\//-}
+            cp "$report" "build/ci-sarif/$safe_name"
+          done
+
+      - name: Publish Detekt annotations
+        if: ${{ !cancelled() && hashFiles('build/ci-sarif/*.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: build/ci-sarif
 
       - name: Upload reports
         if: ${{ !cancelled() }}
