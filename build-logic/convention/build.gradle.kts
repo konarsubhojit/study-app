@@ -11,7 +11,7 @@ java {
 }
 
 dependencies {
-    compileOnly(libs.kotlin.gradlePlugin)
+    implementation(libs.kotlin.gradlePlugin)
     compileOnly(libs.detekt.gradlePlugin)
     compileOnly(libs.spotless.gradlePlugin)
 }

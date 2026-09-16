@@ -3,8 +3,9 @@
 An Android study-time tracker: a stopwatch that survives anything the platform does to it, a place
 to keep study materials of any type, and reminders that actually fire.
 
-This repository currently contains the **build foundation and the pure-Kotlin domain core**. See
-[Current state](#current-state) for exactly what is and is not here yet.
+This repository currently contains the **build foundation, an Android application baseline, and the
+pure-Kotlin domain core**. See [Current state](#current-state) for exactly what is and is not here
+yet.
 
 ## The three hard problems
 
@@ -123,14 +124,13 @@ Explicit API mode and `allWarningsAsErrors` are on for every module.
 | `:core:common` — dual-clock time abstraction, dispatchers | done |
 | `:core:domain` — timer, recurrence, reminder scheduling, upload, archive safety, cache | done |
 | `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation) | done |
-| Android app, Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
+| Android app build baseline | done |
+| Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
 
-The Android layers are deliberately not started yet: the environment this was bootstrapped in cannot
-reach Google's Maven repository, so AGP and AndroidX are unresolvable and an Android module would
-make the repository fail to build for everyone. The domain core was always specified to be
-Android-free, so building it first proves the riskiest logic before any UI exists to obscure it.
-Each platform concern has a seam waiting for it — an interface in `:core:common` or a pure planner
-in `:core:domain`.
+`:app` is intentionally manifest-only while the Android UI and platform integrations are deferred.
+The domain core remains Android-free, so building it first proves the riskiest logic before any UI
+exists to obscure it. Each platform concern has a seam waiting for it — an interface in
+`:core:common` or a pure planner in `:core:domain`.
 
 → [ADR 0006](docs/adr/0006-bootstrap-scope.md)
 
@@ -150,7 +150,7 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 
 ## Decision records
 
-- [0001 — Build toolchain and dependency pinning](docs/adr/0001-build-toolchain.md)
+- [0001 — Build toolchain and dependency pinning](docs/adr/0001-toolchain.md)
 - [0002 — Architecture layering and module boundaries](docs/adr/0002-architecture-layering.md)
 - [0003 — The timer is event-sourced and clock-derived](docs/adr/0003-timer-event-sourcing.md)
 - [0004 — Reminders use a scheduling decision matrix](docs/adr/0004-reminder-scheduling.md)

@@ -1,6 +1,7 @@
 pluginManagement {
     includeBuild("build-logic")
     repositories {
+        google()
         gradlePluginPortal()
         mavenCentral()
     }
@@ -9,12 +10,9 @@ pluginManagement {
 dependencyResolutionManagement {
     repositoriesMode = RepositoriesMode.FAIL_ON_PROJECT_REPOS
     repositories {
+        google()
         mavenCentral()
     }
-}
-
-plugins {
-    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
 }
 
 rootProject.name = "studyflow"
@@ -28,3 +26,4 @@ include(":core:model")
 include(":core:common")
 include(":core:domain")
 include(":core:testing")
+include(":app")

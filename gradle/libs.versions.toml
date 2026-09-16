@@ -1,10 +1,10 @@
 ## Single source of truth for dependency versions (issue #12).
 ##
-## Only artifacts that this build actually resolves are listed here. Android/Compose
-## versions are pinned when the Android modules land, so that every version in this
-## catalogue has been verified against a real build rather than copied from a plan.
+## Every plugin, library, and SDK version resolved by this build is declared here.
 
 [versions]
+agp = "9.0.1"
+compileSdk = "36"
 detekt = "1.23.8"
 javaToolchain = "21"
 junit = "5.14.0"
@@ -12,7 +12,9 @@ kotlin = "2.4.20"
 kotlinxCoroutines = "1.11.0"
 kotlinxDatetime = "0.8.0"
 ktlint = "1.8.0"
+minSdk = "26"
 spotless = "8.10.2"
+targetSdk = "36"
 turbine = "1.2.1"
 
 [libraries]
@@ -32,6 +34,7 @@ detekt-gradlePlugin = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plug
 spotless-gradlePlugin = { module = "com.diffplug.spotless:spotless-plugin-gradle", version.ref = "spotless" }
 
 [plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
 spotless = { id = "com.diffplug.spotless", version.ref = "spotless" }
