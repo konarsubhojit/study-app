@@ -35,7 +35,9 @@ create policy "profiles_delete_own" on public.profiles
 
 -- Supabase's GoTrue writes new users straight into `auth.users`; this trigger keeps `profiles` in
 -- lockstep so application tables always have somewhere to point their foreign keys the moment a
--- user exists, without the client needing a second round trip after sign-up.
+-- user exists, without the client needing a second round trip after sign-up. It also re-fires on
+-- update, so a display name changed via an identity provider (or re-synced after a merge) is kept
+-- current in `profiles` rather than only being captured once at sign-up.
 create or replace function public.handle_new_auth_user()
 returns trigger
 language plpgsql
@@ -45,11 +47,15 @@ as $$
 begin
   insert into public.profiles (id, display_name)
   values (new.id, new.raw_user_meta_data ->> 'display_name')
-  on conflict (id) do nothing;
+  on conflict (id) do update set display_name = excluded.display_name;
   return new;
 end;
 $$;
 
 create trigger on_auth_user_created
   after insert on auth.users
+  for each row execute function public.handle_new_auth_user();
+
+create trigger on_auth_user_updated
+  after update on auth.users
   for each row execute function public.handle_new_auth_user();

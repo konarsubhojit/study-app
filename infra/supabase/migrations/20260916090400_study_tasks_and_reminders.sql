@@ -1,7 +1,12 @@
 -- To-do items. Mirrors `dev.studyflow.core.model.StudyTask`.
 --
 -- `due_at`/`time_zone` are stored separately, matching the client model: a task due "09:00" means
--- 09:00 where the user is, not a fixed instant that drifts across a DST boundary.
+-- 09:00 where the user is, not a fixed instant that drifts across a DST boundary. `due_at` is
+-- deliberately `timestamp` (no time zone, unlike every other date column in this schema): it is
+-- the naive local wall-clock reading from `StudyTask.dueAt` (a `kotlinx.datetime.LocalDateTime`),
+-- and `time_zone` is the only thing that says which zone it means. Combining the two — rather than
+-- collapsing them into one `timestamptz` up front — is what keeps the due time pinned to "09:00"
+-- across a DST boundary instead of drifting by an hour.
 create table public.study_tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references public.profiles (id) on delete cascade,

@@ -9,6 +9,9 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
+-- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
+-- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
+-- many and it fails loudly, which is why any assertion added or removed must update this number.
 select plan(26);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
