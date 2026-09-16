@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(26);
+select plan(32);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -128,6 +128,38 @@ select is_empty(
   $$ update public.materials set display_name = 'hacked'
        where id = 'a6666666-1111-1111-1111-111111111111' returning 1 $$,
   'bob''s update of alice''s material affects no rows'
+);
+select is_empty(
+  $$ update public.reminders set lead_time_seconds = 999
+       where id = 'a4444444-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s update of alice''s reminder affects no rows'
+);
+select is_empty(
+  $$ delete from public.reminders
+       where id = 'a4444444-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s delete of alice''s reminder affects no rows'
+);
+select is_empty(
+  $$ update public.material_folders set name = 'hacked'
+       where id = 'a5555555-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s update of alice''s folder affects no rows'
+);
+select is_empty(
+  $$ delete from public.material_folders
+       where id = 'a5555555-1111-1111-1111-111111111111' returning 1 $$,
+  'bob''s delete of alice''s folder affects no rows'
+);
+select is_empty(
+  $$ update public.sync_cursors set cursor = now()
+       where user_id = '11111111-1111-1111-1111-111111111111' and device_id = 'device-a'
+       returning 1 $$,
+  'bob''s update of alice''s sync cursor affects no rows'
+);
+select is_empty(
+  $$ delete from public.sync_cursors
+       where user_id = '11111111-1111-1111-1111-111111111111' and device_id = 'device-a'
+       returning 1 $$,
+  'bob''s delete of alice''s sync cursor affects no rows'
 );
 
 -- bob cannot insert a row claiming to be alice's, even though he supplies alice's user_id.

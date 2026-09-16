@@ -56,6 +56,11 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_auth_user();
 
+-- GoTrue updates auth.users on routine events too (e.g. last_sign_in_at on every login), which
+-- would otherwise fire a needless profiles write on every sign-in; only re-sync when the metadata
+-- this trigger actually cares about has changed.
 create trigger on_auth_user_updated
   after update on auth.users
-  for each row execute function public.handle_new_auth_user();
+  for each row
+  when (old.raw_user_meta_data is distinct from new.raw_user_meta_data)
+  execute function public.handle_new_auth_user();
