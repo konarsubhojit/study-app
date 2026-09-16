@@ -38,6 +38,7 @@ graph TD
     app --> feature_tasks
     app --> feature_timer
     core_common --> core_model
+    core_database --> core_model
     core_domain --> core_common
     core_domain --> core_model
     core_scheduling --> core_domain

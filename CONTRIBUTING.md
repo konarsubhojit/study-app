@@ -23,6 +23,8 @@ See the [README](README.md) for the current module map and
 - `:core:model` contains dependency-free shared models.
 - `:core:domain` contains Android-free business rules and depends only on model and common code.
 - `:core:common` contains shared primitives such as clocks and coroutine dispatchers.
+- `:core:database` owns Room entities, DAOs, migrations and domain mappings; exported schemas are
+  reviewed source files.
 - `:core:network` owns the API contract, the typed client, and its error model.
 - `:core:testing` contains reusable test fakes and fixtures, including `FakeStudyFlowBackend`.
 - `:build-logic` owns convention plugins and executable module-boundary checks.
@@ -69,6 +71,21 @@ Use Turbine (`api`-exposed from `:core:testing`) for flows, and Robolectric for 
 real platform implementation rather than a stub. Robolectric is a JUnit 4 runner, so annotate such
 tests with `@RunWith(RobolectricTestRunner::class)`; the vintage engine runs them alongside the
 Jupiter tests.
+
+### Changing the Room schema
+
+Never edit `core/database/schemas/*.json` by hand and never use destructive migration fallback to
+hide a missing migration.
+
+1. Change the entities and increment `StudyFlowDatabase.VERSION`.
+2. Add each adjacent migration to `DatabaseMigrations.ALL`.
+3. Run `./gradlew :core:database:testDebugUnitTest` with JDK 21. KSP exports the new schema and
+   `MigrationTestHelper` validates migration into it.
+4. Commit every generated schema version and update `DatabaseMigrationTest` for data semantics, not
+   only structural validation.
+
+The migration-registry test requires one path for every version from 1 through the current version.
+Destructive fallback is development-only and is rejected at runtime when the APK is not debuggable.
 
 ### Fast suite and slow suite
 
