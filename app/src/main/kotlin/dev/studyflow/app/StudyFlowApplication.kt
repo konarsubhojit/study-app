@@ -31,7 +31,7 @@ class StudyFlowApplication :
         AndroidLogging.install(debug = BuildConfig.DEBUG)
         crashReporter.initialize(
             enabled = BuildConfig.CRASH_REPORTING_ENABLED,
-            optedOut = !BuildConfig.CRASH_REPORTING_ENABLED,
+            optedOut = BuildConfig.CRASH_REPORTING_OPTED_OUT,
         )
         logger.info("Application", "StudyFlow started")
     }

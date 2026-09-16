@@ -29,6 +29,7 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                 defaultConfig.applicationId = namespace
                 defaultConfig.targetSdk = libs.findVersion("targetSdk").get().requiredVersion.toInt()
                 defaultConfig.buildConfigField("boolean", "CRASH_REPORTING_ENABLED", "false")
+                defaultConfig.buildConfigField("boolean", "CRASH_REPORTING_OPTED_OUT", "true")
 
                 buildFeatures.buildConfig = true
 

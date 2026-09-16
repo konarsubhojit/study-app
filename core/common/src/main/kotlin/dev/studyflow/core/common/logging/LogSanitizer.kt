@@ -3,7 +3,6 @@ package dev.studyflow.core.common.logging
 /** Scrubs data before it can leave the process through logs. */
 public object LogSanitizer {
     public const val RELEASE_TAG: String = "StudyFlow"
-    public const val RELEASE_MESSAGE: String = "[redacted]"
 
     private val email = Regex("""\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b""", RegexOption.IGNORE_CASE)
     private val unixPath = Regex("""(?<!\w)/(?:[^\s/]+/)*[^\s/]+""")
@@ -17,7 +16,20 @@ public object LogSanitizer {
             .replace(unixPath, "[path]")
             .replace(fileName, "[file]")
 
-    public fun releaseTag(): String = RELEASE_TAG
+    public fun scrubReleaseMessage(
+        level: LogLevel,
+        throwableType: String? = null,
+    ): String {
+        val safeThrowableType =
+            throwableType
+                ?.replace(unsafeThrowableTypeCharacter, "")
+                ?.takeIf { it.isNotBlank() }
 
-    public fun releaseMessage(): String = RELEASE_MESSAGE
+        return listOfNotNull(
+            "level=${level.name}",
+            safeThrowableType?.let { "throwable=$it" },
+        ).joinToString(separator = " ")
+    }
+
+    private val unsafeThrowableTypeCharacter = Regex("""[^A-Za-z0-9_]""")
 }

@@ -1,6 +1,7 @@
 package dev.studyflow.app.logging
 
 import android.util.Log
+import dev.studyflow.core.common.logging.LogLevel
 import dev.studyflow.core.common.logging.LogSanitizer
 import timber.log.Timber
 
@@ -35,8 +36,18 @@ private class ReleaseTree : Timber.Tree() {
     ) {
         Log.println(
             priority,
-            LogSanitizer.releaseTag(),
-            LogSanitizer.releaseMessage(),
+            LogSanitizer.RELEASE_TAG,
+            LogSanitizer.scrubReleaseMessage(priority.logLevel, t?.javaClass?.simpleName),
         )
     }
 }
+
+private val Int.logLevel: LogLevel
+    get() =
+        when (this) {
+            Log.DEBUG -> LogLevel.Debug
+            Log.INFO -> LogLevel.Info
+            Log.WARN -> LogLevel.Warning
+            Log.ERROR -> LogLevel.Error
+            else -> LogLevel.Info
+        }
