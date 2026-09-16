@@ -23,7 +23,8 @@ See the [README](README.md) for the current module map and
 - `:core:model` contains dependency-free shared models.
 - `:core:domain` contains Android-free business rules and depends only on model and common code.
 - `:core:common` contains shared primitives such as clocks and coroutine dispatchers.
-- `:core:testing` contains reusable test fakes and fixtures.
+- `:core:network` owns the API contract, the typed client, and its error model.
+- `:core:testing` contains reusable test fakes and fixtures, including `FakeStudyFlowBackend`.
 - `:build-logic` owns convention plugins and executable module-boundary checks.
 
 Add shared behavior to the narrowest suitable `:core` module. Do not bypass a boundary by moving
@@ -107,6 +108,24 @@ repository-wide percentage to defend, no ratchet on existing code, and a line co
 that asserts nothing is worth less than an uncovered line whose risk you have thought about. Use
 the report to notice what nobody exercised and then argue, in the pull request, about whether that
 matters — including when the floor is the wrong answer for a particular change.
+
+## Changing the API
+
+[`docs/api/openapi.yaml`](docs/api/openapi.yaml) is the source of truth for the app/backend
+contract, and it carries the versioning and deprecation policy. Start there: add or change the
+operation in the specification, then add the matching `ApiEndpoint` entry and DTOs in
+`:core:network`. `OpenApiContractTest` fails the build when the client calls something the
+specification does not describe.
+
+Responses ignore unknown fields on purpose, so a server may add a field at any time; do not
+"tighten" the JSON configuration. Map every new failure to a `UserFacingMessage` — an HTTP status
+code must never reach the UI. See [ADR 0007](docs/adr/0007-api-contract-and-network-client.md).
+
+Run against a local mock backend without changing any code:
+
+```bash
+./gradlew installDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080
+```
 
 ## Quality gates
 

@@ -30,6 +30,7 @@ graph TD
     feature_tasks[":feature:tasks"]
     feature_timer[":feature:timer"]
     app --> core_common
+    app --> core_network
     app --> feature_auth
     app --> feature_insights
     app --> feature_materials
@@ -39,8 +40,10 @@ graph TD
     core_common --> core_model
     core_domain --> core_common
     core_domain --> core_model
+    core_scheduling --> core_domain
     core_testing --> core_common
     core_testing --> core_model
+    core_testing --> core_network
     feature_auth --> core_common
     feature_auth --> core_domain
     feature_auth --> core_model
@@ -67,6 +70,7 @@ graph TD
 |---|---|
 | `:app` | `:core:testing` |
 | `:core:domain` | `:core:testing` |
+| `:core:scheduling` | `:core:testing` |
 | `:feature:auth` | `:core:testing` |
 | `:feature:insights` | `:core:testing` |
 | `:feature:materials` | `:core:testing` |

@@ -48,6 +48,10 @@ gradlePlugin {
             id = "studyflow.jvm.library"
             implementationClass = "dev.studyflow.buildlogic.JvmLibraryConventionPlugin"
         }
+        register("serialization") {
+            id = "studyflow.serialization"
+            implementationClass = "dev.studyflow.buildlogic.SerializationConventionPlugin"
+        }
         register("screenshot") {
             id = "studyflow.screenshot"
             implementationClass = "dev.studyflow.buildlogic.ScreenshotConventionPlugin"
