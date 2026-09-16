@@ -40,6 +40,7 @@ graph TD
     core_common --> core_model
     core_domain --> core_common
     core_domain --> core_model
+    core_scheduling --> core_domain
     core_testing --> core_common
     core_testing --> core_model
     core_testing --> core_network
@@ -67,7 +68,9 @@ graph TD
 
 | Module | Test dependency |
 |---|---|
+| `:app` | `:core:testing` |
 | `:core:domain` | `:core:testing` |
+| `:core:scheduling` | `:core:testing` |
 | `:feature:auth` | `:core:testing` |
 | `:feature:insights` | `:core:testing` |
 | `:feature:materials` | `:core:testing` |

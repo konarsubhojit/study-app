@@ -125,6 +125,17 @@ illegal dependency with an explanation.
 
 → [ADR 0002](docs/adr/0002-architecture-layering.md)
 
+## Design system
+
+One Material 3 theme in `:core:designsystem`, and no colour, dimension, font size or animation
+anywhere else. Dynamic colour where the platform has it and a brand palette where it does not,
+edge-to-edge windows with `safeDrawing` insets, a list/detail layout driven by window size classes
+rather than by device type, and motion tokens shaped for predictive back. Theme switching, 200% font
+scale and the phone/tablet pane layouts are held in place by Compose preview screenshot tests that
+run on the JVM as part of `check`.
+
+→ [Design system guide](docs/design-system.md) · [ADR 0007](docs/adr/0007-design-system.md)
+
 ## Building
 
 Install JDK 21 and Android SDK 37. Use the committed Gradle wrapper; no separate Gradle installation
@@ -135,13 +146,19 @@ git clone https://github.com/konarsubhojit/study-app.git
 cd study-app
 ./gradlew build          # compile, test, and everything `check` runs
 ./gradlew check          # ktlint, detekt, Android Lint, module boundaries
-./gradlew test           # unit tests only
+./gradlew test           # unit tests only (the inner loop; quarantined flakes excluded)
 ./gradlew spotlessApply  # fix formatting
 ```
 
+The slow suite is deliberately separate: `./gradlew pixel6Api34DebugAndroidTest` runs instrumented
+tests on a Gradle Managed Device and `./gradlew test -Pstudyflow.quarantine=true` runs the
+quarantined flaky tests. Both run nightly, never on a pull request. The test pyramid, the shared
+fakes in `:core:testing`, the quarantine policy and the coverage policy are described in
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and [ADR 0007](docs/adr/0007-test-strategy.md).
+
 `./gradlew check` is the single quality entry point: Spotless/ktlint formatting, detekt with the
 project ruleset (`config/detekt/detekt.yml`) and the Compose rules, Android Lint with
-`warningsAsErrors`, and the module-boundary checks. Baselines cover pre-existing findings only and
+`warningsAsErrors`, the Compose preview screenshot tests, and the module-boundary checks. Baselines cover pre-existing findings only and
 are documented in [`CONTRIBUTING.md`](CONTRIBUTING.md), which also describes the opt-in pre-commit
 formatting hint.
 
@@ -184,9 +201,10 @@ tokens or repository secrets only; no secrets are committed to this repository.
 | `:core:common` — dual-clock time abstraction, dispatchers | done |
 | `:core:domain` — timer, recurrence, reminder scheduling, upload, archive safety, cache | done |
 | `:core:network` — OpenAPI contract, typed Ktor client, auth refresh, retries, error mapping | done |
-| `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation), `FakeStudyFlowBackend` | done |
+| `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation), coroutine rules, logging fakes, data builders, flaky quarantine, `FakeStudyFlowBackend` | done |
 | `:app` — Android application baseline | done |
-| Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
+| `:core:designsystem` — Material 3 theme, tokens, edge-to-edge, adaptive list/detail | done |
+| Feature Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
 
 `:app` is intentionally manifest-only while the Android UI and platform integrations are deferred,
 but the build that will carry them is in place: the Android, Compose, Hilt and Room convention
@@ -220,3 +238,5 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 - [0004 — Reminders use a scheduling decision matrix](docs/adr/0004-reminder-scheduling.md)
 - [0005 — Object storage: presigned URLs, content addressing, untrusted archives](docs/adr/0005-object-storage.md)
 - [0006 — Bootstrap scope: pure-Kotlin core first](docs/adr/0006-bootstrap-scope.md)
+- [0007 — One design system: tokens, dynamic colour, edge-to-edge, adaptive panes](docs/adr/0007-design-system.md)
+- [0007 — API contract and typed network client](docs/adr/0007-api-contract-and-network-client.md)

@@ -1,0 +1,10 @@
+## Deviations from the Compose ruleset defaults (io.nlopez.compose.rules:detekt).
+##
+## Loaded on top of `detekt.yml`, but only for modules that compile Compose: a module without the
+## ruleset on its classpath rejects a `Compose` section as an unknown property.
+
+Compose:
+  CompositionLocalAllowlist:
+    # Material 3 has no spacing scale, so the design system supplies one the same way the theme
+    # supplies colours. A new CompositionLocal anywhere else stays a build failure.
+    allowedCompositionLocals: LocalSpacing

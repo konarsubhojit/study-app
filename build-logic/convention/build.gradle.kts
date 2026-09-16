@@ -18,6 +18,7 @@ dependencies {
     compileOnly(libs.kotlin.gradlePlugin)
     compileOnly(libs.ksp.gradlePlugin)
     compileOnly(libs.room.gradlePlugin)
+    compileOnly(libs.screenshot.gradlePlugin)
     compileOnly(libs.spotless.gradlePlugin)
 }
 
@@ -50,6 +51,10 @@ gradlePlugin {
         register("serialization") {
             id = "studyflow.serialization"
             implementationClass = "dev.studyflow.buildlogic.SerializationConventionPlugin"
+        }
+        register("screenshot") {
+            id = "studyflow.screenshot"
+            implementationClass = "dev.studyflow.buildlogic.ScreenshotConventionPlugin"
         }
         register("room") {
             id = "studyflow.room"

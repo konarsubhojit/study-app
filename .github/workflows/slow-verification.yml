@@ -58,3 +58,39 @@ jobs:
             **/build/outputs/androidTest-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  quarantined-tests:
+    name: Quarantined flaky tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      # Tests annotated `@Flaky` are excluded from `./gradlew test` so a known flake cannot block a
+      # pull request. They are still run here, every night, so the flake stays measured instead of
+      # forgotten. An empty quarantine is the goal and passes.
+      - name: Run the quarantine
+        shell: bash
+        run: ./gradlew test -Pstudyflow.quarantine=true --continue --stacktrace
+
+      - name: Upload quarantine reports
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: quarantine-reports
+          path: |
+            **/build/reports/tests/
+            **/build/test-results/
+          retention-days: 7
+          if-no-files-found: ignore
