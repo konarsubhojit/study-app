@@ -73,7 +73,7 @@ class ReminderSchedulingServiceTest {
 
     @Test
     fun `exact alarm race fallback is surfaced in the scheduling result`() {
-        platform.nextExactOutcome = PlatformScheduleOutcome.FALLBACK_TO_INEXACT
+        platform.nextExactOutcome = PlatformScheduleOutcome.EXACT_ALARM_DENIED_FALLBACK_TO_INEXACT
 
         val result = service.schedule(task(ReminderPrecision.EXACT))
 

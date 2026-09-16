@@ -95,7 +95,7 @@ public class AndroidReminderPlatformScheduler(
             onExactAlarmDenied(exception)
             alarmManager.cancel(operation(plan.reminderId))
             scheduleInexact(plan)
-            PlatformScheduleOutcome.FALLBACK_TO_INEXACT
+            PlatformScheduleOutcome.EXACT_ALARM_DENIED_FALLBACK_TO_INEXACT
         }
 
     override fun scheduleAlarmClock(plan: ReminderPlan): PlatformScheduleOutcome {
@@ -119,7 +119,7 @@ public class AndroidReminderPlatformScheduler(
     private fun operation(reminderId: String): PendingIntent =
         PendingIntent.getBroadcast(
             context,
-            requestCode(reminderId, PendingIntentSlot.DELIVERY),
+            requestCode(PendingIntentSlot.DELIVERY),
             reminderIntent(reminderId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -127,7 +127,7 @@ public class AndroidReminderPlatformScheduler(
     private fun showIntent(reminderId: String): PendingIntent =
         PendingIntent.getActivity(
             context,
-            requestCode(reminderId, PendingIntentSlot.SHOW),
+            requestCode(PendingIntentSlot.SHOW),
             showIntentFactory(reminderId).withReminderId(reminderId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
@@ -171,7 +171,8 @@ public class ReminderAlarmReceiver : BroadcastReceiver() {
         context: Context,
         intent: Intent,
     ) {
-        Log.w(TAG, "TODO: deliver AlarmManager reminder notification")
+        val reminderId = intent.getStringExtra(EXTRA_REMINDER_ID) ?: "missing-reminder-id"
+        Log.w(TAG, "TODO: deliver AlarmManager reminder notification for $reminderId")
     }
 }
 
@@ -200,10 +201,7 @@ private fun workName(reminderId: String): String = "reminder:$reminderId"
 
 private fun workTag(reminderId: String): String = "reminder-id:$reminderId"
 
-private fun requestCode(
-    reminderId: String,
-    slot: PendingIntentSlot,
-): Int = (REQUEST_CODE_MULTIPLIER * reminderId.hashCode()) + slot.ordinal
+private fun requestCode(slot: PendingIntentSlot): Int = slot.requestCode
 
 private fun Intent.withReminderId(reminderId: String): Intent =
     apply {
@@ -222,7 +220,10 @@ private fun reminderUri(reminderId: String): Uri =
 private enum class PendingIntentSlot {
     DELIVERY,
     SHOW,
+    ;
+
+    val requestCode: Int
+        get() = ordinal
 }
 
 private const val TAG: String = "ReminderScheduling"
-private const val REQUEST_CODE_MULTIPLIER: Int = 31

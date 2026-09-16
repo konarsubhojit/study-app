@@ -84,7 +84,7 @@ public interface ReminderPlatformScheduler {
 
 public enum class PlatformScheduleOutcome {
     SCHEDULED,
-    FALLBACK_TO_INEXACT,
+    EXACT_ALARM_DENIED_FALLBACK_TO_INEXACT,
 }
 
 public sealed interface ReminderScheduleResult {
@@ -148,7 +148,7 @@ private fun ReminderPlan.withOutcome(outcome: PlatformScheduleOutcome): Reminder
             this
         }
 
-        PlatformScheduleOutcome.FALLBACK_TO_INEXACT -> {
+        PlatformScheduleOutcome.EXACT_ALARM_DENIED_FALLBACK_TO_INEXACT -> {
             copy(
                 delivery = ReminderDelivery.INEXACT,
                 degradations = degradations + ReminderDegradation.EXACT_ALARMS_DENIED,
