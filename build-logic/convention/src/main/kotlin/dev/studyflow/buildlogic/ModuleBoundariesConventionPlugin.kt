@@ -7,6 +7,7 @@ import org.gradle.api.artifacts.Configuration
 import org.gradle.api.artifacts.ProjectDependency
 import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.MapProperty
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
 import org.gradle.api.tasks.OutputFile
@@ -207,6 +208,10 @@ public abstract class CheckModuleGraphTask : DefaultTask() {
     @get:PathSensitive(PathSensitivity.RELATIVE)
     public abstract val graphFile: RegularFileProperty
 
+    /** Build-relative path of [graphFile], resolved at configuration time for the failure message. */
+    @get:Input
+    public abstract val graphFileDisplayPath: Property<String>
+
     @TaskAction
     public fun check() {
         val expected = renderModuleGraph(
@@ -218,7 +223,7 @@ public abstract class CheckModuleGraphTask : DefaultTask() {
         if (actual != expected) {
             error(
                 "Module dependency graph is out of date. " +
-                    "Run ./gradlew generateModuleGraph and commit ${actualFile.relativeTo(project.rootDir)}.",
+                    "Run ./gradlew generateModuleGraph and commit ${graphFileDisplayPath.get()}.",
             )
         }
     }
@@ -238,6 +243,7 @@ public class ModuleBoundariesConventionPlugin : Plugin<Project> {
             description = "Fails when the project dependency graph breaks the architectural layering."
         }
         val moduleGraphFile = target.layout.projectDirectory.file("docs/module-graph.md")
+        val moduleGraphDisplayPath = moduleGraphFile.asFile.relativeTo(target.projectDir).invariantSeparatorsPath
         val generateModuleGraph = target.tasks.register<GenerateModuleGraphTask>("generateModuleGraph") {
             group = "documentation"
             description = "Regenerates docs/module-graph.md from the Gradle project dependency graph."
@@ -247,6 +253,7 @@ public class ModuleBoundariesConventionPlugin : Plugin<Project> {
             group = "verification"
             description = "Fails when docs/module-graph.md does not match the Gradle project dependency graph."
             graphFile.set(moduleGraphFile)
+            graphFileDisplayPath.set(moduleGraphDisplayPath)
         }
 
         target.gradle.projectsEvaluated {
