@@ -35,9 +35,10 @@ class LogSanitizerTest {
     fun `debug logs redact common pii without dropping diagnostics`() {
         val scrubbed =
             LogSanitizer.scrubDebugMessage(
-                "Failed alice@example.com at /storage/emulated/0/Documents/chemistry-notes.pdf",
+                "Failed alice@example.com at " +
+                    "/storage/emulated/0/Documents/chemistry-notes.pdf; see https://example.com/help",
             )
 
-        assertEquals("Failed [email] at [path]", scrubbed)
+        assertEquals("Failed [email] at [path]; see https://example.com/help", scrubbed)
     }
 }

@@ -5,7 +5,7 @@ public object LogSanitizer {
     public const val RELEASE_TAG: String = "StudyFlow"
 
     private val email = Regex("""\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b""", RegexOption.IGNORE_CASE)
-    private val unixPath = Regex("""(?<!\w)/(?:[^\s/]+/)*[^\s/]+""")
+    private val unixPath = Regex("""\B/(?:storage|sdcard|data|cache|mnt|system|vendor)(?:/[^\s/;:,]+)*""")
     private val windowsPath = Regex("""\b[A-Z]:\\(?:[^\s\\]+\\)*[^\s\\]+""", RegexOption.IGNORE_CASE)
     private val fileName = Regex("""\b[^\s/\\]+\.(?:csv|db|docx?|json|kt|md|mp3|mp4|pdf|png|txt|zip)\b""")
 

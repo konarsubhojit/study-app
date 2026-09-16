@@ -4,7 +4,6 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
-import dev.studyflow.app.logging.AndroidLogging
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.logging.CrashReporter
 import javax.inject.Inject
@@ -28,7 +27,6 @@ class StudyFlowApplication :
 
     override fun onCreate() {
         super.onCreate()
-        AndroidLogging.install(debug = BuildConfig.DEBUG)
         crashReporter.initialize(
             enabled = BuildConfig.CRASH_REPORTING_ENABLED,
             optedOut = BuildConfig.CRASH_REPORTING_OPTED_OUT,
