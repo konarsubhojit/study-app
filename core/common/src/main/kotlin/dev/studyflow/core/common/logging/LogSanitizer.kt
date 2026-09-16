@@ -17,9 +17,7 @@ public object LogSanitizer {
             .replace(unixPath, "[path]")
             .replace(fileName, "[file]")
 
-    @Suppress("UnusedParameter")
-    public fun scrubReleaseTag(tag: String): String = RELEASE_TAG
+    public fun releaseTag(): String = RELEASE_TAG
 
-    @Suppress("UnusedParameter")
-    public fun scrubReleaseMessage(message: String): String = RELEASE_MESSAGE
+    public fun releaseMessage(): String = RELEASE_MESSAGE
 }

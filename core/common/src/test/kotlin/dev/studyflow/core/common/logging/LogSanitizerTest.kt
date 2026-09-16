@@ -9,18 +9,22 @@ class LogSanitizerTest {
     fun `release logs drop user supplied content and filenames`() {
         val message = "Upload alice@example.com from /storage/emulated/0/Documents/chemistry-notes.pdf"
 
-        val scrubbed = LogSanitizer.scrubReleaseMessage(message)
+        val scrubbed = LogSanitizer.releaseMessage()
 
         assertEquals(LogSanitizer.RELEASE_MESSAGE, scrubbed)
         assertFalse(scrubbed.contains("alice"))
         assertFalse(scrubbed.contains("chemistry-notes.pdf"))
+        assertFalse(scrubbed.contains(message))
     }
 
     @Test
     fun `release tag is stable and never caller supplied`() {
-        val tag = LogSanitizer.scrubReleaseTag("chemistry-notes.pdf")
+        val unsafeTag = "chemistry-notes.pdf"
+
+        val tag = LogSanitizer.releaseTag()
 
         assertEquals(LogSanitizer.RELEASE_TAG, tag)
+        assertFalse(tag.contains(unsafeTag))
     }
 
     @Test

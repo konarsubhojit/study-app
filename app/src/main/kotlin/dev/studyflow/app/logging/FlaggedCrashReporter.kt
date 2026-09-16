@@ -9,6 +9,7 @@ class FlaggedCrashReporter
     constructor(
         private val logger: AppLogger,
     ) : CrashReporter {
+        @Volatile
         private var active = false
 
         override fun initialize(

@@ -35,8 +35,8 @@ private class ReleaseTree : Timber.Tree() {
     ) {
         Log.println(
             priority,
-            LogSanitizer.scrubReleaseTag(tag.orEmpty()),
-            LogSanitizer.scrubReleaseMessage(message),
+            LogSanitizer.releaseTag(),
+            LogSanitizer.releaseMessage(),
         )
     }
 }
