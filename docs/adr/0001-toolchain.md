@@ -10,22 +10,25 @@ byte-for-byte, and that will not quietly drift as dependencies publish new versi
 grow from four pure-Kotlin modules today into a multi-module Android app without the build scripts
 turning into copy-pasted sludge.
 
-A practical constraint shaped part of this decision: the environment this repository was
-bootstrapped in cannot reach `dl.google.com` or `maven.google.com`, so the Android Gradle Plugin and
-every AndroidX artifact are unreachable. See [ADR 0006](0006-bootstrap-scope.md).
-
 ## Decision
 
-**Gradle 9.7.1 via the wrapper, JDK 21 toolchain, Kotlin 2.x with the K2 compiler.**
+**Gradle 9.7.1 via the wrapper, AGP 9.0.1, Kotlin 2.2.20, Android API 36, and JDK 21.**
 
 The wrapper is committed, so the Gradle version is part of the source tree rather than part of each
 developer's machine. A Java *toolchain* is declared rather than relying on `JAVA_HOME`, so the
 bytecode target does not depend on which JDK happens to be first on the path.
 
+AGP 9.0.1 supports API 36, requires Gradle 9.1 or newer, and uses Kotlin 2.2.20 for its built-in
+Kotlin support. API 36 is the latest stable Android platform at this decision's date. The
+application namespace and application ID are both fixed as `dev.studyflow.app`; changing either
+after release has user-facing and distribution consequences.
+
+The baseline disables AGP's built-in Kotlin support because the existing pure-Kotlin modules use
+the standalone Kotlin JVM plugin. This manifest-only app has no Kotlin sources; future Android
+Kotlin work must migrate the JVM convention before enabling AGP's built-in Kotlin support.
+
 **All versions live in `gradle/libs.versions.toml`.** No version literal appears in any build
-script, including `build-logic`'s own. Only artifacts this build actually resolves are listed, so
-every version in the catalogue has been verified against a real build rather than transcribed from
-a plan.
+script, including `build-logic`'s own.
 
 **Shared build configuration lives in `:build-logic` as convention plugins**, not in `subprojects {}`
 or `allprojects {}` blocks:
@@ -60,5 +63,5 @@ and the two tools fight forever.
 - Bumping a dependency is a one-line change in the catalogue, and Dependabot/Renovate can do it.
 - Warnings-as-errors means a compiler upgrade can break the build. That is the point; the
   alternative is discovering the deprecation two years later.
-- Android versions are deliberately absent from the catalogue until the Android modules land, so
-  that nothing in it is unverified.
+- The manifest-only `:app` module is a buildable Android baseline; UI and AndroidX dependencies are
+  added only with the features that need them.
