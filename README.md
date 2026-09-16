@@ -200,15 +200,17 @@ tokens or repository secrets only; no secrets are committed to this repository.
 | `:core:model` — sessions, events, time anchors, tasks, recurrence, materials | done |
 | `:core:common` — dual-clock time abstraction, dispatchers | done |
 | `:core:domain` — timer, recurrence, reminder scheduling, upload, archive safety, cache | done |
+| `:core:database` — Room schema, Flow DAOs, migrations, UTC converters, synthetic datasets | done |
 | `:core:network` — OpenAPI contract, typed Ktor client, auth refresh, retries, error mapping | done |
 | `:core:testing` — `FakeDevice` (reboot / deep sleep / clock jump simulation), coroutine rules, logging fakes, data builders, flaky quarantine, `FakeStudyFlowBackend` | done |
 | `:app` — Android application baseline | done |
 | `:core:designsystem` — Material 3 theme, tokens, edge-to-edge, adaptive list/detail | done |
-| Feature Compose UI, Room, Hilt, foreground service, WorkManager, AlarmManager | not yet |
+| Feature Compose UI, Hilt, foreground service, WorkManager, AlarmManager | not yet |
 
 `:app` is intentionally manifest-only while the Android UI and platform integrations are deferred,
-but the build that will carry them is in place: the Android, Compose, Hilt and Room convention
-plugins were verified against a throwaway app, feature and database module before it was deleted.
+but the build that will carry them is in place. Room now has a production schema in
+`:core:database`; the remaining Android, Compose and Hilt conventions were verified against
+throwaway modules before those modules were deleted.
 The domain core remains Android-free, so building it first proves the riskiest logic before any UI
 exists to obscure it. Each platform concern has a seam waiting for it — an interface in
 `:core:common` or a pure planner in `:core:domain`.
