@@ -19,7 +19,9 @@ dependencies {
     implementation(projects.core.model)
     // The task repository implements the `:core:domain` contract and maps rows to domain models.
     implementation(projects.core.domain)
+    implementation(libs.androidx.paging.common)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.room.paging)
 
     testImplementation(projects.core.testing)
 }

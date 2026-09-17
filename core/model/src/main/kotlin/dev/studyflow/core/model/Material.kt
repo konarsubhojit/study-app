@@ -12,22 +12,27 @@ import kotlin.time.Instant
  * @property contentHash SHA-256 of the file's bytes. Doubles as the storage key, which makes
  *   uploads idempotent and lets two identical files share one blob instead of paying twice for
  *   storage and egress.
- * @property localUri where the staged or cached copy lives, if there is one. `null` means the file
+ * @property localPath where the staged or cached copy lives, if there is one. `null` means the file
  *   exists only in the cloud and must be fetched before it can be opened.
  * @property pinnedForOffline when true, the cache eviction policy must not reclaim this file.
  */
 public data class Material(
     val id: String,
     val folderId: String? = null,
+    val subjectId: String? = null,
     val displayName: String,
     val mimeType: String,
     val sizeBytes: Long,
     val contentHash: ContentHash,
     val createdAt: Instant,
+    val updatedAt: Instant = createdAt,
+    val notes: String? = null,
+    val remoteKey: String? = null,
     val sync: SyncState = SyncState.Pending,
-    val localUri: String? = null,
+    val localPath: String? = null,
     val pinnedForOffline: Boolean = false,
     val encrypted: Boolean = false,
+    val deleted: Boolean = false,
 ) {
     init {
         require(id.isNotBlank()) { "Material.id must not be blank" }
@@ -37,6 +42,15 @@ public data class Material(
 
     /** Coarse category used to choose a previewer and an icon. */
     public val kind: MaterialKind get() = MaterialKind.of(mimeType, displayName)
+}
+
+/** A normalized tag available for material filtering and many-to-many assignment. */
+public data class Tag(
+    val name: String,
+) {
+    init {
+        require(name.isNotBlank()) { "Tag.name must not be blank" }
+    }
 }
 
 /** A user-created folder in the materials catalogue. */

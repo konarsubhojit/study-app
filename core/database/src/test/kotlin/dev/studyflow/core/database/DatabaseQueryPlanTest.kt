@@ -45,12 +45,12 @@ class DatabaseQueryPlanTest {
                 explain(
                     """
                     SELECT * FROM materials
-                    WHERE folder_id = 'folder-1'
-                    ORDER BY created_at DESC, id ASC
+                    WHERE deleted = 0 AND folder_id = 'folder-1'
+                    ORDER BY updated_at DESC, id ASC
                     """.trimIndent(),
                 )
 
-            assertTrue(plan.any { it.contains("index_materials_folder_id_created_at") })
+            assertTrue(plan.any { it.contains("index_materials_folder_id_updated_at") })
             assertFalse(plan.any { it.contains("TEMP B-TREE") })
         }
 

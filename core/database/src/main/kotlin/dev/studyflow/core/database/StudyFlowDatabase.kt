@@ -10,12 +10,15 @@ import dev.studyflow.core.database.dao.StudyTaskDao
 import dev.studyflow.core.database.dao.SubjectDao
 import dev.studyflow.core.database.entity.FolderEntity
 import dev.studyflow.core.database.entity.MaterialEntity
+import dev.studyflow.core.database.entity.MaterialFtsEntity
+import dev.studyflow.core.database.entity.MaterialTagEntity
 import dev.studyflow.core.database.entity.ReminderEntity
 import dev.studyflow.core.database.entity.SessionEventEntity
 import dev.studyflow.core.database.entity.StudySessionEntity
 import dev.studyflow.core.database.entity.StudyTaskEntity
 import dev.studyflow.core.database.entity.SubjectEntity
 import dev.studyflow.core.database.entity.SubtaskEntity
+import dev.studyflow.core.database.entity.TagEntity
 import dev.studyflow.core.database.entity.TaskTagEntity
 
 @Database(
@@ -23,6 +26,9 @@ import dev.studyflow.core.database.entity.TaskTagEntity
         SubjectEntity::class,
         FolderEntity::class,
         MaterialEntity::class,
+        TagEntity::class,
+        MaterialTagEntity::class,
+        MaterialFtsEntity::class,
         StudyTaskEntity::class,
         ReminderEntity::class,
         TaskTagEntity::class,
@@ -30,7 +36,7 @@ import dev.studyflow.core.database.entity.TaskTagEntity
         StudySessionEntity::class,
         SessionEventEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -47,6 +53,6 @@ public abstract class StudyFlowDatabase : RoomDatabase() {
 
     public companion object {
         public const val NAME: String = "studyflow.db"
-        public const val VERSION: Int = 4
+        public const val VERSION: Int = 5
     }
 }
