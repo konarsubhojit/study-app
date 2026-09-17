@@ -61,6 +61,6 @@ public class TimerViewModel(
 
         private fun Duration.toDisplaySeconds(): Int =
             // TimerUiState uses Int for display; clamp extreme sessions rather than overflowing.
-            inWholeSeconds.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
+            inWholeSeconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 }
