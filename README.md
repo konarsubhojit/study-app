@@ -47,7 +47,8 @@ bytes, colliding paths), and entry count, size and compression ratio are capped 
 The offline cache is LRU with two hard exceptions — it will never evict a file the user pinned, and
 never a file that has not finished uploading, because that local copy is the only copy.
 
-→ [ADR 0005](docs/adr/0005-object-storage.md) ·
+→ [ADR 0005](docs/adr/0005-object-storage.md) · [ADR 0010](docs/adr/0010-storage-provider.md) ·
+[`ObjectStore`](core/storage/src/main/kotlin/dev/studyflow/core/storage/ObjectStore.kt) ·
 [`UploadPlanner`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/UploadPlanner.kt) ·
 [`ArchiveSafety`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/ArchiveSafety.kt) ·
 [`CachePlanner`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/CachePlanner.kt)
@@ -246,4 +247,8 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 - [0006 — Bootstrap scope: pure-Kotlin core first](docs/adr/0006-bootstrap-scope.md)
 - [0007 — One design system: tokens, dynamic colour, edge-to-edge, adaptive panes](docs/adr/0007-design-system.md)
 - [0007 — API contract and typed network client](docs/adr/0007-api-contract-and-network-client.md)
+- [0007 — Backend platform: Supabase, environments and the row-owns-itself data model](docs/adr/0007-backend-platform.md)
+- [0007 — Tests are a pyramid with shared fakes, and coverage is a signal](docs/adr/0007-test-strategy.md)
+- [0008 — Room is the local source of truth with explicit migrations](docs/adr/0008-local-room-database.md)
 - [0009 — Notifications: documented channels and a deferred permission](docs/adr/0009-notifications.md)
+- [0010 — Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`](docs/adr/0010-storage-provider.md)
