@@ -1,7 +1,12 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
 
     <application>
         <receiver
@@ -10,5 +15,38 @@
         <receiver
             android:name="dev.studyflow.core.scheduling.ReminderActionReceiver"
             android:exported="false" />
+
+        <!-- Re-arms every reminder after a reboot or app update (issue #48); exported so the
+             system can deliver its own broadcasts, but restricted to those two actions and does
+             nothing for anything else it might somehow receive. -->
+        <receiver
+            android:name="dev.studyflow.core.scheduling.BootRescheduleReceiver"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- The full-screen alarm face (issue #48). Not exported: it is only ever launched from
+             this app's own PendingIntents. Excluded from recents so a dismissed/snoozed alarm does
+             not leave a stale "alarm" card in the overview screen. -->
+        <activity
+            android:name="dev.studyflow.core.scheduling.AlarmActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            tools:targetApi="27" />
+
+        <!-- Rings and vibrates for an alarm-style reminder (issue #48); a foreground service so it
+             keeps playing independently of AlarmActivity's own lifecycle. -->
+        <service
+            android:name="dev.studyflow.core.scheduling.AlarmPlaybackService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback"
+            tools:targetApi="29" />
     </application>
 </manifest>

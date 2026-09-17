@@ -52,6 +52,29 @@ public class UserSettingsStore internal constructor(
         }
 }
 
+/**
+ * The narrow slice of [UserSettingsStore] a ringtone picker needs — just enough for a feature
+ * module (or a plain unit test, via a fake) to read and persist the chosen alarm sound without
+ * depending on the whole settings store or its generated proto type.
+ */
+public interface AlarmRingtoneSettings {
+    /** Empty means "the device's default alarm sound" — see `settings.proto`'s field doc. */
+    public val uri: Flow<String>
+
+    public suspend fun setUri(uri: String)
+}
+
+/** [AlarmRingtoneSettings] backed by the real, persisted [UserSettingsStore]. */
+public class UserSettingsAlarmRingtoneSettings(
+    private val store: UserSettingsStore,
+) : AlarmRingtoneSettings {
+    override val uri: Flow<String> = store.data.map { it.alarmRingtoneUri }
+
+    override suspend fun setUri(uri: String) {
+        store.update { alarmRingtoneUri = uri }
+    }
+}
+
 /** Minimal anchor retained only while a timer is active, for direct-boot recovery. */
 public data class ActiveTimer(
     val sessionId: String,

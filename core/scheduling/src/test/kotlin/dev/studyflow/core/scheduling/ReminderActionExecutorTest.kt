@@ -125,6 +125,48 @@ class ReminderActionExecutorTest {
         }
 
     @Test
+    fun `snoozing beyond the cap dismisses instead of rescheduling`() =
+        runBlocking {
+            taskRepository.save(task(snooze = SnoozeState(until = NOW, count = MAX_SNOOZE_COUNT)))
+
+            executor.execute(ReminderActionKind.SNOOZE, "reminder-1", "task-1")
+
+            val reminder =
+                taskRepository
+                    .observeTask("task-1")
+                    .first()!!
+                    .reminders
+                    .single()
+            // The capped attempt is refused: the snooze state is left exactly as it was rather
+            // than incremented past the cap, and nothing was (re)scheduled for it.
+            assertEquals(MAX_SNOOZE_COUNT, reminder.snooze?.count)
+            assertTrue(
+                platformScheduler.calls.none {
+                    it.startsWith("inexact:") || it.startsWith("exact:") || it.startsWith("alarm:")
+                },
+            )
+            assertEquals(0, shadowOf(context.getSystemService(NotificationManager::class.java)).size())
+        }
+
+    @Test
+    fun `dismiss clears the notification without completing or rescheduling the task`() =
+        runBlocking {
+            taskRepository.save(task())
+            notifier.post(
+                reminderNotificationId("reminder-1"),
+                StudyFlowNotificationChannel.TASK_REMINDERS,
+                dummyNotification(),
+            )
+
+            executor.execute(ReminderActionKind.DISMISS, "reminder-1", "task-1")
+
+            val saved = taskRepository.observeTask("task-1").first()!!
+            assertNull(saved.completedAt)
+            assertNull(saved.reminders.single().snooze)
+            assertEquals(0, shadowOf(context.getSystemService(NotificationManager::class.java)).size())
+        }
+
+    @Test
     fun `start session begins a timer tagged with the task title and its subject`() =
         runBlocking {
             taskRepository.save(task())
