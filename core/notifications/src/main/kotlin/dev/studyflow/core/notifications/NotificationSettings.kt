@@ -1,5 +1,6 @@
 package dev.studyflow.core.notifications
 
+import android.content.Context
 import android.content.Intent
 
 /**
@@ -23,7 +24,12 @@ public data class NotificationSettingsSnapshot(
 
 /** Everything the in-app notification settings screen needs from the platform. */
 public interface NotificationSettingsSource {
-    public fun snapshot(): NotificationSettingsSnapshot
+    /**
+     * @param shouldShowRationale the hosting activity's answer to
+     *   `ActivityCompat.shouldShowRequestPermissionRationale`. Only an activity can answer it, and
+     *   it is what tells a first denial apart from a permanent one.
+     */
+    public fun snapshot(shouldShowRationale: Boolean = false): NotificationSettingsSnapshot
 
     /** System page for the app as a whole. */
     public fun appSettingsIntent(): Intent
@@ -37,14 +43,21 @@ public interface NotificationSettingsSource {
 
 /** [NotificationSettingsSource] over the real platform. */
 public class AndroidNotificationSettingsSource(
-    private val registrar: NotificationChannelRegistrar,
-    private val permissions: NotificationPermissionReader,
-    private val requestLog: NotificationPermissionRequestLog,
+    private val context: Context,
+    private val registrar: NotificationChannelRegistrar = NotificationChannelRegistrar(context),
+    private val requestLog: NotificationPermissionRequestLog =
+        SharedPreferencesNotificationPermissionRequestLog(context),
 ) : NotificationSettingsSource {
-    override fun snapshot(): NotificationSettingsSnapshot {
+    override fun snapshot(shouldShowRationale: Boolean): NotificationSettingsSnapshot {
         // Registering first means a channel the user deleted reappears in the list instead of the
         // screen showing the app's defaults for something the system no longer knows about.
         registrar.register()
+        val permissions =
+            AndroidNotificationPermissionReader(
+                context = context,
+                requestLog = requestLog,
+                shouldShowRationale = { shouldShowRationale },
+            )
         return NotificationSettingsSnapshot(
             permission = permissions.currentState(),
             channels = registrar.statuses(),

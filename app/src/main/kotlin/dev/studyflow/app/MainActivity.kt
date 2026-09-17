@@ -4,10 +4,12 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import dagger.hilt.android.AndroidEntryPoint
 import dev.studyflow.app.navigation.AppRoute
 import dev.studyflow.app.navigation.StudyFlowApp
 import dev.studyflow.app.navigation.StudyFlowDeepLinks
 
+@AndroidEntryPoint
 internal class MainActivity : ComponentActivity() {
     private var deepLinkHandler: (AppRoute) -> Unit = {}
     private var handledDeepLink: String? = null
