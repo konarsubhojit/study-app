@@ -23,7 +23,11 @@ public class RoomConventionPlugin : Plugin<Project> {
             }
 
             dependencies {
-                add("implementation", libs.findLibrary("room-runtime").get())
+                // `api` rather than `implementation`: `StudyFlowDatabase` is itself a public
+                // `RoomDatabase` subtype (issue #37 is the first consumer outside this module to
+                // reference it directly), so a module that provides one needs Room's runtime on its
+                // own compile classpath too.
+                add("api", libs.findLibrary("room-runtime").get())
                 add("ksp", libs.findLibrary("room-compiler").get())
                 add("testImplementation", libs.findLibrary("room-testing").get())
             }

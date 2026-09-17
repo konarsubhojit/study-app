@@ -31,6 +31,17 @@
                 <data android:host="settings" />
                 <data android:host="widget" />
             </intent-filter>
+
+            <!-- Share target for materials import (issue #37): a document picked in Drive, an
+                 attachment opened in Gmail, an image from a browser, or a file from a classmate's
+                 chat can all be sent to StudyFlow from the system share sheet. No storage
+                 permission is declared or required — the sender's URI is read directly. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <action android:name="android.intent.action.SEND_MULTIPLE" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
         </activity>
 
         <service

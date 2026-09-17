@@ -39,6 +39,7 @@ dependencies {
     implementation(projects.feature.settings)
     implementation(projects.feature.tasks)
     implementation(projects.feature.timer)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.hilt.work)
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)

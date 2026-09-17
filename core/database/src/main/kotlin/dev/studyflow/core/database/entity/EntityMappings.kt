@@ -53,6 +53,8 @@ public fun Material.asEntity(): MaterialEntity {
         pinnedForOffline = pinnedForOffline,
         encrypted = encrypted,
         deleted = deleted,
+        pageCount = pageCount,
+        duration = duration,
     )
 }
 
@@ -74,6 +76,8 @@ public fun MaterialEntity.asExternalModel(): Material =
         pinnedForOffline = pinnedForOffline,
         encrypted = encrypted,
         deleted = deleted,
+        pageCount = pageCount,
+        duration = duration,
     )
 
 public fun Tag.asEntity(): TagEntity = TagEntity(name)

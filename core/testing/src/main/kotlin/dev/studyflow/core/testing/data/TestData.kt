@@ -162,6 +162,8 @@ public fun testMaterial(
     localUri: String? = null,
     pinnedForOffline: Boolean = false,
     encrypted: Boolean = false,
+    pageCount: Int? = null,
+    duration: Duration? = null,
 ): Material =
     Material(
         id = id,
@@ -177,6 +179,8 @@ public fun testMaterial(
         localPath = localUri,
         pinnedForOffline = pinnedForOffline,
         encrypted = encrypted,
+        pageCount = pageCount,
+        duration = duration,
     )
 
 /**

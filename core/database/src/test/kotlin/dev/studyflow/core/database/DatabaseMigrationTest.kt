@@ -132,6 +132,32 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 6 to 7 preserves materials and leaves the new metadata columns unset`() {
+        helper.createDatabase(DATABASE_NAME, 6).use { database ->
+            database.insertVersionSixMaterial()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database
+                    .query("SELECT id, display_name, page_count, duration_millis FROM materials")
+                    .use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("legacy-material", cursor.getString(0))
+                        assertEquals("Legacy.pdf", cursor.getString(1))
+                        assertTrue("a row from before this column existed has no page count", cursor.isNull(2))
+                        assertTrue("a row from before this column existed has no duration", cursor.isNull(3))
+                        assertFalse(cursor.moveToNext())
+                    }
+            }
+    }
+
+    @Test
     fun `migration 2 to 3 derives the session projection from the event log`() {
         helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
@@ -217,6 +243,23 @@ class DatabaseMigrationTest {
             ) VALUES (
                 'legacy-material', NULL, 'Legacy.pdf', 'application/pdf', 1024,
                 '${"0".repeat(64)}', 1789601069317, 'PENDING', NULL, NULL, NULL, NULL, NULL, 0
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionSixMaterial() {
+        execSQL(
+            """
+            INSERT INTO materials (
+                id, folder_id, subject_id, display_name, mime_type, size_bytes, content_hash,
+                created_at, updated_at, notes, remote_key, sync_state, uploaded_bytes,
+                upload_total_bytes, failure_reason, failure_retryable, local_path,
+                pinned_for_offline, encrypted, deleted
+            ) VALUES (
+                'legacy-material', NULL, NULL, 'Legacy.pdf', 'application/pdf', 1024,
+                '${"2".repeat(64)}', 1789601069317, 1789601069317, NULL, NULL, 'SYNCED', NULL,
+                NULL, NULL, NULL, '/legacy/material.pdf', 0, 0, 0
             )
             """.trimIndent(),
         )

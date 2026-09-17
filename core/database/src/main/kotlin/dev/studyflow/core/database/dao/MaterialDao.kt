@@ -16,6 +16,7 @@ import dev.studyflow.core.database.entity.MaterialSyncState
 import dev.studyflow.core.database.entity.MaterialTagEntity
 import dev.studyflow.core.database.entity.MaterialWithTags
 import dev.studyflow.core.database.entity.TagEntity
+import dev.studyflow.core.model.ContentHash
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
 
@@ -43,6 +44,15 @@ public abstract class MaterialDao {
         sort: MaterialSort = MaterialSort.UPDATED_AT_DESC,
     ): PagingSource<Int, MaterialEntity> =
         searchPagedQuery(materialCatalogQuery(folderId, subjectId, mimeTypePrefix, tag, sort, query))
+
+    /**
+     * The catalogue entry already stored under [contentHash], if any (issue #37).
+     *
+     * Backed by `index_materials_content_hash`, so a duplicate check costs an index lookup rather
+     * than a scan, however large the catalogue grows.
+     */
+    @Query("SELECT * FROM materials WHERE content_hash = :contentHash LIMIT 1")
+    public abstract suspend fun findByContentHash(contentHash: ContentHash): MaterialEntity?
 
     @Query(
         """

@@ -1,5 +1,6 @@
 package dev.studyflow.core.model
 
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
@@ -20,6 +21,10 @@ import kotlin.time.Instant
  *   exists only in the cloud and must be fetched before it can be opened.
  * @property pinnedForOffline when true, the cache eviction policy must not reclaim this file.
  * @property deleted tombstone flag; deleted rows stay local until sync can propagate the removal.
+ * @property pageCount pages counted while streaming the import, for a [MaterialKind.PDF] only.
+ *   `null` for every other kind, and for a PDF the counter could not read with confidence.
+ * @property duration media duration read from the container while streaming the import, for
+ *   [MaterialKind.AUDIO] and [MaterialKind.VIDEO] only.
  */
 public data class Material(
     val id: String,
@@ -38,6 +43,8 @@ public data class Material(
     val pinnedForOffline: Boolean = false,
     val encrypted: Boolean = false,
     val deleted: Boolean = false,
+    val pageCount: Int? = null,
+    val duration: Duration? = null,
 ) {
     init {
         require(id.isNotBlank()) { "Material.id must not be blank" }
