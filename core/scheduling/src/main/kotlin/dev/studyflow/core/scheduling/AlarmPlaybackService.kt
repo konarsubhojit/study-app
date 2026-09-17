@@ -28,6 +28,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import kotlin.time.Duration
 
@@ -145,22 +146,7 @@ public class AlarmPlaybackService : Service() {
             Log.w(TAG, "Alarm audio focus was not granted (result=$focusResult); ringing anyway")
         }
 
-        val player =
-            MediaPlayer().apply {
-                setAudioAttributes(attributes)
-                runCatching {
-                    // A one-off, synchronous DataStore read: the alarm must start ringing
-                    // immediately, and there is no "later" for a `MediaPlayer` data source once
-                    // it is already prepared and playing silence. The file is small (one proto
-                    // message) and already memory-cached after the first read of the process.
-                    val uri = kotlinx.coroutines.runBlocking(dispatcherProvider.io) { ringtoneUri() }
-                    setDataSource(this@AlarmPlaybackService, uri)
-                    isLooping = true
-                    setVolume(AlarmPlaybackPolicy.volumeAt(Duration.ZERO), AlarmPlaybackPolicy.volumeAt(Duration.ZERO))
-                    prepare()
-                    start()
-                }.onFailure { Log.w(TAG, "Alarm playback could not start its ringtone", it) }
-            }
+        val player = MediaPlayer().apply { setAudioAttributes(attributes) }
 
         val vibrator = vibratorService()
         vibrator?.vibrate(
@@ -172,6 +158,22 @@ public class AlarmPlaybackService : Service() {
 
         val job =
             serviceScope.launch {
+                // The DataStore read, `setDataSource` (a content-resolver round trip for a
+                // `content://` ringtone URI) and `prepare()` are all blocking I/O; running them
+                // here — off `onStartCommand`'s main-thread caller — rather than with
+                // `runBlocking` is what keeps a cold DataStore read from risking an ANR.
+                runCatching {
+                    val uri = ringtoneUri()
+                    withContext(dispatcherProvider.io) {
+                        player.setDataSource(this@AlarmPlaybackService, uri)
+                        player.isLooping = true
+                        val startVolume = AlarmPlaybackPolicy.volumeAt(Duration.ZERO)
+                        player.setVolume(startVolume, startVolume)
+                        player.prepare()
+                        player.start()
+                    }
+                }.onFailure { Log.w(TAG, "Alarm playback could not start its ringtone", it) }
+
                 val startUptime = AndroidElapsedRealtimeSource.uptime()
                 launch { stopWhenTaskNoLongerNeedsIt(taskId, reminderId, notificationId) }
                 while (true) {
