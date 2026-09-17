@@ -30,6 +30,7 @@ graph TD
     feature_tasks[":feature:tasks"]
     feature_timer[":feature:timer"]
     app --> core_common
+    app --> core_designsystem
     app --> core_network
     app --> feature_auth
     app --> feature_insights
@@ -39,12 +40,15 @@ graph TD
     app --> feature_timer
     core_common --> core_model
     core_database --> core_model
+    core_datastore --> core_model
     core_domain --> core_common
     core_domain --> core_model
     core_scheduling --> core_domain
     core_testing --> core_common
     core_testing --> core_model
     core_testing --> core_network
+    core_ui --> core_designsystem
+    core_ui --> core_domain
     feature_auth --> core_common
     feature_auth --> core_domain
     feature_auth --> core_model
@@ -61,8 +65,10 @@ graph TD
     feature_tasks --> core_domain
     feature_tasks --> core_model
     feature_timer --> core_common
+    feature_timer --> core_designsystem
     feature_timer --> core_domain
     feature_timer --> core_model
+    feature_timer --> core_ui
 ```
 
 ## Test-only project dependencies
