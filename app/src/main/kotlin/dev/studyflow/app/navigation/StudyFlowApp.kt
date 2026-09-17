@@ -30,6 +30,7 @@ import dev.studyflow.core.designsystem.layout.StudyFlowScaffold
 import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
 import dev.studyflow.core.designsystem.theme.spacing
+import dev.studyflow.feature.settings.NotificationSettingsRoute
 
 @Composable
 internal fun StudyFlowApp(
@@ -99,7 +100,7 @@ private fun AppNavDisplay(
                         DestinationScreen(route.taskId?.let { "Task: $it" } ?: "Tasks")
                     }
                     entry<SettingsRoute> {
-                        DestinationScreen("Settings")
+                        NotificationSettingsRoute()
                     }
                 },
             modifier = modifier,
