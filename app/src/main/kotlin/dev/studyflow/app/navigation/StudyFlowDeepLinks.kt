@@ -9,6 +9,7 @@ internal enum class WidgetAction(
     TIMER("timer"),
     MATERIALS("materials"),
     TASKS("tasks"),
+    HISTORY("history"),
     SETTINGS("settings"),
 }
 
@@ -18,6 +19,7 @@ internal object StudyFlowDeepLinks {
     private const val TIMER = "timer"
     private const val MATERIALS = "materials"
     private const val TASKS = "tasks"
+    private const val HISTORY = "history"
     private const val SETTINGS = "settings"
     private const val WIDGET = "widget"
     private const val RUNNING = "running"
@@ -28,6 +30,7 @@ internal object StudyFlowDeepLinks {
             is TimerRoute -> uri(TIMER, RUNNING.takeIf { route.openRunningTimer })
             is MaterialsRoute -> uri(MATERIALS, route.materialId)
             is TasksRoute -> uri(TASKS, route.taskId)
+            HistoryRoute -> uri(HISTORY)
             SettingsRoute -> uri(SETTINGS)
         }
 
@@ -67,6 +70,10 @@ internal object StudyFlowDeepLinks {
                 identifier(segments)?.let(::TasksRoute) ?: TasksRoute().takeIf { segments.isEmpty() }
             }
 
+            HISTORY -> {
+                HistoryRoute.takeIf { segments.isEmpty() }
+            }
+
             SETTINGS -> {
                 SettingsRoute.takeIf { segments.isEmpty() }
             }
@@ -100,6 +107,7 @@ internal object StudyFlowDeepLinks {
             WidgetAction.TIMER.path -> TimerRoute(openRunningTimer = true)
             WidgetAction.MATERIALS.path -> MaterialsRoute()
             WidgetAction.TASKS.path -> TasksRoute()
+            WidgetAction.HISTORY.path -> HistoryRoute
             WidgetAction.SETTINGS.path -> SettingsRoute
             else -> null
         }

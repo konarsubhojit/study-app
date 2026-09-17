@@ -158,6 +158,43 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 7 to 8 preserves sessions, defaults manual_override to false and creates session_corrections`() {
+        helper.createDatabase(DATABASE_NAME, 7).use { database ->
+            database.insertVersionSevenSession()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database
+                    .query(
+                        "SELECT status, manual_override, override_counted_millis, override_unverified_millis " +
+                            "FROM study_sessions WHERE id = 'legacy-session'",
+                    ).use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("STOPPED", cursor.getString(0))
+                        assertEquals(
+                            "a row from before this correction feature existed keeps deriving elapsed time " +
+                                "from its event log",
+                            0,
+                            cursor.getInt(1),
+                        )
+                        assertTrue("no override recorded yet", cursor.isNull(2))
+                        assertTrue("no override recorded yet", cursor.isNull(3))
+                        assertFalse(cursor.moveToNext())
+                    }
+                database.query("SELECT COUNT(*) FROM session_corrections").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals("a brand-new table has nothing to backfill", 0, cursor.getInt(0))
+                }
+            }
+    }
+
+    @Test
     fun `migration 2 to 3 derives the session projection from the event log`() {
         helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
@@ -347,6 +384,18 @@ class DatabaseMigrationTest {
             """
             INSERT INTO session_events (id, session_id, type, uptime, wall_clock, boot_id, sequence)
             VALUES ('legacy-stop', 'legacy-session', 'STOPPED', 2000, 3000, 'boot-legacy', 1)
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionSevenSession() {
+        execSQL(
+            """
+            INSERT INTO study_sessions (
+                id, subject_id, note, status, started_at, ended_at, device_id, updated_at, deleted
+            ) VALUES (
+                'legacy-session', NULL, 'Algebra', 'STOPPED', 1000, 3000, 'device-legacy', 3000, 0
+            )
             """.trimIndent(),
         )
     }

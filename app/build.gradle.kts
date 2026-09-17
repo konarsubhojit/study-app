@@ -34,6 +34,7 @@ dependencies {
     implementation(projects.core.scheduling)
     implementation(projects.core.storage)
     implementation(projects.feature.auth)
+    implementation(projects.feature.history)
     implementation(projects.feature.insights)
     implementation(projects.feature.materials)
     implementation(projects.feature.settings)

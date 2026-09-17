@@ -13,6 +13,7 @@ import dev.studyflow.core.database.entity.MaterialEntity
 import dev.studyflow.core.database.entity.MaterialFtsEntity
 import dev.studyflow.core.database.entity.MaterialTagEntity
 import dev.studyflow.core.database.entity.ReminderEntity
+import dev.studyflow.core.database.entity.SessionCorrectionEntity
 import dev.studyflow.core.database.entity.SessionEventEntity
 import dev.studyflow.core.database.entity.StudySessionEntity
 import dev.studyflow.core.database.entity.StudyTaskEntity
@@ -35,8 +36,9 @@ import dev.studyflow.core.database.entity.TaskTagEntity
         SubtaskEntity::class,
         StudySessionEntity::class,
         SessionEventEntity::class,
+        SessionCorrectionEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -53,6 +55,6 @@ public abstract class StudyFlowDatabase : RoomDatabase() {
 
     public companion object {
         public const val NAME: String = "studyflow.db"
-        public const val VERSION: Int = 7
+        public const val VERSION: Int = 8
     }
 }

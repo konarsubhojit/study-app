@@ -23,6 +23,7 @@ class StudyFlowDeepLinksTest {
                 MaterialsRoute(materialId = "material / 42"),
                 TasksRoute(),
                 TasksRoute(taskId = "task / 42"),
+                HistoryRoute,
                 SettingsRoute,
             )
 
@@ -39,6 +40,7 @@ class StudyFlowDeepLinksTest {
                 TimerRoute(openRunningTimer = true),
                 MaterialsRoute(materialId = "material-42"),
                 TasksRoute(taskId = "task-42"),
+                HistoryRoute,
                 SettingsRoute,
             )
 
@@ -83,6 +85,7 @@ class StudyFlowDeepLinksTest {
                 WidgetAction.TIMER -> TimerRoute(openRunningTimer = true)
                 WidgetAction.MATERIALS -> MaterialsRoute()
                 WidgetAction.TASKS -> TasksRoute()
+                WidgetAction.HISTORY -> HistoryRoute
                 WidgetAction.SETTINGS -> SettingsRoute
             }
 }

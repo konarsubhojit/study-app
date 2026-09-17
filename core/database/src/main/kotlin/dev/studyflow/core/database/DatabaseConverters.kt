@@ -4,6 +4,7 @@ import androidx.room.TypeConverter
 import dev.studyflow.core.database.entity.MaterialSyncState
 import dev.studyflow.core.database.entity.RecurrenceEndType
 import dev.studyflow.core.database.entity.ReminderTriggerType
+import dev.studyflow.core.domain.session.SessionCorrectionType
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.RecurrenceFrequency
@@ -82,6 +83,13 @@ public class DatabaseConverters {
 
     @TypeConverter
     public fun stringToSessionStatus(value: String?): SessionStatus? = value?.let(SessionStatus::valueOf)
+
+    @TypeConverter
+    public fun correctionTypeToString(value: SessionCorrectionType?): String? = value?.name
+
+    @TypeConverter
+    public fun stringToCorrectionType(value: String?): SessionCorrectionType? =
+        value?.let(SessionCorrectionType::valueOf)
 
     @TypeConverter
     public fun reminderPrecisionToString(value: ReminderPrecision?): String? = value?.name
