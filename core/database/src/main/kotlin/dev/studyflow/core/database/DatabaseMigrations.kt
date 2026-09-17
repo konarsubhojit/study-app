@@ -94,16 +94,33 @@ public object DatabaseMigrations {
             }
         }
 
-    /** Version 5 completes the offline material catalog metadata, tag join table and FTS index. */
+    /**
+     * Version 5 widens the recurrence rule to the rest of the grammar the engine understands: a
+     * counted weekday ("every 2nd Tuesday"), a named month for a yearly rule, and the occurrence
+     * dates the user has removed from a series.
+     *
+     * Plain column additions: every one is nullable, and a row without them is the same rule it
+     * always was, so existing tasks need no rewriting.
+     */
     public val MIGRATION_4_5: Migration =
         object : Migration(4, 5) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE study_tasks ADD COLUMN recurrence_week_of_month INTEGER")
+                connection.execSQL("ALTER TABLE study_tasks ADD COLUMN recurrence_month_of_year INTEGER")
+                connection.execSQL("ALTER TABLE study_tasks ADD COLUMN recurrence_exceptions TEXT")
+            }
+        }
+
+    /** Version 6 completes the offline material catalog metadata, tag join table and FTS index. */
+    public val MIGRATION_5_6: Migration =
+        object : Migration(5, 6) {
             override fun migrate(connection: SQLiteConnection) {
                 connection.rebuildMaterialTables()
             }
         }
 
     public val ALL: Array<Migration>
-        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null
     // columns that SQLite cannot add in place, and Room validates the resulting DDL exactly.

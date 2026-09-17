@@ -3,6 +3,7 @@ import com.android.build.api.dsl.LibraryExtension
 plugins {
     id("studyflow.android.library")
     id("studyflow.room")
+    id("studyflow.hilt")
 }
 
 extensions.configure<LibraryExtension> {

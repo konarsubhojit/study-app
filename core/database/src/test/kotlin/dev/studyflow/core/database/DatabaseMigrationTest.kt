@@ -5,6 +5,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -86,8 +87,8 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration 4 to 5 preserves materials and builds the catalog index`() {
-        helper.createDatabase(DATABASE_NAME, 4).use { database ->
+    fun `migration 5 to 6 preserves materials and builds the catalog index`() {
+        helper.createDatabase(DATABASE_NAME, 5).use { database ->
             database.insertVersionFourMaterial()
         }
 
@@ -169,6 +170,36 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 4 to 5 keeps existing rules and leaves the new grammar unset`() {
+        helper.createDatabase(DATABASE_NAME, 4).use { database ->
+            database.insertVersionFourRecurringTask()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database
+                    .query(
+                        """
+                        SELECT recurrence_frequency, recurrence_days_of_week, recurrence_week_of_month,
+                        recurrence_month_of_year, recurrence_exceptions FROM study_tasks
+                        """.trimIndent(),
+                    ).use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("WEEKLY", cursor.getString(0))
+                        assertEquals("MONDAY,WEDNESDAY", cursor.getString(1))
+                        assertTrue("a pre-existing rule counts no weekday", cursor.isNull(2))
+                        assertTrue("a weekly rule names no month", cursor.isNull(3))
+                        assertTrue("nothing has been excluded from the series yet", cursor.isNull(4))
+                    }
+            }
+    }
+
+    @Test
     fun `migration registry covers every shipped version`() {
         val paths = DatabaseMigrations.ALL.map { it.startVersion to it.endVersion }
         val expected = (1 until StudyFlowDatabase.VERSION).map { it to it + 1 }
@@ -238,6 +269,23 @@ class DatabaseMigrationTest {
             ) VALUES (
                 'legacy-reminder', 'legacy-task', 1800000, 'EXACT', 'WEEKLY', 1, NULL, NULL,
                 'NEVER', NULL, NULL
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionFourRecurringTask() {
+        execSQL(
+            """
+            INSERT INTO study_tasks (
+                id, title, notes, subject_id, material_id, session_id, due_at, due_at_utc,
+                time_zone, is_all_day, priority, recurrence_frequency, recurrence_interval,
+                recurrence_days_of_week, recurrence_day_of_month, recurrence_end_type,
+                recurrence_end_count, recurrence_end_date, completed_at, updated_at, deleted
+            ) VALUES (
+                'weekly-task', 'Revise statistics', NULL, NULL, NULL, NULL, '2026-03-02T08:00',
+                1772438400000, 'Europe/London', 0, 'NORMAL', 'WEEKLY', 1, 'MONDAY,WEDNESDAY',
+                NULL, 'NEVER', NULL, NULL, NULL, 1772438400000, 0
             )
             """.trimIndent(),
         )

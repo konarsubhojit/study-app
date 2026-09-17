@@ -29,4 +29,10 @@ message UserSettings {
   optional SyncMode sync_mode = 8 [default = SYNC_MODE_WIFI_ONLY];
 
   reserved 9 to 15;
+
+  // A single "N tasks due today" morning notification instead of one ping per task (issue #47).
+  // Field 16 rather than reclaiming 9-15: those numbers are reserved, not merely unused, so a
+  // build that still has an old value serialized under one of them must keep failing to parse it
+  // as this field rather than silently reinterpreting old bytes.
+  optional bool digest_enabled = 16 [default = false];
 }

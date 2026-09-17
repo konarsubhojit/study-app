@@ -132,4 +132,18 @@ public class DatabaseConverters {
             ?.split(',')
             ?.mapTo(linkedSetOf(), DayOfWeek::valueOf)
             ?: value?.let { emptySet() }
+
+    // Exception dates are a short, unordered list read only with the row that owns them, so they
+    // live in that row rather than in a table nothing ever joins to.
+    @TypeConverter
+    public fun localDatesToString(value: Set<LocalDate>?): String? =
+        value?.sorted()?.joinToString(separator = ",", transform = LocalDate::toString)
+
+    @TypeConverter
+    public fun stringToLocalDates(value: String?): Set<LocalDate>? =
+        value
+            ?.takeIf(String::isNotEmpty)
+            ?.split(',')
+            ?.mapTo(linkedSetOf(), LocalDate::parse)
+            ?: value?.let { emptySet() }
 }

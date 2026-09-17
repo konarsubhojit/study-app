@@ -61,9 +61,12 @@ plus a full-screen intent for alarm-style. When the OS denies a capability the r
 *visibly* — the plan reports `EXACT_ALARMS_DENIED`, `NOTIFICATIONS_DENIED` and friends so the UI can
 explain rather than silently fail.
 
-Recurrence is an RRULE-lite subset evaluated in **local time**, so "every day at 08:00" stays at
-08:00 across DST (the real interval being 23 or 25 hours, which the tests assert), and "the 31st"
-clamps to the last day of February instead of being skipped.
+Recurrence is an RRULE-lite subset — daily/weekly/monthly/yearly, intervals, weekday sets, counted
+weekdays ("every 2nd Tuesday"), excluded dates and an end condition — evaluated in **local time**, so
+"every day at 08:00" stays at 08:00 across DST (the real interval being 23 or 25 hours, which the
+tests assert), and "the 31st" clamps to the last day of February instead of being skipped. A
+recurring task stores only its next occurrence; completing or skipping it advances the series by
+exactly one occurrence, and an edit applies either to that occurrence or to the series.
 
 Delivery goes through one notification layer: four documented channels, a `POST_NOTIFICATIONS`
 prompt deferred to a moment of value, and denials that are reported rather than swallowed.

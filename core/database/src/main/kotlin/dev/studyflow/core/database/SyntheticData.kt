@@ -163,6 +163,9 @@ public object SyntheticDataFactory {
                 recurrenceDaysOfWeek =
                     if (index % 2 == 0) setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY) else null,
                 recurrenceDayOfMonth = null,
+                recurrenceWeekOfMonth = null,
+                recurrenceMonthOfYear = null,
+                recurrenceExceptions = null,
                 recurrenceEndType = if (index % 2 == 0) RecurrenceEndType.NEVER else null,
                 recurrenceEndCount = null,
                 recurrenceEndDate = null,

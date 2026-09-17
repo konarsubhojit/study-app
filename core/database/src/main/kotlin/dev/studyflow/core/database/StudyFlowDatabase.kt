@@ -36,7 +36,7 @@ import dev.studyflow.core.database.entity.TaskTagEntity
         StudySessionEntity::class,
         SessionEventEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -53,6 +53,6 @@ public abstract class StudyFlowDatabase : RoomDatabase() {
 
     public companion object {
         public const val NAME: String = "studyflow.db"
-        public const val VERSION: Int = 5
+        public const val VERSION: Int = 6
     }
 }

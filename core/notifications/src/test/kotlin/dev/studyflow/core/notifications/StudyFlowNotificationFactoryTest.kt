@@ -123,13 +123,62 @@ class StudyFlowNotificationFactoryTest {
                 title = "Revise chapter 4",
                 text = "Due at 18:00",
                 contentIntent = openTimer,
-                whenEpochMillis = STARTED_AT,
+                presentation = AlertPresentation(whenEpochMillis = STARTED_AT),
             )
 
         assertEquals(StudyFlowNotificationChannel.TASK_REMINDERS.id, notification.channelId)
         assertEquals(Notification.CATEGORY_REMINDER, notification.category)
         assertTrue(notification.flags and Notification.FLAG_AUTO_CANCEL != 0)
         assertEquals(null, notification.fullScreenIntent)
+    }
+
+    @Test
+    fun `a reminder can carry the subject colour, a public fallback and a group key`() {
+        val publicVersion =
+            factory.alert(
+                channel = StudyFlowNotificationChannel.TASK_REMINDERS,
+                title = "You have a reminder",
+                text = "",
+                contentIntent = null,
+            )
+
+        val notification =
+            factory.alert(
+                channel = StudyFlowNotificationChannel.TASK_REMINDERS,
+                title = "Revise chapter 4",
+                text = "Due at 18:00",
+                contentIntent = openTimer,
+                presentation =
+                    AlertPresentation(color = SUBJECT_COLOR, publicVersion = publicVersion, group = GROUP_KEY),
+            )
+
+        assertEquals(SUBJECT_COLOR, notification.color)
+        assertEquals(GROUP_KEY, notification.group)
+        assertEquals("You have a reminder", publicVersion.extras.getCharSequence(Notification.EXTRA_TITLE).toString())
+        assertEquals(
+            "You have a reminder",
+            notification.publicVersion
+                ?.extras
+                ?.getCharSequence(Notification.EXTRA_TITLE)
+                .toString(),
+        )
+        assertTrue(notification.flags and Notification.FLAG_ONLY_ALERT_ONCE != 0)
+    }
+
+    @Test
+    fun `a grouped reminder summary lists every reminder and never posts a heads-up alert per task`() {
+        val summary =
+            factory.groupedReminderSummary(
+                title = "3 tasks need your attention",
+                text = "3 reminders",
+                lines = listOf("Revise chapter 4", "Submit essay", "Practice set 7"),
+                contentIntent = openTimer,
+                group = GROUP_KEY,
+            )
+
+        assertEquals(GROUP_KEY, summary.group)
+        assertTrue(summary.flags and Notification.FLAG_GROUP_SUMMARY != 0)
+        assertEquals(StudyFlowNotificationChannel.TASK_REMINDERS.id, summary.channelId)
     }
 
     @Test
@@ -201,5 +250,7 @@ class StudyFlowNotificationFactoryTest {
     private companion object {
         const val SMALL_ICON = android.R.drawable.ic_dialog_info
         const val STARTED_AT = 1_772_000_000_000L
+        const val SUBJECT_COLOR = 0xFF3366CC.toInt()
+        const val GROUP_KEY = "studyflow.reminders"
     }
 }
