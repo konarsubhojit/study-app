@@ -21,6 +21,7 @@ import dev.studyflow.core.database.repository.OfflineFirstSubjectRepository
 import dev.studyflow.core.database.repository.OfflineFirstTaskRepository
 import dev.studyflow.core.database.session.OfflineFirstSessionRepository
 import dev.studyflow.core.domain.session.SessionRepository
+import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
 import javax.inject.Singleton
@@ -78,7 +79,8 @@ public object ProvisionalRepositoryModule {
     public fun sessionRepository(
         dao: SessionDao,
         @ApplicationContext context: Context,
-    ): SessionRepository = OfflineFirstSessionRepository(dao, deviceId(context))
+        observers: Set<@JvmSuppressWildcards SessionCommandObserver>,
+    ): SessionRepository = OfflineFirstSessionRepository(dao, deviceId(context), observers)
 
     /** A per-install, per-device identifier; stable without needing a persisted UUID of our own. */
     private fun deviceId(context: Context): String =

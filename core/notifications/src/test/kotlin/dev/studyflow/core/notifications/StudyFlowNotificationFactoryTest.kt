@@ -59,6 +59,21 @@ class StudyFlowNotificationFactoryTest {
     }
 
     @Test
+    fun `a paused timer remains ongoing without ticking`() {
+        val notification =
+            factory.ongoingChronometer(
+                title = "Studying",
+                text = "Timer paused",
+                startedAtEpochMillis = STARTED_AT,
+                contentIntent = openTimer,
+                usesChronometer = false,
+            )
+
+        assertFalse(notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))
+        assertTrue(notification.flags and Notification.FLAG_ONGOING_EVENT != 0)
+    }
+
+    @Test
     fun `upload progress is determinate, ongoing and silent while it runs`() {
         val notification =
             factory.progress(
@@ -214,8 +229,14 @@ class StudyFlowNotificationFactoryTest {
                 requestCode = 1,
                 intent = Intent("dev.studyflow.PAUSE").setPackage(context.packageName),
             )
+        val service =
+            StudyFlowPendingIntents.service(
+                context,
+                requestCode = 2,
+                intent = Intent("dev.studyflow.STOP").setPackage(context.packageName),
+            )
 
-        listOf(openTimer, broadcast).forEach { pendingIntent ->
+        listOf(openTimer, broadcast, service).forEach { pendingIntent ->
             val flags = shadowOf(pendingIntent).flags
             assertTrue("mutable PendingIntent", flags and PendingIntent.FLAG_IMMUTABLE != 0)
             assertEquals(0, flags and PendingIntent.FLAG_MUTABLE)

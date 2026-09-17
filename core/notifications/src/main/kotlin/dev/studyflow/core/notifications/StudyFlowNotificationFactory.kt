@@ -86,6 +86,7 @@ public class StudyFlowNotificationFactory(
         contentIntent: PendingIntent?,
         actions: List<NotificationAction> = emptyList(),
         countDown: Boolean = false,
+        usesChronometer: Boolean = true,
         channel: StudyFlowNotificationChannel = StudyFlowNotificationChannel.STUDY_TIMER,
     ): Notification =
         builder(channel)
@@ -94,11 +95,12 @@ public class StudyFlowNotificationFactory(
             .setContentIntent(contentIntent)
             .setWhen(startedAtEpochMillis)
             .setShowWhen(true)
-            .setUsesChronometer(true)
+            .setUsesChronometer(usesChronometer)
             .setChronometerCountDown(countDown)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .withActions(actions)
             .build()
 

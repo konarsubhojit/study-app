@@ -4,6 +4,7 @@ import androidx.room.Room
 import dev.studyflow.core.database.DATABASE_ROBOLECTRIC_SDK
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.entity.asEntity
+import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.domain.timer.TimerRejection
@@ -213,6 +214,39 @@ class OfflineFirstSessionRepositoryTest {
 
             assertEquals(SessionCommandResult.Unchanged(TimerState.Idle), result)
             assertEquals(0, database.sessionDao().count())
+        }
+
+    @Test
+    fun `applied commands notify observers after storage commits`() =
+        runBlocking {
+            val observed = mutableListOf<SessionCommandResult.Applied>()
+            repository =
+                OfflineFirstSessionRepository(
+                    database.sessionDao(),
+                    DEVICE_ID,
+                    observers = setOf(SessionCommandObserver { observed += it }),
+                )
+
+            val applied = repository.start()
+
+            assertEquals(listOf(applied), observed)
+            assertEquals(SESSION_ID, database.sessionDao().observeSession(SESSION_ID).first()?.session?.id)
+        }
+
+    @Test
+    fun `rejected commands do not notify command observers`() =
+        runBlocking {
+            var notifications = 0
+            repository =
+                OfflineFirstSessionRepository(
+                    database.sessionDao(),
+                    DEVICE_ID,
+                    observers = setOf(SessionCommandObserver { notifications++ }),
+                )
+
+            repository.execute(TimerCommand.Pause, "event-pause", device.anchor())
+
+            assertEquals(0, notifications)
         }
 
     private suspend fun OfflineFirstSessionRepository.start(): SessionCommandResult.Applied =

@@ -7,6 +7,7 @@ import dev.studyflow.core.database.entity.asEntity
 import dev.studyflow.core.database.entity.asExternalModel
 import dev.studyflow.core.domain.result.toDomainError
 import dev.studyflow.core.domain.session.SessionCommandResult
+import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionDescriptor
 import dev.studyflow.core.domain.session.SessionReducer
 import dev.studyflow.core.domain.session.SessionRepository
@@ -39,6 +40,7 @@ import kotlinx.coroutines.sync.withLock
 public class OfflineFirstSessionRepository(
     private val dao: SessionDao,
     private val deviceId: String,
+    private val observers: Set<SessionCommandObserver> = emptySet(),
 ) : SessionRepository {
     /**
      * Serialises command evaluation within the process.
@@ -73,50 +75,69 @@ public class OfflineFirstSessionRepository(
         eventId: String,
         anchor: TimeAnchor,
     ): SessionCommandResult =
-        commandLock.withLock {
-            runCatchingStorage {
-                val active = activeSession()
-                val state = active?.foldEvents() ?: TimerState.Idle
+        commandLock
+            .withLock {
+                runCatchingStorage {
+                    val active = activeSession()
+                    val state = active?.foldEvents() ?: TimerState.Idle
 
-                when (val outcome = TimerEngine.execute(state, command, eventId, anchor)) {
-                    is TimerCommandResult.Rejected -> {
-                        SessionCommandResult.Rejected(outcome.reason)
-                    }
+                    when (val outcome = TimerEngine.execute(state, command, eventId, anchor)) {
+                        is TimerCommandResult.Rejected -> {
+                            SessionCommandResult.Rejected(outcome.reason)
+                        }
 
-                    is TimerCommandResult.Accepted -> {
-                        commit(
-                            descriptor = command.descriptorFor(active),
-                            events = active.eventsPlus(outcome.event),
-                            event = outcome.event,
-                        )
+                        is TimerCommandResult.Accepted -> {
+                            commit(
+                                descriptor = command.descriptorFor(active),
+                                events = active.eventsPlus(outcome.event),
+                                event = outcome.event,
+                            )
+                        }
                     }
                 }
-            }
-        }
+            }.alsoNotify()
 
     override suspend fun reconcile(
         eventId: String,
         now: TimeAnchor,
     ): SessionCommandResult =
-        commandLock.withLock {
-            runCatchingStorage {
-                val active =
-                    activeSession() ?: return@runCatchingStorage SessionCommandResult.Unchanged(TimerState.Idle)
-                when (val outcome = TimerEngine.reconcile(active.foldEvents(), eventId, now)) {
-                    is TimerReconciliation.Unchanged -> {
-                        SessionCommandResult.Unchanged(outcome.state)
-                    }
+        commandLock
+            .withLock {
+                runCatchingStorage {
+                    val active =
+                        activeSession() ?: return@runCatchingStorage SessionCommandResult.Unchanged(TimerState.Idle)
+                    when (val outcome = TimerEngine.reconcile(active.foldEvents(), eventId, now)) {
+                        is TimerReconciliation.Unchanged -> {
+                            SessionCommandResult.Unchanged(outcome.state)
+                        }
 
-                    is TimerReconciliation.RebootGap -> {
-                        commit(
-                            descriptor = active.session.asDescriptor(),
-                            events = active.eventsPlus(outcome.event),
-                            event = outcome.event,
-                        )
+                        is TimerReconciliation.RebootGap -> {
+                            commit(
+                                descriptor = active.session.asDescriptor(),
+                                events = active.eventsPlus(outcome.event),
+                                event = outcome.event,
+                            )
+                        }
                     }
                 }
+            }.alsoNotify()
+
+    private fun SessionCommandResult.alsoNotify(): SessionCommandResult {
+        if (this !is SessionCommandResult.Applied) return this
+        observers.forEach { observer ->
+            try {
+                observer.onSessionCommandApplied(this)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (
+                @Suppress("TooGenericExceptionCaught") _: Throwable,
+            ) {
+                // The command is already durable; foreground-service refresh failures must not
+                // rewrite the repository outcome.
             }
         }
+        return this
+    }
 
     /** Writes [event] and the projection its log implies, atomically. */
     private suspend fun commit(
