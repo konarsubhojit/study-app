@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onStart
+import kotlin.time.Duration
 
 public data class TimerUiState(
     val elapsedSeconds: Int = 0,
@@ -55,9 +56,11 @@ public class TimerViewModel(
                     TimerEngine
                         .elapsedAt(this, now)
                         .counted
-                        .inWholeSeconds
-                        .coerceIn(0, Int.MAX_VALUE.toLong())
-                        .toInt(),
+                        .toDisplaySeconds(),
             )
+
+        private fun Duration.toDisplaySeconds(): Int =
+            // TimerUiState uses Int for display; clamp extreme sessions rather than overflowing.
+            inWholeSeconds.coerceIn(0, Int.MAX_VALUE.toLong()).toInt()
     }
 }
