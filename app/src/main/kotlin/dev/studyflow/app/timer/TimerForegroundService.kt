@@ -25,7 +25,6 @@ import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.domain.timer.TimerEngine
 import dev.studyflow.core.domain.timer.TimerState
 import dev.studyflow.core.model.BootId
-import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.TimeAnchor
 import dev.studyflow.core.notifications.ChronometerPresentation
 import dev.studyflow.core.notifications.NotificationAction
@@ -37,9 +36,9 @@ import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
 private const val NOTIFICATION_ID = 33_003
@@ -59,7 +58,7 @@ internal class TimerForegroundService : Service() {
     @Inject lateinit var wallClock: Clock
 
     private lateinit var scope: CoroutineScope
-    private var foregroundStarted = false
+    private val foregroundStarted = AtomicBoolean(false)
 
     override fun onCreate() {
         super.onCreate()
@@ -71,7 +70,7 @@ internal class TimerForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
-        if (!foregroundStarted) startPlaceholderForeground()
+        if (foregroundStarted.compareAndSet(false, true)) startPlaceholderForeground()
         scope.launch {
             when (intent?.action) {
                 ACTION_REFRESH -> refreshFromRepository()
@@ -114,13 +113,13 @@ internal class TimerForegroundService : Service() {
             TimerState.Idle, is TimerState.Stopped -> stopTimerForeground()
             is TimerState.Running -> {
                 activeTimerStore.set(state.activeTimer())
-                startTimerForeground(state, sessionRepository.observeActiveSession().first())
+                startTimerForeground(state)
             }
             is TimerState.Paused -> {
                 // Only a ticking interval has an anchor to recover; paused elapsed time is already
                 // settled in the event log.
                 activeTimerStore.clear()
-                startTimerForeground(state, sessionRepository.observeActiveSession().first())
+                startTimerForeground(state)
             }
         }
     }
@@ -134,20 +133,16 @@ internal class TimerForegroundService : Service() {
                 startedAtEpochMillis = wallClock.now().toEpochMilliseconds(),
                 contentIntent = openIntent(),
                 chronometer = ChronometerPresentation(usesChronometer = false),
-            )
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
-            foregroundStarted = true
+                )
+            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
     }
 
-    private fun startTimerForeground(
-        state: TimerState.Active,
-        session: StudySession?,
-    ) {
-        notificationChannelRegistrar.register()
-        val now = currentAnchor()
-        val notification =
-            notificationFactory.ongoingChronometer(
-                title = session?.note?.takeIf(String::isNotBlank) ?: getString(R.string.timer_notification_title),
+    private fun startTimerForeground(state: TimerState.Active) {
+            notificationChannelRegistrar.register()
+            val now = currentAnchor()
+            val notification =
+                notificationFactory.ongoingChronometer(
+                    title = getString(R.string.timer_notification_title),
                 text =
                     if (state is TimerState.Running) {
                         getString(R.string.timer_notification_running)
@@ -160,14 +155,14 @@ internal class TimerForegroundService : Service() {
                 chronometer = ChronometerPresentation(usesChronometer = state is TimerState.Running),
             )
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
-        foregroundStarted = true
+        foregroundStarted.set(true)
     }
 
     private suspend fun stopTimerForeground() {
         activeTimerStore.clear()
         notifier.cancel(NOTIFICATION_ID)
         stopForeground(STOP_FOREGROUND_REMOVE)
-        foregroundStarted = false
+        foregroundStarted.set(false)
         stopSelf()
     }
 
