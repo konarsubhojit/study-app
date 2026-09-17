@@ -155,18 +155,30 @@ public class HistoryViewModel
                     errorMessage.value = null
                 }
 
-                else -> Unit
+                else -> {}
             }
         }
 
         /** Delete and undo intents — either applies a tombstone or reverses the last one. */
         private fun onDeleteEvent(event: HistoryUiEvent) {
             when (event) {
-                is HistoryUiEvent.DeleteRequested -> delete(listOf(event.sessionId))
-                HistoryUiEvent.BulkDeleteRequested -> delete(selectedIds.value.toList())
-                HistoryUiEvent.UndoRequested -> undoLastDeletion()
-                HistoryUiEvent.UndoDismissed -> undo.value = null
-                else -> Unit
+                is HistoryUiEvent.DeleteRequested -> {
+                    delete(listOf(event.sessionId))
+                }
+
+                HistoryUiEvent.BulkDeleteRequested -> {
+                    delete(selectedIds.value.toList())
+                }
+
+                HistoryUiEvent.UndoRequested -> {
+                    undoLastDeletion()
+                }
+
+                HistoryUiEvent.UndoDismissed -> {
+                    undo.value = null
+                }
+
+                else -> {}
             }
         }
 
@@ -183,7 +195,9 @@ public class HistoryViewModel
                     if (current != null) dialog.value = current.copy(at = event.at)
                 }
 
-                HistoryUiEvent.SplitConfirmed -> confirmSplit()
+                HistoryUiEvent.SplitConfirmed -> {
+                    confirmSplit()
+                }
 
                 HistoryUiEvent.MergeRequested -> {
                     if (selectedIds.value.size >= MIN_MERGE_SESSIONS) {
@@ -191,8 +205,11 @@ public class HistoryViewModel
                     }
                 }
 
-                HistoryUiEvent.MergeConfirmed -> confirmMerge()
-                else -> Unit
+                HistoryUiEvent.MergeConfirmed -> {
+                    confirmMerge()
+                }
+
+                else -> {}
             }
         }
 
@@ -217,11 +234,18 @@ public class HistoryViewModel
 
                 is HistoryUiEvent.ManualEntryTimingChanged -> {
                     val current = dialog.value as? HistoryDialog.ManualEntry
-                    if (current != null) dialog.value = current.copy(startedAt = event.startedAt, endedAt = event.endedAt)
+                    if (current !=
+                        null
+                    ) {
+                        dialog.value = current.copy(startedAt = event.startedAt, endedAt = event.endedAt)
+                    }
                 }
 
-                HistoryUiEvent.ManualEntryConfirmed -> confirmManualEntry()
-                else -> Unit
+                HistoryUiEvent.ManualEntryConfirmed -> {
+                    confirmManualEntry()
+                }
+
+                else -> {}
             }
         }
 
@@ -240,11 +264,18 @@ public class HistoryViewModel
 
                 is HistoryUiEvent.EditTimingChanged -> {
                     val current = dialog.value as? HistoryDialog.Edit
-                    if (current != null) dialog.value = current.copy(startedAt = event.startedAt, endedAt = event.endedAt)
+                    if (current !=
+                        null
+                    ) {
+                        dialog.value = current.copy(startedAt = event.startedAt, endedAt = event.endedAt)
+                    }
                 }
 
-                HistoryUiEvent.EditConfirmed -> confirmEdit()
-                else -> Unit
+                HistoryUiEvent.EditConfirmed -> {
+                    confirmEdit()
+                }
+
+                else -> {}
             }
         }
 
@@ -333,7 +364,9 @@ public class HistoryViewModel
         private fun undoLastDeletion() {
             val pending = undo.value ?: return
             viewModelScope.launch {
-                pending.sessionIds.forEach { sessionId -> repository.undo(sessionId, newId(), clock.now()) }
+                for (sessionId in pending.sessionIds) {
+                    if (!repository.undo(sessionId, newId(), clock.now()).handle()) return@launch
+                }
                 undo.value = null
             }
         }

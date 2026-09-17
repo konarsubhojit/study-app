@@ -2,6 +2,7 @@ package dev.studyflow.feature.history
 
 import androidx.lifecycle.SavedStateHandle
 import dev.studyflow.core.common.time.DeviceIdProvider
+import dev.studyflow.core.domain.result.UserMessage
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.data.FakeSessionHistoryRepository
 import dev.studyflow.core.testing.data.FakeSubjectRepository
@@ -145,6 +146,34 @@ class HistoryViewModelTest {
 
             assertNull(viewModel.state.value.dialog)
             assertEquals(1, repository.corrections.size)
+        }
+
+    @Test
+    fun `manual entry failure keeps the form open and reports a safe error`() =
+        runTest(mainDispatcher.dispatcher) {
+            val repository = FakeSessionHistoryRepository().apply { failNext = true }
+            val viewModel = viewModel(repository)
+
+            viewModel.onEvent(HistoryUiEvent.ManualEntryRequested)
+            viewModel.onEvent(HistoryUiEvent.ManualEntryConfirmed)
+            advanceUntilIdle()
+
+            assertNotNull(viewModel.state.value.dialog as? HistoryDialog.ManualEntry)
+            assertEquals(UserMessage.Unknown, viewModel.state.value.errorMessage)
+        }
+
+    @Test
+    fun `changing the date filter retains both bounds`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel(FakeSessionHistoryRepository())
+            val from = device.now() - 60.minutes
+            val to = device.now()
+
+            viewModel.onEvent(HistoryUiEvent.DateRangeFilterChanged(from, to))
+            advanceUntilIdle()
+
+            assertEquals(from, viewModel.state.value.filter.from)
+            assertEquals(to, viewModel.state.value.filter.to)
         }
 
     private fun stopped(session: dev.studyflow.core.model.StudySession) =

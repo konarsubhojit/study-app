@@ -24,6 +24,7 @@ graph TD
     core_ui[":core:ui"]
     feature[":feature"]
     feature_auth[":feature:auth"]
+    feature_history[":feature:history"]
     feature_insights[":feature:insights"]
     feature_materials[":feature:materials"]
     feature_settings[":feature:settings"]
@@ -37,6 +38,7 @@ graph TD
     app --> core_scheduling
     app --> core_storage
     app --> feature_auth
+    app --> feature_history
     app --> feature_insights
     app --> feature_materials
     app --> feature_settings
@@ -65,6 +67,11 @@ graph TD
     feature_auth --> core_common
     feature_auth --> core_domain
     feature_auth --> core_model
+    feature_history --> core_common
+    feature_history --> core_designsystem
+    feature_history --> core_domain
+    feature_history --> core_model
+    feature_history --> core_ui
     feature_insights --> core_common
     feature_insights --> core_domain
     feature_insights --> core_model
@@ -102,6 +109,7 @@ graph TD
 | `:core:scheduling` | `:core:testing` |
 | `:core:storage` | `:core:testing` |
 | `:feature:auth` | `:core:testing` |
+| `:feature:history` | `:core:testing` |
 | `:feature:insights` | `:core:testing` |
 | `:feature:materials` | `:core:testing` |
 | `:feature:settings` | `:core:testing` |

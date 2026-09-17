@@ -11,13 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Snackbar
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -25,8 +25,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -36,7 +38,6 @@ import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.domain.result.UserMessage
 import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.Subject
-import dev.studyflow.core.ui.components.StudyFlowDialog
 import dev.studyflow.core.ui.components.StudyFlowListItem
 import dev.studyflow.core.ui.components.StudyFlowTopAppBar
 import dev.studyflow.core.ui.state.EmptyState
@@ -269,6 +270,9 @@ private fun SessionRow(
                         onCheckedChange = { onEvent(HistoryUiEvent.SelectionToggled(session.id)) },
                     )
                 } else {
+                    TextButton(onClick = { onEvent(HistoryUiEvent.SelectionToggled(session.id)) }) {
+                        Text("Select")
+                    }
                     TextButton(onClick = { onEvent(HistoryUiEvent.SplitRequested(session)) }) { Text("Split") }
                     TextButton(onClick = { onEvent(HistoryUiEvent.DeleteRequested(session.id)) }) { Text("Delete") }
                 }
@@ -300,9 +304,8 @@ private fun HistoryDialogHost(
         }
 
         is HistoryDialog.Merge -> {
-            StudyFlowDialog(
-                title = "Merge ${dialog.sessionIds.size} sessions?",
-                text = "Their time will be combined into one session. This can be undone afterwards.",
+            AlertDialog(
+                title = { Text("Merge ${dialog.sessionIds.size} sessions?") },
                 onDismissRequest = { onEvent(HistoryUiEvent.DialogDismissed) },
                 confirmButton = {
                     TextButton(onClick = { onEvent(HistoryUiEvent.MergeConfirmed) }) { Text("Merge") }
@@ -310,6 +313,7 @@ private fun HistoryDialogHost(
                 dismissButton = {
                     TextButton(onClick = { onEvent(HistoryUiEvent.DialogDismissed) }) { Text("Cancel") }
                 },
+                text = { Text("Their time will be combined into one session.") },
             )
         }
 
@@ -325,29 +329,27 @@ private fun EditSessionDialog(
     subjectOptions: List<Subject>,
     onEvent: (HistoryUiEvent) -> Unit,
 ) {
-    StudyFlowDialog(
-        title = "Edit session",
+    AlertDialog(
+        title = { Text("Edit session") },
         onDismissRequest = { onEvent(HistoryUiEvent.DialogDismissed) },
-        text = null,
         confirmButton = {
             TextButton(onClick = { onEvent(HistoryUiEvent.EditConfirmed) }) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = { onEvent(HistoryUiEvent.DialogDismissed) }) { Text("Cancel") }
         },
+        text = {
+            SessionForm(
+                value = dialog.asFormValue(),
+                subjectOptions = subjectOptions,
+                onSubjectChange = { onEvent(HistoryUiEvent.EditSubjectChanged(it)) },
+                onNoteChange = { onEvent(HistoryUiEvent.EditNoteChanged(it)) },
+                onTimingChange = { startedAt, endedAt ->
+                    onEvent(HistoryUiEvent.EditTimingChanged(startedAt, endedAt))
+                },
+            )
+        },
     )
-    Column(modifier = Modifier.padding(MaterialTheme.spacing.medium)) {
-        SubjectPicker(
-            selectedSubjectId = dialog.subjectId,
-            subjectOptions = subjectOptions,
-            onSubjectChange = { onEvent(HistoryUiEvent.EditSubjectChanged(it)) },
-        )
-        OutlinedTextField(
-            value = dialog.note,
-            onValueChange = { onEvent(HistoryUiEvent.EditNoteChanged(it)) },
-            label = { Text("Note") },
-        )
-    }
 }
 
 @Composable
@@ -355,15 +357,24 @@ private fun SplitSessionDialog(
     dialog: HistoryDialog.Split,
     onEvent: (HistoryUiEvent) -> Unit,
 ) {
-    StudyFlowDialog(
-        title = "Split session",
-        text = "The session will be divided into two at ${dialog.at}. This defaults to the midpoint.",
+    AlertDialog(
+        title = { Text("Split session") },
         onDismissRequest = { onEvent(HistoryUiEvent.DialogDismissed) },
         confirmButton = {
             TextButton(onClick = { onEvent(HistoryUiEvent.SplitConfirmed) }) { Text("Split") }
         },
         dismissButton = {
             TextButton(onClick = { onEvent(HistoryUiEvent.DialogDismissed) }) { Text("Cancel") }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+                Text("The session will be divided into two at this time.")
+                InstantField(
+                    label = "Split time",
+                    value = dialog.at,
+                    onValueChange = { onEvent(HistoryUiEvent.SplitInstantChanged(it)) },
+                )
+            }
         },
     )
 }
@@ -374,30 +385,73 @@ private fun ManualEntryDialog(
     subjectOptions: List<Subject>,
     onEvent: (HistoryUiEvent) -> Unit,
 ) {
-    StudyFlowDialog(
-        title = "Add manual entry",
+    AlertDialog(
+        title = { Text("Add manual entry") },
         onDismissRequest = { onEvent(HistoryUiEvent.DialogDismissed) },
-        text = null,
         confirmButton = {
             TextButton(onClick = { onEvent(HistoryUiEvent.ManualEntryConfirmed) }) { Text("Save") }
         },
         dismissButton = {
             TextButton(onClick = { onEvent(HistoryUiEvent.DialogDismissed) }) { Text("Cancel") }
         },
+        text = {
+            SessionForm(
+                value = dialog.asFormValue(),
+                subjectOptions = subjectOptions,
+                onSubjectChange = { onEvent(HistoryUiEvent.ManualEntrySubjectChanged(it)) },
+                onNoteChange = { onEvent(HistoryUiEvent.ManualEntryNoteChanged(it)) },
+                onTimingChange = { startedAt, endedAt ->
+                    onEvent(HistoryUiEvent.ManualEntryTimingChanged(startedAt, endedAt))
+                },
+            )
+        },
     )
-    Column(modifier = Modifier.padding(MaterialTheme.spacing.medium)) {
+}
+
+@Composable
+private fun SessionForm(
+    value: SessionFormValue,
+    subjectOptions: List<Subject>,
+    onSubjectChange: (String?) -> Unit,
+    onNoteChange: (String) -> Unit,
+    onTimingChange: (Instant, Instant) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
         SubjectPicker(
-            selectedSubjectId = dialog.subjectId,
+            selectedSubjectId = value.subjectId,
             subjectOptions = subjectOptions,
-            onSubjectChange = { onEvent(HistoryUiEvent.ManualEntrySubjectChanged(it)) },
+            onSubjectChange = onSubjectChange,
         )
         OutlinedTextField(
-            value = dialog.note,
-            onValueChange = { onEvent(HistoryUiEvent.ManualEntryNoteChanged(it)) },
+            value = value.note,
+            onValueChange = onNoteChange,
             label = { Text("Note") },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        InstantField(
+            label = "Started at",
+            value = value.startedAt,
+            onValueChange = { onTimingChange(it, value.endedAt) },
+        )
+        InstantField(
+            label = "Ended at",
+            value = value.endedAt,
+            onValueChange = { onTimingChange(value.startedAt, it) },
         )
     }
 }
+
+private data class SessionFormValue(
+    val subjectId: String?,
+    val note: String,
+    val startedAt: Instant,
+    val endedAt: Instant,
+)
+
+private fun HistoryDialog.Edit.asFormValue(): SessionFormValue = SessionFormValue(subjectId, note, startedAt, endedAt)
+
+private fun HistoryDialog.ManualEntry.asFormValue(): SessionFormValue =
+    SessionFormValue(subjectId, note, startedAt, endedAt)
 
 @Composable
 private fun SubjectPicker(
@@ -406,6 +460,13 @@ private fun SubjectPicker(
     onSubjectChange: (String?) -> Unit,
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+        item {
+            FilterChip(
+                selected = selectedSubjectId == null,
+                onClick = { onSubjectChange(null) },
+                label = { Text("No subject") },
+            )
+        }
         items(subjectOptions, key = { it.id }) { subject ->
             FilterChip(
                 selected = selectedSubjectId == subject.id,
@@ -414,6 +475,26 @@ private fun SubjectPicker(
             )
         }
     }
+}
+
+@Composable
+private fun InstantField(
+    label: String,
+    value: Instant,
+    onValueChange: (Instant) -> Unit,
+) {
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    OutlinedTextField(
+        value = text,
+        onValueChange = { updated ->
+            text = updated
+            runCatching { Instant.parse(updated) }.getOrNull()?.let(onValueChange)
+        },
+        label = { Text(label) },
+        supportingText = { Text("Use ISO-8601, for example 2026-09-17T15:30:00Z") },
+        singleLine = true,
+        modifier = Modifier.fillMaxWidth(),
+    )
 }
 
 private fun Instant.toLocalDay(): String = toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
