@@ -23,10 +23,8 @@ import javax.inject.Singleton
 /**
  * The materials catalogue and file-import pipeline, assembled once for the whole app (issue #37).
  *
- * The database itself is provided here rather than inside `:core:database`: every other
- * Context-dependent binding in this app (see [NotificationsModule]) is wired at this level too, so
- * swapping an adapter — or, eventually, giving the tasks and sessions repositories their own
- * bindings alongside this one — always means editing the same place.
+ * The shared database is provided by `:core:database`; this module only exposes the material
+ * catalogue adapter and Android file-import bindings.
  */
 @Module
 @InstallIn(SingletonComponent::class)

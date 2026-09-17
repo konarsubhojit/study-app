@@ -4,6 +4,8 @@ import androidx.room.Room
 import dev.studyflow.core.database.DATABASE_ROBOLECTRIC_SDK
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.entity.asEntity
+import dev.studyflow.core.domain.result.DomainError
+import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.domain.timer.TimerRejection
@@ -26,6 +28,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 
 /**
@@ -168,6 +171,61 @@ class OfflineFirstSessionRepositoryTest {
         }
 
     @Test
+    fun `retrying a partially written event repairs the projection without duplicating the log`() =
+        runBlocking {
+            repository.start()
+            device.advance(12.minutes)
+            val partial = pauseEvent(sequence = 1)
+            database.sessionDao().appendEvent(partial.asEntity())
+
+            val retried = repository.execute(TimerCommand.Pause, partial.id, partial.anchor).applied()
+
+            assertEquals(SessionStatus.PAUSED, retried.session.status)
+            assertEquals(12.minutes, retried.session.elapsed.counted)
+            assertEquals(
+                listOf(SessionEventType.STARTED, SessionEventType.PAUSED),
+                database
+                    .sessionDao()
+                    .observeEvents(SESSION_ID)
+                    .first()
+                    .map { it.type },
+            )
+            assertEquals(SessionStatus.PAUSED, repository.observeActiveSession().first()?.status)
+        }
+
+    @Test
+    fun `retrying an already committed event returns the original outcome`() =
+        runBlocking {
+            repository.start()
+            device.advance(12.minutes)
+            val first = repository.execute(TimerCommand.Pause, "event-pause", device.anchor()).applied()
+
+            val retried = repository.execute(TimerCommand.Pause, "event-pause", device.anchor()).applied()
+
+            assertEquals(first.session, retried.session)
+            assertEquals(
+                listOf(SessionEventType.STARTED, SessionEventType.PAUSED),
+                database
+                    .sessionDao()
+                    .observeEvents(SESSION_ID)
+                    .first()
+                    .map { it.type },
+            )
+        }
+
+    @Test
+    fun `reusing an event id for a different command is rejected as invalid`() =
+        runBlocking {
+            repository.start()
+            device.advance(12.minutes)
+            repository.execute(TimerCommand.Pause, "event-pause", device.anchor()).applied()
+
+            val result = repository.execute(TimerCommand.Stop, "event-pause", device.anchor())
+
+            assertEquals(SessionCommandResult.Failed(DomainError.Validation), result)
+        }
+
+    @Test
     fun `a failed append leaves neither the event nor the projection`() =
         runBlocking {
             repository.start()
@@ -207,12 +265,64 @@ class OfflineFirstSessionRepositoryTest {
         }
 
     @Test
+    fun `a same boot session exceeding the maximum is reconciled to paused`() =
+        runBlocking {
+            val cappedRepository =
+                OfflineFirstSessionRepository(
+                    database.sessionDao(),
+                    DEVICE_ID,
+                    maximumRunningDuration = 2.hours,
+                )
+            cappedRepository.start()
+            device.advance(3.hours)
+
+            val reconciled = cappedRepository.reconcile("event-cap", device.anchor()).applied()
+
+            assertEquals(SessionStatus.PAUSED, reconciled.session.status)
+            assertEquals(2.hours, reconciled.session.elapsed.counted)
+            assertEquals(Duration.ZERO, reconciled.session.elapsed.unverified)
+        }
+
+    @Test
     fun `reconciliation without a session writes nothing`() =
         runBlocking {
             val result = repository.reconcile("event-reboot", device.anchor())
 
             assertEquals(SessionCommandResult.Unchanged(TimerState.Idle), result)
             assertEquals(0, database.sessionDao().count())
+        }
+
+    @Test
+    fun `applied commands notify observers after storage commits`() =
+        runBlocking {
+            val observed = mutableListOf<SessionCommandResult.Applied>()
+            repository =
+                OfflineFirstSessionRepository(
+                    database.sessionDao(),
+                    DEVICE_ID,
+                    observers = setOf(SessionCommandObserver { observed += it }),
+                )
+
+            val applied = repository.start()
+
+            assertEquals(listOf(applied), observed)
+            assertEquals(SESSION_ID, database.sessionDao().observeSession(SESSION_ID).first()?.session?.id)
+        }
+
+    @Test
+    fun `rejected commands do not notify command observers`() =
+        runBlocking {
+            var notifications = 0
+            repository =
+                OfflineFirstSessionRepository(
+                    database.sessionDao(),
+                    DEVICE_ID,
+                    observers = setOf(SessionCommandObserver { notifications++ }),
+                )
+
+            repository.execute(TimerCommand.Pause, "event-pause", device.anchor())
+
+            assertEquals(0, notifications)
         }
 
     private suspend fun OfflineFirstSessionRepository.start(): SessionCommandResult.Applied =

@@ -5,6 +5,7 @@ import dev.studyflow.core.model.SessionEvent
 import dev.studyflow.core.model.SessionEventType
 import dev.studyflow.core.model.TimeAnchor
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
 
 /**
  * The stopwatch, as a pure function.
@@ -29,6 +30,16 @@ import kotlin.time.Duration
  * and the engine refuses to guess — see [SessionElapsed.unverified].
  */
 public object TimerEngine {
+    /**
+     * Recovery auto-pauses an uninterrupted same-boot interval after this cap.
+     *
+     * A full day is deliberately generous for normal study while bounding only the current
+     * `openedAt`→`now` interval left running after a service crash, swipe-away, or forgotten timer.
+     * Earlier [TimerState.Running.settled] time is not compared to this value; it is preserved, and
+     * the capped open-interval amount is added to it during recovery.
+     */
+    public val DEFAULT_MAXIMUM_RUNNING_DURATION: Duration = 24.hours
+
     /**
      * Rebuilds state by replaying a session's event log.
      *
@@ -178,30 +189,28 @@ public object TimerEngine {
         state: TimerState,
         eventId: String,
         now: TimeAnchor,
+        maximumRunningDuration: Duration = DEFAULT_MAXIMUM_RUNNING_DURATION,
     ): TimerReconciliation {
-        if (state !is TimerState.Running) return TimerReconciliation.Unchanged(state)
-        if (state.openedAt.isSameBootAs(now)) return TimerReconciliation.Unchanged(state)
+        require(maximumRunningDuration.isPositive()) { "maximumRunningDuration must be positive" }
+        return when {
+            state !is TimerState.Running -> {
+                TimerReconciliation.Unchanged(state)
+            }
 
-        val gap = state.openedAt.wallClockDurationTo(now).coerceAtLeast(Duration.ZERO)
-        val event =
-            SessionEvent(
-                id = eventId,
-                sessionId = state.sessionId,
-                type = SessionEventType.PAUSED,
-                anchor = now,
-                sequence = state.lastSequence + 1,
-            )
-        return TimerReconciliation.RebootGap(
-            event = event,
-            state =
-                TimerState.Paused(
-                    sessionId = state.sessionId,
-                    settled = state.settled,
-                    unverified = state.unverified + gap,
-                    lastSequence = event.sequence,
-                ),
-            unverifiedGap = gap,
-        )
+            state.openedAt.isSameBootAs(now) -> {
+                reconcileSameBoot(state, eventId, now, maximumRunningDuration)
+            }
+
+            else -> {
+                val gap = state.openedAt.wallClockDurationTo(now).coerceAtLeast(Duration.ZERO)
+                val event = pauseEvent(state, eventId, now)
+                TimerReconciliation.RebootGap(
+                    event = event,
+                    state = pausedState(state, event, Duration.ZERO, gap),
+                    unverifiedGap = gap,
+                )
+            }
+        }
     }
 
     /**
@@ -321,6 +330,64 @@ public object TimerEngine {
         }
     }
 
+    private fun pauseEvent(
+        state: TimerState.Running,
+        eventId: String,
+        anchor: TimeAnchor,
+    ): SessionEvent =
+        SessionEvent(
+            id = eventId,
+            sessionId = state.sessionId,
+            type = SessionEventType.PAUSED,
+            anchor = anchor,
+            sequence = state.lastSequence + 1,
+        )
+
+    private fun reconcileSameBoot(
+        state: TimerState.Running,
+        eventId: String,
+        now: TimeAnchor,
+        maximumRunningDuration: Duration,
+    ): TimerReconciliation {
+        val openDuration = state.openedAt.uptimeDurationTo(now)?.coerceAtLeast(Duration.ZERO)
+        return if (openDuration == null || openDuration <= maximumRunningDuration) {
+            TimerReconciliation.Unchanged(state)
+        } else {
+            val event = pauseEvent(state, eventId, state.openedAt + maximumRunningDuration)
+            TimerReconciliation.MaximumDurationExceeded(
+                event = event,
+                state = pausedState(state, event, maximumRunningDuration, Duration.ZERO),
+                maximumRunningDuration = maximumRunningDuration,
+            )
+        }
+    }
+
+    private fun pausedState(
+        previous: TimerState.Running,
+        event: SessionEvent,
+        counted: Duration,
+        unverified: Duration,
+    ): TimerState.Paused =
+        TimerState.Paused(
+            sessionId = previous.sessionId,
+            settled = previous.settled + counted,
+            unverified = previous.unverified + unverified,
+            lastSequence = event.sequence,
+        )
+
+    /**
+     * Creates the auto-pause anchor for maximum-duration recovery.
+     *
+     * The app did not observe this exact instant; it is synthesized at the cap by advancing both
+     * clocks equally from the last observed anchor, preserving the same-boot monotonic invariant.
+     */
+    private operator fun TimeAnchor.plus(duration: Duration): TimeAnchor =
+        TimeAnchor(
+            uptime = uptime + duration,
+            wallClock = wallClock + duration,
+            bootId = bootId,
+        )
+
     private data class Interval(
         val counted: Duration,
         val unverified: Duration,
@@ -341,6 +408,13 @@ public sealed interface TimerReconciliation {
         override val state: TimerState,
     ) : TimerReconciliation
 
+    /** Reconciliation appended an event and changed the active session projection. */
+    public sealed interface Adjustment : TimerReconciliation {
+        public val event: SessionEvent
+
+        override val state: TimerState.Paused
+    }
+
     /**
      * A reboot interrupted a running session.
      *
@@ -349,8 +423,19 @@ public sealed interface TimerReconciliation {
      *   unknown portion was the device being switched off. Present it to the user, do not count it.
      */
     public data class RebootGap(
-        val event: SessionEvent,
+        override val event: SessionEvent,
         override val state: TimerState.Paused,
         val unverifiedGap: Duration,
-    ) : TimerReconciliation
+    ) : Adjustment
+
+    /**
+     * A running session exceeded the configured cap during the same boot.
+     *
+     * @property event the auto-pause event at the configured maximum.
+     */
+    public data class MaximumDurationExceeded(
+        override val event: SessionEvent,
+        override val state: TimerState.Paused,
+        val maximumRunningDuration: Duration,
+    ) : Adjustment
 }

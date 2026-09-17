@@ -158,8 +158,39 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration 7 to 8 preserves sessions, defaults manual_override to false and creates session_corrections`() {
+    fun `migration 7 to 8 adds an empty, queryable upload part table`() {
         helper.createDatabase(DATABASE_NAME, 7).use { database ->
+            database.insertVersionSixMaterial()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database.execSQL(
+                    """
+                    INSERT INTO material_upload_parts (material_id, part_number, etag, size_bytes, completed_at)
+                    VALUES ('legacy-material', 1, 'etag-1', 8388608, 1789601069317)
+                    """.trimIndent(),
+                )
+                database
+                    .query("SELECT material_id, part_number, etag FROM material_upload_parts")
+                    .use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("legacy-material", cursor.getString(0))
+                        assertEquals(1, cursor.getInt(1))
+                        assertEquals("etag-1", cursor.getString(2))
+                        assertFalse(cursor.moveToNext())
+                    }
+            }
+    }
+
+    @Test
+    fun `migration 8 to 9 preserves sessions, defaults manual override and creates corrections`() {
+        helper.createDatabase(DATABASE_NAME, 8).use { database ->
             database.insertVersionSevenSession()
         }
 
@@ -177,12 +208,7 @@ class DatabaseMigrationTest {
                     ).use { cursor ->
                         assertEquals(true, cursor.moveToFirst())
                         assertEquals("STOPPED", cursor.getString(0))
-                        assertEquals(
-                            "a row from before this correction feature existed keeps deriving elapsed time " +
-                                "from its event log",
-                            0,
-                            cursor.getInt(1),
-                        )
+                        assertEquals(0, cursor.getInt(1))
                         assertTrue("no override recorded yet", cursor.isNull(2))
                         assertTrue("no override recorded yet", cursor.isNull(3))
                         assertFalse(cursor.moveToNext())

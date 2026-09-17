@@ -134,17 +134,38 @@ public object DatabaseMigrations {
         }
 
     /**
-     * Version 8 adds session history corrections (issue #32): the override columns a human
-     * correction writes onto a session's projection, and the append-only `session_corrections`
-     * audit table that records every correction so it can be undone exactly.
-     *
-     * The three new `study_sessions` columns are plain nullable additions — an existing row has
-     * `manual_override = 0` and both millis columns `NULL`, meaning "keep deriving elapsed time
-     * from the event log", exactly its current behavior. `session_corrections` is a brand-new
-     * table with no rows to backfill.
+     * Version 8 adds per-part upload progress (issue #38): completed part number, etag and size,
+     * keyed by material id. A brand new table rather than columns on `materials` — a material has
+     * anywhere from one to several thousand parts, so the natural shape is a row per part, not a
+     * blob column on the material row.
      */
     public val MIGRATION_7_8: Migration =
         object : Migration(7, 8) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `material_upload_parts` (
+                    `material_id` TEXT NOT NULL, `part_number` INTEGER NOT NULL, `etag` TEXT NOT NULL,
+                    `size_bytes` INTEGER NOT NULL, `completed_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`material_id`, `part_number`),
+                    FOREIGN KEY(`material_id`) REFERENCES `materials`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS index_material_upload_parts_material_id
+                    ON material_upload_parts (material_id)
+                    """.trimIndent(),
+                )
+            }
+        }
+
+    /**
+     * Version 9 introduces an append-only correction audit and optional explicit elapsed values for
+     * manually recorded or corrected sessions (issue #32).
+     */
+    public val MIGRATION_8_9: Migration =
+        object : Migration(8, 9) {
             override fun migrate(connection: SQLiteConnection) {
                 connection.execSQL(
                     "ALTER TABLE study_sessions ADD COLUMN manual_override INTEGER NOT NULL DEFAULT 0",
@@ -205,6 +226,7 @@ public object DatabaseMigrations {
                 MIGRATION_5_6,
                 MIGRATION_6_7,
                 MIGRATION_7_8,
+                MIGRATION_8_9,
             )
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null

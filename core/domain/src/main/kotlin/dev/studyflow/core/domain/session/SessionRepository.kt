@@ -56,6 +56,17 @@ public interface SessionRepository {
     ): SessionCommandResult
 }
 
+/**
+ * Process-local side effects that follow a successfully committed timer command.
+ *
+ * Repository implementations must notify observers only after the event and projection have been
+ * durably written. Observers are not part of the commit path: a notification/service update must not
+ * turn an already-persisted timer action into a failed domain command.
+ */
+public fun interface SessionCommandObserver {
+    public fun onSessionCommandApplied(result: SessionCommandResult.Applied)
+}
+
 /** Outcome of a persisted session command. */
 public sealed interface SessionCommandResult {
     /**

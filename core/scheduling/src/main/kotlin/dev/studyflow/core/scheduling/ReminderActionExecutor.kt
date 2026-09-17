@@ -28,6 +28,19 @@ import kotlin.time.Duration.Companion.minutes
 public val SNOOZE_DURATION: kotlin.time.Duration = 10.minutes
 
 /**
+ * The most times in a row a reminder may be snoozed before Snooze stops rescheduling it (issue #48).
+ *
+ * An alarm-style reminder's Snooze button is reachable without unlocking the device, which is
+ * exactly what makes an *uncapped* snooze dangerous: a phone left face-down snoozing itself
+ * (accidental presses, a stuck button, a user who never wakes up to dismiss it) would otherwise
+ * re-arm forever. Three is enough for "just five more minutes" to mean something without the
+ * reminder chasing the user all day; once [SnoozeState.count] reaches it, [ReminderActionExecutor]
+ * treats a further Snooze the same as Dismiss — stopping the alarm and clearing the notification —
+ * rather than silently ignoring the tap, so the user is never left facing an unresponsive button.
+ */
+public const val MAX_SNOOZE_COUNT: Int = 3
+
+/**
  * Executes the action a user picked from a reminder notification, entirely in the background.
  *
  * Called from [ReminderActionReceiver], which must survive the app process being dead — every
@@ -62,6 +75,7 @@ public class ReminderActionExecutor(
             ReminderActionKind.COMPLETE -> complete(task, notificationId)
             ReminderActionKind.SNOOZE -> snooze(task, reminderId, notificationId)
             ReminderActionKind.START_SESSION -> startSession(task, notificationId)
+            ReminderActionKind.DISMISS -> dismiss(notificationId)
         }
     }
 
@@ -80,6 +94,13 @@ public class ReminderActionExecutor(
         notificationId: Int,
     ) {
         val reminder = task.reminders.firstOrNull { it.id == reminderId } ?: return dismiss(notificationId)
+        // Capped at MAX_SNOOZE_COUNT (see its doc): once reached, Snooze stops rescheduling and
+        // behaves like Dismiss instead — the reminder already fired, so there is nothing left to
+        // silently drop by not re-arming it.
+        if ((reminder.snooze?.count ?: 0) >= MAX_SNOOZE_COUNT) {
+            dismiss(notificationId)
+            return
+        }
         val snoozed =
             reminder.copy(
                 snooze =
@@ -107,9 +128,17 @@ public class ReminderActionExecutor(
         dismiss(notificationId)
     }
 
-    /** Cancels the reminder that prompted this action and recomputes the group summary around it. */
+    /**
+     * Cancels the reminder that prompted this action and recomputes the group summary around it.
+     *
+     * Also the single place that stops an in-progress alarm's sound and vibration: every action
+     * this executor runs — Complete, a successful Snooze, a capped Snooze treated as Dismiss, and
+     * Start-session — passes through here, so no path can silence the notification while leaving
+     * [AlarmPlaybackService] still ringing.
+     */
     private fun dismiss(notificationId: Int) {
         notifier.cancel(notificationId)
+        AlarmPlaybackService.stop(context, notificationId)
         deliveryCoordinator.refreshGroupSummary()
     }
 

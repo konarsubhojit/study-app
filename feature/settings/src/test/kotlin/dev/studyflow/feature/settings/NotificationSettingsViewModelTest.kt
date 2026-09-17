@@ -3,6 +3,7 @@ package dev.studyflow.feature.settings
 import android.content.Intent
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import dev.studyflow.core.datastore.AlarmRingtoneSettings
 import dev.studyflow.core.notifications.NotificationChannelStatus
 import dev.studyflow.core.notifications.NotificationMessageKey
 import dev.studyflow.core.notifications.NotificationPermissionState
@@ -12,6 +13,8 @@ import dev.studyflow.core.notifications.NotificationSettingsSource
 import dev.studyflow.core.notifications.StudyFlowNotificationChannel
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -30,6 +33,7 @@ class NotificationSettingsViewModelTest {
     val mainDispatcher = MainDispatcherExtension()
 
     private val source = FakeNotificationSettingsSource()
+    private val alarmRingtoneSettings = FakeAlarmRingtoneSettings()
 
     @Test
     fun `the screen reports what the system says, not what the app would like`() =
@@ -187,7 +191,7 @@ class NotificationSettingsViewModelTest {
         }
 
     private fun viewModel(savedState: SavedStateHandle = SavedStateHandle()) =
-        NotificationSettingsViewModel(savedState, source)
+        NotificationSettingsViewModel(savedState, source, alarmRingtoneSettings)
 
     private fun granted(notificationsEnabled: Boolean) =
         NotificationPermissionState(NotificationPermissionStatus.GRANTED, notificationsEnabled)
@@ -231,6 +235,18 @@ class NotificationSettingsViewModelTest {
 
         override fun recordPermissionRequested() {
             recordedRequest = true
+        }
+    }
+
+    private class FakeAlarmRingtoneSettings : AlarmRingtoneSettings {
+        private val backing = MutableStateFlow("")
+        override val uri: Flow<String> = backing
+
+        var lastPersisted: String? = null
+
+        override suspend fun setUri(uri: String) {
+            lastPersisted = uri
+            backing.value = uri
         }
     }
 }

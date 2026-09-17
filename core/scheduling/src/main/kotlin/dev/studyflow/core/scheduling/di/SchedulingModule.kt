@@ -7,8 +7,14 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.database.StudyFlowDatabase
+import dev.studyflow.core.database.dao.MaterialUploadPartDao
+import dev.studyflow.core.database.repository.RoomUploadProgressStore
 import dev.studyflow.core.datastore.UserSettingsStore
 import dev.studyflow.core.datastore.userSettingsStore
+import dev.studyflow.core.domain.materials.MaterialRepository
+import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
+import dev.studyflow.core.domain.materials.UploadProgressStore
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
@@ -21,6 +27,7 @@ import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
 import dev.studyflow.core.scheduling.ReminderPlatformScheduler
 import dev.studyflow.core.scheduling.ReminderSchedulingService
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
+import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
 import kotlinx.coroutines.flow.first
 import javax.inject.Singleton
 
@@ -31,8 +38,8 @@ import javax.inject.Singleton
  * `:core:storage`'s precedent of a core module owning its own Hilt module (docs/adr/0002).
  *
  * The repositories these services depend on ([TaskRepository], [SubjectRepository],
- * [SessionRepository]) are bound in [ProvisionalRepositoryModule] instead, so this module stays
- * about scheduling and delivery only.
+ * [SessionRepository]) are bound by `:core:database`, so this module stays about scheduling and
+ * delivery only.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -72,6 +79,7 @@ public object SchedulingModule {
         notifier: StudyFlowNotifier,
         notificationFactory: StudyFlowNotificationFactory,
         settingsStore: UserSettingsStore,
+        capabilitiesProvider: SchedulingCapabilitiesProvider,
     ): ReminderDeliveryCoordinator =
         ReminderDeliveryCoordinator(
             context = context,
@@ -80,6 +88,7 @@ public object SchedulingModule {
             notifier = notifier,
             notificationFactory = notificationFactory,
             digestEnabled = { settingsStore.data.first().digestEnabled },
+            capabilitiesProvider = capabilitiesProvider,
         )
 
     @Provides
@@ -102,4 +111,24 @@ public object SchedulingModule {
             deliveryCoordinator = deliveryCoordinator,
             wallClock = clock,
         )
+
+    @Provides
+    @Singleton
+    public fun materialUploadPartDao(database: StudyFlowDatabase): MaterialUploadPartDao =
+        database.materialUploadPartDao()
+
+    @Provides
+    @Singleton
+    public fun uploadProgressStore(
+        dao: MaterialUploadPartDao,
+        clock: Clock,
+    ): UploadProgressStore = RoomUploadProgressStore(dao, clock)
+
+    @Provides
+    @Singleton
+    public fun materialUploadCoordinator(
+        @ApplicationContext context: Context,
+        materialRepository: MaterialRepository,
+        settingsStore: UserSettingsStore,
+    ): MaterialUploadCoordinator = WorkManagerMaterialUploadCoordinator(context, materialRepository, settingsStore)
 }

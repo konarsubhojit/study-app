@@ -5,9 +5,11 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.model.Reminder
+import dev.studyflow.core.model.ReminderMode
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subject
 import dev.studyflow.core.notifications.AlertPresentation
@@ -25,6 +27,15 @@ public enum class ReminderActionKind(
     COMPLETE("dev.studyflow.core.scheduling.action.COMPLETE"),
     SNOOZE("dev.studyflow.core.scheduling.action.SNOOZE"),
     START_SESSION("dev.studyflow.core.scheduling.action.START_SESSION"),
+
+    /**
+     * Silences an alarm-style reminder without completing the task or rescheduling it (issue #48).
+     *
+     * Distinct from [COMPLETE]: dismissing an alarm says "I heard it", not "I did it" — the task
+     * stays open. Used by the full-screen alarm UI's Dismiss button, and as the notification's
+     * delete action so swiping the alarm notification away in the shade stops the ringing too.
+     */
+    DISMISS("dev.studyflow.core.scheduling.action.DISMISS"),
 }
 
 /** The shared group every reminder notification and its summary carry (issue #47). */
@@ -55,6 +66,16 @@ public class ReminderDeliveryCoordinator(
     private val notificationFactory: StudyFlowNotificationFactory,
     /** True when the digest is on, in which case individual reminders stay silent (issue #47). */
     private val digestEnabled: suspend () -> Boolean = { false },
+    /**
+     * Whether a full-screen intent can currently be shown (issue #48); re-read on every delivery
+     * because Android 14 can revoke `USE_FULL_SCREEN_INTENT` at any time. When it cannot, an
+     * alarm-style reminder still posts to [StudyFlowNotificationChannel.ALARMS] — high importance,
+     * heads-up — it just cannot take over the screen, which is the degradation
+     * `ReminderDegradation.FULL_SCREEN_INTENT_DENIED` already names.
+     */
+    private val capabilitiesProvider: SchedulingCapabilitiesProvider = SchedulingCapabilitiesProvider {
+        SchedulingCapabilities()
+    },
     private val notificationManager: NotificationManagerCompat = NotificationManagerCompat.from(context),
 ) {
     public suspend fun deliver(
@@ -70,22 +91,46 @@ public class ReminderDeliveryCoordinator(
         }
         // The digest already told the user about every task due today; a second, per-task ping
         // for the same tasks would be exactly the spam this issue asks the app not to produce.
-        if (task.deleted || task.isCompleted || digestEnabled()) {
+        // An alarm-style reminder is exempt: "wake me for the exam" is not the kind of nudge the
+        // digest was built to replace, and silencing it would defeat the reminder's whole point.
+        if (task.deleted || task.isCompleted || shouldSilenceForDigest(reminder, digestEnabled)) {
             notifier.cancel(notificationId)
             return
         }
 
         val subject = task.subjectId?.let { subjectRepository.subject(it) }
+        val channel =
+            if (reminder.mode == ReminderMode.ALARM) {
+                StudyFlowNotificationChannel.ALARMS
+            } else {
+                StudyFlowNotificationChannel.TASK_REMINDERS
+            }
         val result =
             notifier.post(
                 notificationId,
-                StudyFlowNotificationChannel.TASK_REMINDERS,
+                channel,
                 notification(task, reminder, subject),
             )
-        if (result.posted) refreshGroupSummary()
+        if (result.posted) {
+            refreshGroupSummary()
+            if (reminder.mode == ReminderMode.ALARM) {
+                AlarmPlaybackService.start(context, reminderId, taskId, notificationId)
+            }
+        }
     }
 
     private fun notification(
+        task: StudyTask,
+        reminder: Reminder,
+        subject: Subject?,
+    ): android.app.Notification =
+        if (reminder.mode == ReminderMode.ALARM) {
+            alarmNotification(task, reminder, subject)
+        } else {
+            reminderNotification(task, reminder, subject)
+        }
+
+    private fun reminderNotification(
         task: StudyTask,
         reminder: Reminder,
         subject: Subject?,
@@ -113,6 +158,53 @@ public class ReminderDeliveryCoordinator(
                     action(ReminderActionKind.COMPLETE, "Complete", task.id, reminder.id),
                     action(ReminderActionKind.SNOOZE, "Snooze 10m", task.id, reminder.id),
                     action(ReminderActionKind.START_SESSION, "Start session", task.id, reminder.id),
+                ),
+            presentation =
+                AlertPresentation(
+                    color = subject?.colorArgb,
+                    publicVersion = publicVersion,
+                    group = REMINDER_GROUP_KEY,
+                ),
+        )
+    }
+
+    /**
+     * The alarm-style variant (issue #48): [StudyFlowNotificationChannel.ALARMS], a
+     * `fullScreenIntent` at [AlarmActivity] when the platform currently allows one, and only
+     * Dismiss/Snooze — Complete and Start-session stay on the ordinary reminder, since an alarm
+     * that just went off is answered by silencing it, not by picking a different task action.
+     */
+    private fun alarmNotification(
+        task: StudyTask,
+        reminder: Reminder,
+        subject: Subject?,
+    ): android.app.Notification {
+        val notificationId = reminderNotificationId(reminder.id)
+        val contentIntent =
+            StudyFlowPendingIntents.explicitActivity(
+                context,
+                notificationId,
+                AlarmActivity.intent(context, reminder.id, task.id),
+            )
+        val publicVersion =
+            notificationFactory.alert(
+                channel = StudyFlowNotificationChannel.ALARMS,
+                title = PUBLIC_TITLE,
+                text = "",
+                contentIntent = contentIntent,
+            )
+        val fullScreenIntent =
+            if (capabilitiesProvider.currentCapabilities().canUseFullScreenIntent) contentIntent else null
+        return notificationFactory.alert(
+            channel = StudyFlowNotificationChannel.ALARMS,
+            title = task.title,
+            text = dueText(task),
+            contentIntent = contentIntent,
+            fullScreenIntent = fullScreenIntent,
+            actions =
+                listOf(
+                    action(ReminderActionKind.DISMISS, "Dismiss", task.id, reminder.id),
+                    action(ReminderActionKind.SNOOZE, "Snooze 10m", task.id, reminder.id),
                 ),
             presentation =
                 AlertPresentation(
@@ -216,6 +308,7 @@ private val ReminderActionKind.icon: Int
             ReminderActionKind.COMPLETE -> android.R.drawable.checkbox_on_background
             ReminderActionKind.SNOOZE -> android.R.drawable.ic_lock_idle_alarm
             ReminderActionKind.START_SESSION -> android.R.drawable.ic_media_play
+            ReminderActionKind.DISMISS -> android.R.drawable.ic_menu_close_clear_cancel
         }
 
 /** Distinguishes the three actions' `PendingIntent`s from each other and from the content intent. */
@@ -244,3 +337,13 @@ private fun dueText(task: StudyTask): String {
     val dueAt = task.dueAt ?: return "Due now"
     return "Due %02d:%02d".format(dueAt.hour, dueAt.minute)
 }
+
+/**
+ * True when [reminder] should be folded into the daily digest instead of posted individually.
+ * Alarm-style reminders are always exempt — see the rationale at the [ReminderDeliveryCoordinator.deliver]
+ * call site.
+ */
+private suspend fun shouldSilenceForDigest(
+    reminder: Reminder,
+    digestEnabled: suspend () -> Boolean,
+): Boolean = reminder.mode == ReminderMode.NOTIFICATION && digestEnabled()
