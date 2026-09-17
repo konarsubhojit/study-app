@@ -14,6 +14,8 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Instant
 
@@ -267,12 +269,302 @@ class RecurrenceCalculatorTest {
         }
     }
 
+    @Nested
+    @DisplayName("counted weekdays")
+    inner class CountedWeekdays {
+        @Test
+        fun `every 2nd Tuesday of the month`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.MONTHLY,
+                    daysOfWeek = setOf(DayOfWeek.TUESDAY),
+                    weekOfMonth = 2,
+                )
+
+            val dates = localOccurrences(rule, take = 3, start = LocalDateTime(2026, 3, 10, 8, 0))
+
+            assertEquals(listOf("2026-03-10T08:00", "2026-04-14T08:00", "2026-05-12T08:00"), dates)
+        }
+
+        @Test
+        fun `the last Friday of the month is counted from the end`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.MONTHLY,
+                    daysOfWeek = setOf(DayOfWeek.FRIDAY),
+                    weekOfMonth = RecurrenceRule.LAST_WEEK_OF_MONTH,
+                )
+
+            val dates = localOccurrences(rule, take = 3, start = LocalDateTime(2026, 1, 30, 8, 0))
+
+            assertEquals(listOf("2026-01-30T08:00", "2026-02-27T08:00", "2026-03-27T08:00"), dates)
+        }
+
+        @Test
+        fun `a month without a 5th Monday has no occurrence rather than a clamped one`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.MONTHLY,
+                    daysOfWeek = setOf(DayOfWeek.MONDAY),
+                    weekOfMonth = 5,
+                )
+
+            val dates = localOccurrences(rule, take = 3, start = LocalDateTime(2026, 3, 30, 8, 0))
+
+            assertEquals(listOf("2026-03-30T08:00", "2026-06-29T08:00", "2026-08-31T08:00"), dates)
+        }
+    }
+
+    @Nested
+    @DisplayName("yearly")
+    inner class Yearly {
+        @Test
+        fun `repeats on the same date each year`() {
+            val dates = localOccurrences(RecurrenceRule(RecurrenceFrequency.YEARLY), take = 3)
+
+            assertEquals(listOf("2026-03-02T08:00", "2027-03-02T08:00", "2028-03-02T08:00"), dates)
+        }
+
+        @Test
+        fun `honours an interval`() {
+            val rule = RecurrenceRule(RecurrenceFrequency.YEARLY, interval = 2)
+
+            val dates = localOccurrences(rule, take = 3)
+
+            assertEquals(listOf("2026-03-02T08:00", "2028-03-02T08:00", "2030-03-02T08:00"), dates)
+        }
+
+        @Test
+        fun `a named month later in the year is reached this year`() {
+            val rule = RecurrenceRule(RecurrenceFrequency.YEARLY, monthOfYear = 9, dayOfMonth = 1)
+
+            val dates = localOccurrences(rule, take = 2)
+
+            assertEquals(listOf("2026-09-01T08:00", "2027-09-01T08:00"), dates)
+        }
+
+        @Test
+        fun `a named month already past waits for next year`() {
+            val rule = RecurrenceRule(RecurrenceFrequency.YEARLY, monthOfYear = 1, dayOfMonth = 15)
+
+            val dates = localOccurrences(rule, take = 2)
+
+            assertEquals(listOf("2027-01-15T08:00", "2028-01-15T08:00"), dates)
+        }
+
+        @Test
+        fun `a 29 February anniversary falls back to the 28th in common years`() {
+            val rule = RecurrenceRule(RecurrenceFrequency.YEARLY)
+            val start = LocalDateTime(2028, 2, 29, 8, 0)
+
+            val dates = localOccurrences(rule, take = 3, start = start)
+
+            assertEquals(listOf("2028-02-29T08:00", "2029-02-28T08:00", "2030-02-28T08:00"), dates)
+        }
+
+        @Test
+        fun `the 2nd Tuesday of a named month`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.YEARLY,
+                    daysOfWeek = setOf(DayOfWeek.TUESDAY),
+                    weekOfMonth = 2,
+                    monthOfYear = 6,
+                )
+
+            val dates = localOccurrences(rule, take = 2)
+
+            assertEquals(listOf("2026-06-09T08:00", "2027-06-08T08:00"), dates)
+        }
+    }
+
+    @Nested
+    @DisplayName("exceptions")
+    inner class Exceptions {
+        @Test
+        fun `an excluded date produces no occurrence`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.DAILY,
+                    exceptions = setOf(LocalDate(2026, 3, 3)),
+                )
+
+            val dates = localOccurrences(rule, take = 3)
+
+            assertEquals(listOf("2026-03-02T08:00", "2026-03-04T08:00", "2026-03-05T08:00"), dates)
+        }
+
+        @Test
+        fun `an excluded occurrence still counts against a bounded rule`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.DAILY,
+                    exceptions = setOf(LocalDate(2026, 3, 3)),
+                    end = RecurrenceEnd.AfterOccurrences(3),
+                )
+
+            val dates = localOccurrences(rule, take = 10)
+
+            assertEquals(
+                listOf("2026-03-02T08:00", "2026-03-04T08:00"),
+                dates,
+                "removing an occurrence must not extend the series past its closing date",
+            )
+        }
+    }
+
+    @Nested
+    @DisplayName("advancing the series")
+    inner class Advancing {
+        @Test
+        fun `moves the head on by exactly one occurrence`() {
+            val advanced = RecurrenceCalculator.advance(RecurrenceRule(RecurrenceFrequency.DAILY), eightAm)
+
+            assertEquals(LocalDateTime(2026, 3, 3, 8, 0), advanced?.start)
+        }
+
+        @Test
+        fun `keeps the wall clock across a spring-forward gap`() {
+            // 01:30 on 2026-03-29 does not exist in Europe/London; the series must still read 01:30.
+            val start = LocalDateTime(2026, 3, 28, 1, 30)
+
+            val advanced = RecurrenceCalculator.advance(RecurrenceRule(RecurrenceFrequency.DAILY), start)
+
+            assertEquals(LocalDateTime(2026, 3, 29, 1, 30), advanced?.start)
+        }
+
+        @Test
+        fun `decrements a counted end so the series is not extended`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.DAILY,
+                    end = RecurrenceEnd.AfterOccurrences(3),
+                )
+
+            val advanced = requireNotNull(RecurrenceCalculator.advance(rule, eightAm))
+
+            assertEquals(RecurrenceEnd.AfterOccurrences(2), advanced.rule.end)
+            assertEquals(
+                listOf(LocalDateTime(2026, 3, 3, 8, 0), LocalDateTime(2026, 3, 4, 8, 0)),
+                RecurrenceCalculator.localOccurrences(advanced.rule, advanced.start).toList(),
+            )
+        }
+
+        @Test
+        fun `an excluded occurrence is consumed as it is skipped over`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.DAILY,
+                    exceptions = setOf(LocalDate(2026, 3, 3)),
+                    end = RecurrenceEnd.AfterOccurrences(4),
+                )
+
+            val advanced = requireNotNull(RecurrenceCalculator.advance(rule, eightAm))
+
+            assertEquals(LocalDateTime(2026, 3, 4, 8, 0), advanced.start)
+            assertEquals(RecurrenceEnd.AfterOccurrences(2), advanced.rule.end)
+        }
+
+        @Test
+        fun `drops exceptions the series can no longer reach`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.DAILY,
+                    exceptions = setOf(LocalDate(2026, 3, 1), LocalDate(2026, 3, 9)),
+                )
+
+            val advanced = requireNotNull(RecurrenceCalculator.advance(rule, eightAm))
+
+            assertEquals(setOf(LocalDate(2026, 3, 9)), advanced.rule.exceptions)
+        }
+
+        @Test
+        fun `the last occurrence of a series cannot be advanced`() {
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.DAILY,
+                    end = RecurrenceEnd.AfterOccurrences(1),
+                )
+
+            assertNull(RecurrenceCalculator.advance(rule, eightAm))
+        }
+
+        @Test
+        fun `a one-off task has nothing to advance to`() {
+            assertNull(RecurrenceCalculator.advance(null, eightAm))
+        }
+
+        @Test
+        fun `repeated advancing visits every occurrence once and none twice`() {
+            val rule = RecurrenceRule(RecurrenceFrequency.DAILY, end = RecurrenceEnd.AfterOccurrences(6))
+
+            val visited = mutableListOf(eightAm)
+            var head: LocalDateTime? = eightAm
+            while (head != null) {
+                val next = RecurrenceCalculator.advance(rule.advancedTo(visited.size), head)
+                head = next?.start?.also { visited += it }
+            }
+
+            assertEquals(
+                RecurrenceCalculator.localOccurrences(rule, eightAm).toList(),
+                visited,
+                "advancing must reproduce the rule's own occurrences, in order",
+            )
+        }
+
+        private fun RecurrenceRule.advancedTo(consumed: Int): RecurrenceRule =
+            copy(end = RecurrenceEnd.AfterOccurrences((end as RecurrenceEnd.AfterOccurrences).count - consumed + 1))
+    }
+
+    @Nested
+    @DisplayName("timezone travel")
+    inner class TimezoneTravel {
+        @ParameterizedTest
+        @CsvSource(
+            "Europe/London, 2026-03-28T08:00, 2026-03-29T08:00",
+            "America/New_York, 2026-03-07T08:00, 2026-03-08T08:00",
+            "Australia/Sydney, 2026-04-04T08:00, 2026-04-05T08:00",
+            "Pacific/Auckland, 2026-09-26T08:00, 2026-09-27T08:00",
+            "Asia/Tokyo, 2026-03-28T08:00, 2026-03-29T08:00",
+        )
+        fun `a daily reminder keeps its local time across every kind of clock change`(
+            zoneId: String,
+            start: String,
+            expectedNext: String,
+        ) {
+            val zone = TimeZone.of(zoneId)
+            val rule = RecurrenceRule(RecurrenceFrequency.DAILY)
+
+            val next = RecurrenceCalculator.occurrences(rule, LocalDateTime.parse(start), zone).drop(1).first()
+
+            assertEquals(expectedNext, next.toLocalDateTime(zone).toString())
+        }
+
+        @Test
+        fun `the same rule read in another zone keeps the wall-clock time the user chose`() {
+            val tokyo = TimeZone.of("Asia/Tokyo")
+            val rule = RecurrenceRule(RecurrenceFrequency.DAILY)
+
+            val inTokyo = RecurrenceCalculator.occurrences(rule, eightAm, tokyo).take(2).toList()
+
+            assertEquals(
+                listOf("2026-03-02T08:00", "2026-03-03T08:00"),
+                inTokyo.map { it.toLocalDateTime(tokyo).toString() },
+            )
+            assertTrue(
+                inTokyo.first() < RecurrenceCalculator.occurrences(rule, eightAm, london).first(),
+                "08:00 in Tokyo happens before 08:00 in London on the same date",
+            )
+        }
+    }
+
     private fun localOccurrences(
         rule: RecurrenceRule,
         take: Int,
+        start: LocalDateTime = eightAm,
     ): List<String> =
         RecurrenceCalculator
-            .occurrences(rule, eightAm, london)
+            .occurrences(rule, start, london)
             .take(take)
             .map { it.toLocalDateTime(london).toString() }
             .toList()
