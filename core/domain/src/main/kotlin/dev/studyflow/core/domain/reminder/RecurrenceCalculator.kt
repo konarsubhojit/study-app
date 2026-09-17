@@ -161,6 +161,8 @@ public object RecurrenceCalculator {
 
             RecurrenceFrequency.YEARLY -> {
                 withPinnedDay(start).let {
+                    // Month has no number in this kotlinx-datetime version; the enum is ordered
+                    // January-first, so the ordinal is the calendar number less one.
                     if (monthOfYear == null) it.copy(monthOfYear = start.month.ordinal + 1) else it
                 }
             }

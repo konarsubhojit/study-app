@@ -152,5 +152,5 @@ public data class SeriesEdit(
      * Both halves describe the same occurrence until the second one lands, so they belong in a
      * single `TaskRepository.saveAll` call rather than two saves.
      */
-    public val tasks: List<StudyTask> get() = listOfNotNull(occurrence, series)
+    public val tasks: List<StudyTask> get() = listOf(occurrence) + listOfNotNull(series)
 }

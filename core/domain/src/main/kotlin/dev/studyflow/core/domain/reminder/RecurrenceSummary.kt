@@ -134,7 +134,7 @@ public object RecurrenceSummary {
         when {
             value % HUNDRED in TEENS -> 0
             else -> value % TEN
-        }.coerceAtMost(ORDINAL_SUFFIXES.lastIndex)
+        }
 
     private fun dayName(day: DayOfWeek): String = titleCase(day.name)
 
