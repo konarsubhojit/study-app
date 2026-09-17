@@ -178,18 +178,27 @@ public class ReminderDeliveryCoordinator(
                         NotificationCompat.EXTRA_TITLE,
                     )?.toString()
             }
+        val summaryContentIntent =
+            StudyFlowPendingIntents.activity(
+                context,
+                GROUP_SUMMARY_NOTIFICATION_ID,
+                tasksListUri(),
+            )
+        val publicVersion =
+            notificationFactory.alert(
+                channel = StudyFlowNotificationChannel.TASK_REMINDERS,
+                title = PUBLIC_TITLE,
+                text = "",
+                contentIntent = summaryContentIntent,
+            )
         val summary =
             notificationFactory.groupedReminderSummary(
                 title = "${active.size} tasks need your attention",
                 text = "${active.size} reminders due",
                 lines = titles,
-                contentIntent =
-                    StudyFlowPendingIntents.activity(
-                        context,
-                        GROUP_SUMMARY_NOTIFICATION_ID,
-                        tasksListUri(),
-                    ),
+                contentIntent = summaryContentIntent,
                 group = REMINDER_GROUP_KEY,
+                publicVersion = publicVersion,
             )
         notifier.post(GROUP_SUMMARY_NOTIFICATION_ID, StudyFlowNotificationChannel.TASK_REMINDERS, summary)
     }

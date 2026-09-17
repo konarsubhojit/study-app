@@ -193,6 +193,9 @@ public class StudyFlowNotificationFactory(
      * collapses a group once a summary exists, so without this ten due tasks still show as ten
      * heads-up alerts on API levels (or launchers) that do not auto-group. [lines] renders as an
      * [NotificationCompat.InboxStyle] list of task titles, capped by the style itself at five lines.
+     *
+     * @param publicVersion see [AlertPresentation.publicVersion] — a summary listing task titles
+     *   is exactly the sensitive content a locked screen must not leak on its own.
      */
     public fun groupedReminderSummary(
         title: String,
@@ -200,6 +203,7 @@ public class StudyFlowNotificationFactory(
         lines: List<String>,
         contentIntent: PendingIntent?,
         group: String,
+        publicVersion: Notification? = null,
         channel: StudyFlowNotificationChannel = StudyFlowNotificationChannel.TASK_REMINDERS,
     ): Notification =
         builder(channel)
@@ -216,6 +220,7 @@ public class StudyFlowNotificationFactory(
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .apply { publicVersion?.let(::setPublicVersion) }
             .build()
 
     private fun builder(channel: StudyFlowNotificationChannel): NotificationCompat.Builder =
