@@ -31,6 +31,7 @@ graph TD
     feature_timer[":feature:timer"]
     app --> core_common
     app --> core_database
+    app --> core_datastore
     app --> core_designsystem
     app --> core_network
     app --> core_notifications

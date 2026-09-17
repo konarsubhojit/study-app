@@ -38,6 +38,12 @@ public data class AlertPresentation(
     val group: String? = null,
 )
 
+/** The platform-owned timer rendering for an ongoing notification. */
+public data class ChronometerPresentation(
+    val countDown: Boolean = false,
+    val usesChronometer: Boolean = true,
+)
+
 /** How much of a background job is done, in the three shapes a progress bar can take. */
 public sealed interface NotificationProgress {
     /** Work has started but its size is not known yet — a hashing pass, a handshake. */
@@ -85,7 +91,7 @@ public class StudyFlowNotificationFactory(
         startedAtEpochMillis: Long,
         contentIntent: PendingIntent?,
         actions: List<NotificationAction> = emptyList(),
-        countDown: Boolean = false,
+        chronometer: ChronometerPresentation = ChronometerPresentation(),
         channel: StudyFlowNotificationChannel = StudyFlowNotificationChannel.STUDY_TIMER,
     ): Notification =
         builder(channel)
@@ -94,11 +100,12 @@ public class StudyFlowNotificationFactory(
             .setContentIntent(contentIntent)
             .setWhen(startedAtEpochMillis)
             .setShowWhen(true)
-            .setUsesChronometer(true)
-            .setChronometerCountDown(countDown)
+            .setUsesChronometer(chronometer.usesChronometer)
+            .setChronometerCountDown(chronometer.countDown)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_STOPWATCH)
+            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .withActions(actions)
             .build()
 

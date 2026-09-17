@@ -82,3 +82,16 @@ FLAG_UPDATE_CURRENT`. There is deliberately no helper that produces a mutable on
   two destinations never collapse onto one `PendingIntent`.
 - `broadcast(intent)` / `service(intent)` — action buttons. Both reject an implicit intent, because
   an implicit broadcast from a notification action would be readable by every app on the device.
+
+## Study timer foreground service
+
+The running or paused timer is kept visible by `TimerForegroundService`. It is declared as the
+special-use foreground service "Ongoing study-session timer notification controls" because its only
+job is to keep a user-started study session visible and controllable outside the app. The service
+posts a single ongoing notification: while the timer is running, `setUsesChronometer` lets the
+platform render the ticking clock from the persisted timer state; while paused, the notification
+stays controllable but disables the chronometer so the app does no paused work.
+
+Timer controls are service `PendingIntent`s (pause/resume and stop) so they still execute after the
+app process has died. Opening the notification uses `StudyFlowDeepLinks.uriFor(TimerRoute(...))` to
+return to the running-timer screen.

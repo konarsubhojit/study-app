@@ -7,6 +7,7 @@ import dev.studyflow.core.database.entity.asEntity
 import dev.studyflow.core.database.entity.asExternalModel
 import dev.studyflow.core.domain.result.DomainError
 import dev.studyflow.core.domain.result.toDomainError
+import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionDescriptor
 import dev.studyflow.core.domain.session.SessionReducer
@@ -42,6 +43,7 @@ import kotlin.time.Duration
 public class OfflineFirstSessionRepository(
     private val dao: SessionDao,
     private val deviceId: String,
+    private val observers: Set<SessionCommandObserver> = emptySet(),
     private val maximumRunningDuration: Duration = TimerEngine.DEFAULT_MAXIMUM_RUNNING_DURATION,
 ) : SessionRepository {
     /**
@@ -77,60 +79,89 @@ public class OfflineFirstSessionRepository(
         eventId: String,
         anchor: TimeAnchor,
     ): SessionCommandResult =
-        commandLock.withLock {
-            runCatchingStorage {
-                val active = activeSession()
-                appliedDuplicate(eventId, active, command.expectedEventType())?.let { return@runCatchingStorage it }
-                val state = active?.foldEvents() ?: TimerState.Idle
-
-                when (val outcome = TimerEngine.execute(state, command, eventId, anchor)) {
-                    is TimerCommandResult.Rejected -> {
-                        SessionCommandResult.Rejected(outcome.reason)
+        commandLock
+            .withLock {
+                runCatchingStorage {
+                    val active = activeSession()
+                    appliedDuplicate(eventId, active, command.expectedEventType())?.let {
+                        return@runCatchingStorage it
                     }
+                    val state = active?.foldEvents() ?: TimerState.Idle
 
-                    is TimerCommandResult.Accepted -> {
-                        commit(
-                            descriptor = command.descriptorFor(active),
-                            events = active.eventsPlus(outcome.event),
-                            event = outcome.event,
-                        )
+                    when (val outcome = TimerEngine.execute(state, command, eventId, anchor)) {
+                        is TimerCommandResult.Rejected -> {
+                            SessionCommandResult.Rejected(outcome.reason)
+                        }
+
+                        is TimerCommandResult.Accepted -> {
+                            commit(
+                                descriptor = command.descriptorFor(active),
+                                events = active.eventsPlus(outcome.event),
+                                event = outcome.event,
+                            )
+                        }
                     }
                 }
-            }
-        }
+            }.alsoNotify()
 
     override suspend fun reconcile(
         eventId: String,
         now: TimeAnchor,
     ): SessionCommandResult =
-        commandLock.withLock {
-            runCatchingStorage {
-                val active =
-                    activeSession() ?: return@runCatchingStorage SessionCommandResult.Unchanged(TimerState.Idle)
-                appliedDuplicate(eventId, active, SessionEventType.PAUSED)?.let { return@runCatchingStorage it }
-                when (
-                    val outcome =
-                        TimerEngine.reconcile(
-                            state = active.foldEvents(),
-                            eventId = eventId,
-                            now = now,
-                            maximumRunningDuration = maximumRunningDuration,
-                        )
-                ) {
-                    is TimerReconciliation.Unchanged -> {
-                        SessionCommandResult.Unchanged(outcome.state)
+        commandLock
+            .withLock {
+                runCatchingStorage {
+                    val active =
+                        activeSession() ?: return@runCatchingStorage SessionCommandResult.Unchanged(TimerState.Idle)
+                    appliedDuplicate(eventId, active, SessionEventType.PAUSED)?.let {
+                        return@runCatchingStorage it
                     }
+                    when (
+                        val outcome =
+                            TimerEngine.reconcile(
+                                state = active.foldEvents(),
+                                eventId = eventId,
+                                now = now,
+                                maximumRunningDuration = maximumRunningDuration,
+                            )
+                    ) {
+                        is TimerReconciliation.Unchanged -> {
+                            SessionCommandResult.Unchanged(outcome.state)
+                        }
 
-                    is TimerReconciliation.Adjustment -> {
-                        commit(
-                            descriptor = active.session.asDescriptor(),
-                            events = active.eventsPlus(outcome.event),
-                            event = outcome.event,
-                        )
+                        is TimerReconciliation.Adjustment -> {
+                            commit(
+                                descriptor = active.session.asDescriptor(),
+                                events = active.eventsPlus(outcome.event),
+                                event = outcome.event,
+                            )
+                        }
                     }
                 }
+            }.alsoNotify()
+
+    /**
+     * Runs process-local side effects after [commandLock] is released.
+     *
+     * Observer failures are intentionally ignored because the command is already durable and a
+     * service/notification refresh should never turn a committed timer event into a failed command.
+     */
+    private fun SessionCommandResult.alsoNotify(): SessionCommandResult {
+        if (this !is SessionCommandResult.Applied) return this
+        observers.forEach { observer ->
+            try {
+                observer.onSessionCommandApplied(this)
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (
+                @Suppress("TooGenericExceptionCaught") _: Throwable,
+            ) {
+                // The command is already durable; foreground-service refresh failures must not
+                // rewrite the repository outcome.
             }
         }
+        return this
+    }
 
     /** Writes [event] and the projection its log implies, atomically. */
     private suspend fun commit(
