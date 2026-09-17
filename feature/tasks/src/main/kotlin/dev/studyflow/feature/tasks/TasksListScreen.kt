@@ -374,7 +374,13 @@ private fun QuickAddBar(
             DueDateChip(
                 label = (dueDate as? QuickAddDueDate.Custom)?.date?.toString() ?: "Custom",
                 selected = dueDate is QuickAddDueDate.Custom,
-                onClick = { showDatePicker = true },
+                onClick = {
+                    if (dueDate is QuickAddDueDate.Custom) {
+                        onDueDateChanged(QuickAddDueDate.None)
+                    } else {
+                        showDatePicker = true
+                    }
+                },
             )
         }
     }
