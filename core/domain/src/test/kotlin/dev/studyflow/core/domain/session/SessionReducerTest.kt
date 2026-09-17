@@ -3,7 +3,6 @@ package dev.studyflow.core.domain.session
 import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.domain.timer.TimerCommandResult
 import dev.studyflow.core.domain.timer.TimerEngine
-import dev.studyflow.core.domain.timer.TimerState
 import dev.studyflow.core.model.SessionEvent
 import dev.studyflow.core.model.SessionStatus
 import dev.studyflow.core.testing.data.testSessionEvent

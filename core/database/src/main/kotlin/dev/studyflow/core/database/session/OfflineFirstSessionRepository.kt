@@ -57,7 +57,8 @@ public class OfflineFirstSessionRepository(
     /**
      * Deliberately takes the first row rather than asserting there is only one: this flow feeds the
      * UI, and a corrupted database should not turn every screen into a crash. Writes are where the
-     * invariant is enforced, and [activeSession] is where a violation is surfaced.
+     * invariant is enforced, and the command path's active-session lookup is where a violation is
+     * surfaced.
      */
     override fun observeActiveSession(): Flow<StudySession?> =
         dao.observeActive(deviceId).map { active -> active.firstOrNull()?.asExternalModel() }
