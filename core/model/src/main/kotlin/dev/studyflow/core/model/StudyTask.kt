@@ -270,7 +270,7 @@ public data class RecurrenceRule(
             "RecurrenceRule.monthOfYear must be in 1..$MONTHS_PER_YEAR, was $monthOfYear"
         }
         require(frequency == RecurrenceFrequency.WEEKLY || daysOfWeek.isEmpty() || weekOfMonth != null) {
-            "daysOfWeek needs a weekOfMonth outside a WEEKLY recurrence"
+            "daysOfWeek applies to a WEEKLY recurrence, or to a MONTHLY/YEARLY one with a weekOfMonth"
         }
         require(frequency != RecurrenceFrequency.DAILY || (dayOfMonth == null && weekOfMonth == null)) {
             "a DAILY recurrence cannot pick a day of the month"

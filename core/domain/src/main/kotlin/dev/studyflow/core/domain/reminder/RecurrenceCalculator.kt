@@ -111,12 +111,16 @@ public object RecurrenceCalculator {
         if (rule == null) return null
 
         val anchored = rule.anchoredTo(start.date)
-        val dates = boundedDates(anchored, start.date)
-        // Everything the rule generates before the next live occurrence: the head itself, and any
-        // date the user has removed. Counting them is what keeps "ten times" honest — the budget is
-        // spent by what the rule produced, not by what survived.
-        val spent = dates.takeWhile { it <= start.date || it in anchored.exceptions }.count()
-        val nextDate = dates.drop(spent).firstOrNull() ?: return null
+        val next =
+            boundedDates(anchored, start.date)
+                .withIndex()
+                .firstOrNull { (_, date) -> date > start.date && date !in anchored.exceptions }
+                ?: return null
+        // The index counts everything the rule generated before the next live occurrence: the head
+        // itself, and any date the user has removed. Counting them is what keeps "ten times"
+        // honest — the budget is spent by what the rule produced, not by what survived.
+        val spent = next.index
+        val nextDate = next.value
 
         val remaining =
             when (val end = anchored.end) {
