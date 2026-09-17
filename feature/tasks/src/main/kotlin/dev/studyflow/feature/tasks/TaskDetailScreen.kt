@@ -340,13 +340,15 @@ private fun RecurrenceSection(
                 RecurrenceOptionChip(label = "Never ends", selected = recurrence.end == RecurrenceEnd.Never) {
                     onEvent(TaskDetailUiEvent.RecurrenceChanged(recurrence.copy(end = RecurrenceEnd.Never)))
                 }
+                val occurrenceCount =
+                    (recurrence.end as? RecurrenceEnd.AfterOccurrences)?.count ?: DEFAULT_OCCURRENCE_COUNT
                 RecurrenceOptionChip(
-                    label = "After $DEFAULT_OCCURRENCE_COUNT occurrences",
+                    label = "After $occurrenceCount occurrences",
                     selected = recurrence.end is RecurrenceEnd.AfterOccurrences,
                 ) {
                     onEvent(
                         TaskDetailUiEvent.RecurrenceChanged(
-                            recurrence.copy(end = RecurrenceEnd.AfterOccurrences(DEFAULT_OCCURRENCE_COUNT)),
+                            recurrence.copy(end = RecurrenceEnd.AfterOccurrences(occurrenceCount)),
                         ),
                     )
                 }
