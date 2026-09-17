@@ -9,6 +9,30 @@
     <application
         android:name=".StudyFlowApplication"
         android:label="StudyFlow">
+        <activity
+            android:name=".MainActivity"
+            android:enableOnBackInvokedCallback="true"
+            android:exported="true"
+            tools:targetApi="tiramisu">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="studyflow" />
+                <data android:host="home" />
+                <data android:host="timer" />
+                <data android:host="materials" />
+                <data android:host="tasks" />
+                <data android:host="settings" />
+                <data android:host="widget" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".injection.StudyFlowInjectionService"
             android:exported="false" />

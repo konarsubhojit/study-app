@@ -6,6 +6,8 @@ import io.gitlab.arturbosch.detekt.extensions.DetektExtension
 import com.diffplug.gradle.spotless.SpotlessExtension
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.attributes.Attribute
+import org.gradle.api.file.FileCollection
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.dependencies
 import org.gradle.kotlin.dsl.withType
@@ -13,6 +15,12 @@ import java.io.File
 
 /** Lint findings that already existed may be parked here; new ones must be fixed (issue #13). */
 private const val LINT_BASELINE_FILE = "lint-baseline.xml"
+
+/** AGP's artifact-type attribute, used to pick a single artifact out of an Android variant. */
+private val ARTIFACT_TYPE_ATTRIBUTE: Attribute<String> = Attribute.of("artifactType", String::class.java)
+
+/** The compiled classes of an Android library, the only artifact detekt needs on its classpath. */
+private const val ANDROID_CLASSES_JAR = "android-classes-jar"
 
 /**
  * Formatting and static analysis gates (issue #13).
@@ -55,17 +63,7 @@ public class QualityConventionPlugin : Plugin<Project> {
             tasks.withType<Detekt>().configureEach {
                 jvmTarget = libs.findVersion("javaToolchain").get().requiredVersion
                 if (project.path !in setOf(":app", ":core:designsystem")) {
-                    classpath.setFrom(
-                        providers.provider {
-                            configurations.findByName(
-                                if (pluginManager.hasPlugin("com.android.base")) {
-                                    "debugCompileClasspath"
-                                } else {
-                                    "compileClasspath"
-                                },
-                            ) ?: files()
-                        },
-                    )
+                    classpath.setFrom(providers.provider { detektClasspath() })
                 }
                 reports {
                     html.required.set(true)
@@ -93,6 +91,26 @@ public class QualityConventionPlugin : Plugin<Project> {
             configureAndroidLint()
         }
     }
+}
+
+/**
+ * Compile classpath for type resolution in detekt.
+ *
+ * An Android module's compile classpath cannot be consumed as a plain file collection: a project
+ * dependency on another Android library exposes several artifacts (classes jar, lint jar, manifest,
+ * R class jar) under one variant, and without an `artifactType` Gradle cannot choose between them.
+ * Asking for the classes jar explicitly is what keeps a module that depends on another Android
+ * library resolvable.
+ */
+private fun Project.detektClasspath(): FileCollection {
+    val isAndroid = pluginManager.hasPlugin("com.android.base")
+    val configuration =
+        configurations.findByName(if (isAndroid) "debugCompileClasspath" else "compileClasspath")
+            ?: return files()
+    if (!isAndroid) return configuration
+    return configuration.incoming
+        .artifactView { attributes.attribute(ARTIFACT_TYPE_ATTRIBUTE, ANDROID_CLASSES_JAR) }
+        .files
 }
 
 /**

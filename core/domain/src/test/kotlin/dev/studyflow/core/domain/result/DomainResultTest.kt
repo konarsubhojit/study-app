@@ -1,8 +1,8 @@
 package dev.studyflow.core.domain.result
 
-import java.io.IOException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
+import java.io.IOException
 
 class DomainResultTest {
     @Test

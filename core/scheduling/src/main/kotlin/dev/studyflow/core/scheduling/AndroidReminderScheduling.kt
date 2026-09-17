@@ -102,7 +102,7 @@ public class AndroidReminderPlatformScheduler(
         alarmManager.setAlarmClock(
             AlarmManager.AlarmClockInfo(
                 plan.triggerAt.toEpochMilliseconds(),
-                showIntent(plan.reminderId),
+                showIntent(plan.taskId),
             ),
             operation(plan.reminderId),
         )
@@ -125,11 +125,11 @@ public class AndroidReminderPlatformScheduler(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private fun showIntent(reminderId: String): PendingIntent =
+    private fun showIntent(taskId: String): PendingIntent =
         PendingIntent.getActivity(
             context,
             PendingIntentSlot.SHOW.requestCode,
-            showIntentFactory().withReminderId(reminderId),
+            showIntentFactory().withTaskId(taskId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -202,11 +202,19 @@ private fun workName(reminderId: String): String = "reminder:$reminderId"
 
 private fun workTag(reminderId: String): String = "reminder-id:$reminderId"
 
-private fun Intent.withReminderId(reminderId: String): Intent =
+private fun Intent.withTaskId(taskId: String): Intent =
     apply {
-        data = reminderUri(reminderId)
-        putExtra(EXTRA_REMINDER_ID, reminderId)
+        data = taskUri(taskId)
+        putExtra(EXTRA_TASK_ID, taskId)
     }
+
+private fun taskUri(taskId: String): Uri =
+    Uri
+        .Builder()
+        .scheme("studyflow")
+        .authority("tasks")
+        .appendPath(taskId)
+        .build()
 
 private fun reminderUri(reminderId: String): Uri =
     Uri

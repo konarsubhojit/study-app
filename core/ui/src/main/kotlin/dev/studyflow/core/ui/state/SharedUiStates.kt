@@ -15,9 +15,7 @@ import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.domain.result.UserMessage
 
 @Composable
-public fun LoadingState(
-    modifier: Modifier = Modifier,
-) {
+public fun LoadingState(modifier: Modifier = Modifier) {
     StateContainer(modifier) {
         CircularProgressIndicator()
     }
@@ -49,13 +47,14 @@ public fun ErrorState(
 
 @Composable
 private fun StateContainer(
-    modifier: Modifier,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
     Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(MaterialTheme.spacing.huge),
+        modifier =
+            modifier
+                .fillMaxSize()
+                .padding(MaterialTheme.spacing.huge),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium, Alignment.CenterVertically),
         content = { content() },

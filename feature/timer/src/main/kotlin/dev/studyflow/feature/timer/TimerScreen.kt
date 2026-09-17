@@ -23,9 +23,10 @@ public fun TimerScreen(
         EmptyState(message = "Start a study session when you're ready.", modifier = modifier)
     } else {
         Column(
-            modifier = modifier
-                .fillMaxSize()
-                .padding(MaterialTheme.spacing.medium),
+            modifier =
+                modifier
+                    .fillMaxSize()
+                    .padding(MaterialTheme.spacing.medium),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium, Alignment.CenterVertically),
         ) {
