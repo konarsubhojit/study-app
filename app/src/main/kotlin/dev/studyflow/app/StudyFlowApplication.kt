@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
 import dagger.hilt.android.HiltAndroidApp
+import dev.studyflow.app.timer.TimerRecoveryCoordinator
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.logging.CrashReporter
 import javax.inject.Inject
@@ -17,6 +18,8 @@ class StudyFlowApplication :
     @Inject lateinit var logger: AppLogger
 
     @Inject lateinit var crashReporter: CrashReporter
+
+    @Inject internal lateinit var timerRecoveryCoordinator: TimerRecoveryCoordinator
 
     override val workManagerConfiguration: Configuration
         get() =
@@ -32,5 +35,6 @@ class StudyFlowApplication :
             optedOut = BuildConfig.CRASH_REPORTING_OPTED_OUT,
         )
         logger.info("Application", "StudyFlow started")
+        timerRecoveryCoordinator.recoverActiveSession()
     }
 }

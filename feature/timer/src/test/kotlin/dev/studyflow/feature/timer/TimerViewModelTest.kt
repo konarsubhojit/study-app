@@ -35,6 +35,7 @@ class TimerViewModelTest {
 
             viewModel.state.test {
                 assertEquals(TimerUiState(), awaitItem())
+                assertEquals(TimerUiState(isRestoring = false), awaitItem())
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -54,9 +55,10 @@ class TimerViewModelTest {
 
             viewModel.state.test {
                 assertEquals(TimerUiState(), awaitItem())
+                assertEquals(TimerUiState(isRestoring = false), awaitItem())
                 device.advance(10.minutes)
                 viewModel.onEvent(TimerUiEvent.Refresh)
-                assertEquals(TimerUiState(elapsedSeconds = 600L), awaitItem())
+                assertEquals(TimerUiState(elapsedSeconds = 600L, isRestoring = false), awaitItem())
                 cancelAndIgnoreRemainingEvents()
             }
         }

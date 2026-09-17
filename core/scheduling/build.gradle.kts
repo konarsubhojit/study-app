@@ -9,6 +9,7 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.core.notifications)
     implementation(projects.core.datastore)
+    implementation(libs.androidx.activity)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)
