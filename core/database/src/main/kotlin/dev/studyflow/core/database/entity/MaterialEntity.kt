@@ -158,3 +158,37 @@ public data class MaterialWithTags(
     )
     val tags: List<TagEntity> = emptyList(),
 )
+
+/**
+ * One part of a material's upload the object store has already acknowledged (issue #38).
+ *
+ * Rows here are what makes an interrupted upload resumable across process death: the worker reads
+ * them back on every run and only resends the parts of [UploadPlan][dev.studyflow.core.domain.materials.UploadPlan]
+ * that are missing. A row is written the instant its part is acknowledged, and the whole set is
+ * dropped once the upload finishes (successfully or permanently), so this table only ever holds
+ * progress for an upload that is still genuinely in flight.
+ */
+@Entity(
+    tableName = "material_upload_parts",
+    primaryKeys = ["material_id", "part_number"],
+    foreignKeys = [
+        ForeignKey(
+            entity = MaterialEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["material_id"],
+            onDelete = ForeignKey.CASCADE,
+        ),
+    ],
+    indices = [Index(value = ["material_id"], name = "index_material_upload_parts_material_id")],
+)
+public data class MaterialUploadPartEntity(
+    @ColumnInfo(name = "material_id")
+    val materialId: String,
+    @ColumnInfo(name = "part_number")
+    val partNumber: Int,
+    val etag: String,
+    @ColumnInfo(name = "size_bytes")
+    val sizeBytes: Long,
+    @ColumnInfo(name = "completed_at")
+    val completedAt: Instant,
+)
