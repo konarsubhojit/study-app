@@ -36,15 +36,7 @@ public class WorkManagerMaterialUploadCoordinator(
     private val workManager: WorkManager = WorkManager.getInstance(context),
 ) : MaterialUploadCoordinator {
     override suspend fun enqueueUpload(materialId: String) {
-        val material = materialRepository.observeById(materialId).first() ?: return
-        if (material.sync == SyncState.Synced) return
-
-        val existingSynced = materialRepository.findByContentHash(material.contentHash)
-        if (existingSynced != null && existingSynced.id != materialId && existingSynced.sync == SyncState.Synced) {
-            materialRepository.save(material.copy(sync = SyncState.Synced, remoteKey = existingSynced.remoteKey))
-            return
-        }
-
+        if (adoptExistingUploadIfAny(materialId)) return
         // `KEEP`: a second call for a material already queued or running (a duplicate share intent,
         // a screen re-collecting the same import outcome) must not restart or duplicate the work.
         enqueue(materialId, ExistingWorkPolicy.KEEP)
@@ -55,11 +47,31 @@ public class WorkManagerMaterialUploadCoordinator(
     }
 
     override suspend fun retryUpload(materialId: String) {
-        val material = materialRepository.observeById(materialId).first() ?: return
-        if (material.sync == SyncState.Synced) return
+        if (adoptExistingUploadIfAny(materialId)) return
         // `REPLACE`: the previous attempt, successful or not, is done; a manual retry always starts
         // a fresh work request rather than being absorbed by `KEEP` into whatever is already there.
         enqueue(materialId, ExistingWorkPolicy.REPLACE)
+    }
+
+    /**
+     * Marks [materialId] synced by borrowing another material's already-uploaded object under the
+     * same content hash, without enqueueing any work — for [enqueueUpload] and a manual
+     * [retryUpload] alike, since the same bytes may have finished uploading elsewhere between the
+     * two calls.
+     *
+     * @return `true` when [materialId] is already synced or was just adopted, meaning the caller
+     *   must not enqueue an upload.
+     */
+    private suspend fun adoptExistingUploadIfAny(materialId: String): Boolean {
+        val material = materialRepository.observeById(materialId).first() ?: return true
+        if (material.sync == SyncState.Synced) return true
+
+        val existingSynced = materialRepository.findByContentHash(material.contentHash)
+        if (existingSynced != null && existingSynced.id != materialId && existingSynced.sync == SyncState.Synced) {
+            materialRepository.save(material.copy(sync = SyncState.Synced, remoteKey = existingSynced.remoteKey))
+            return true
+        }
+        return false
     }
 
     private suspend fun enqueue(

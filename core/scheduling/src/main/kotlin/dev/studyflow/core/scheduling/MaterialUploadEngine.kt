@@ -80,16 +80,25 @@ public class MaterialUploadEngine(
             current = current.markUploading(plan, completed.values)
 
             if (!plan.isComplete(completed.keys)) {
-                for (part in plan.remaining(completed.keys)) {
+                val remaining = plan.remaining(completed.keys)
+                remaining.forEachIndexed { index, part ->
                     val signedPart =
                         signedPartsByNumber[part.number]
                             ?: error("upload session for '${current.id}' has no signed URL for part ${part.number}")
                     val bytes = readPart(localPath, part)
                     val uploaded = objectStore.uploadPart(session, signedPart, bytes)
                     val completedPart = CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size)
+                    // Every part is durably recorded the instant it is acknowledged, so a process
+                    // death never loses a receipt. The catalogue row's `Uploading` progress is a UI
+                    // nicety rather than a resume source, so it is only rewritten every few parts —
+                    // a many-thousand-part transfer would otherwise turn one database write per part
+                    // acknowledged into needless churn on the catalogue's observers.
                     uploadProgressStore.recordCompletedPart(materialId, completedPart)
                     completed[completedPart.number] = completedPart
-                    current = current.markUploading(plan, completed.values)
+                    val isLastPart = index == remaining.lastIndex
+                    if (isLastPart || (index + 1) % PROGRESS_SAVE_INTERVAL_PARTS == 0) {
+                        current = current.markUploading(plan, completed.values)
+                    }
                     onProgress(plan.uploadedBytes(completed.keys), plan.totalBytes)
                 }
             }
@@ -135,6 +144,9 @@ public class MaterialUploadEngine(
         UploadedPart(number = number, etag = etag, size = sizeBytes)
 
     public companion object {
+        /** How many acknowledged parts pass between catalogue progress writes; see the loop above. */
+        private const val PROGRESS_SAVE_INTERVAL_PARTS = 5
+
         /** Reads exactly [UploadPart.size] bytes at [UploadPart.offset] from the file at [localPath]. */
         public fun readPartFromDisk(
             localPath: String,
