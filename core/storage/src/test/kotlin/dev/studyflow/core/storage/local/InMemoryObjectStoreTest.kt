@@ -1,9 +1,11 @@
 package dev.studyflow.core.storage.local
 
 import dev.studyflow.core.domain.materials.MultipartLimits
+import dev.studyflow.core.domain.materials.UploadPart
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStoreException
+import dev.studyflow.core.storage.SignedPart
 import dev.studyflow.core.storage.UploadRequest
 import dev.studyflow.core.storage.UploadSession
 import dev.studyflow.core.storage.UploadedPart
@@ -107,6 +109,33 @@ class InMemoryObjectStoreTest {
             val sent = store.uploadPart(session, session.parts.first(), bytes.copyOfRange(0, PART_SIZE.toInt()))
 
             assertFailsWith<ObjectStoreException.Integrity> { store.completeUpload(session, listOf(sent)) }
+        }
+
+    @Test
+    fun `a part the store never signed is refused rather than stored and ignored`() =
+        runTest {
+            val bytes = "stray".encodeToByteArray()
+            val session = store.initUpload(requestFor(bytes))
+            val stray =
+                SignedPart(
+                    part = UploadPart(number = 9, offset = 0, size = bytes.size.toLong()),
+                    url = session.parts.first().url,
+                )
+
+            assertFailsWith<ObjectStoreException.AccessDenied> { store.uploadPart(session, stray, bytes) }
+        }
+
+    @Test
+    fun `an object too large for process memory is refused up front, not with an OutOfMemoryError`() =
+        runTest {
+            val huge =
+                UploadRequest.ofMaterial(
+                    contentHash = ContentHash(sha256Hex(ByteArray(0))),
+                    sizeBytes = Int.MAX_VALUE.toLong() + 1,
+                    contentType = CONTENT_TYPE,
+                )
+
+            assertFailsWith<ObjectStoreException.QuotaExceeded> { store.initUpload(huge) }
         }
 
     @Test

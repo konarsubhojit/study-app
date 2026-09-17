@@ -49,6 +49,13 @@ public class InMemoryObjectStore(
 
     override suspend fun initUpload(request: UploadRequest): UploadSession =
         mutex.withLock {
+            // A process-memory store cannot hold an object larger than an array, and saying so now
+            // is kinder than an OutOfMemoryError halfway through a 3 GB film.
+            if (request.sizeBytes > Int.MAX_VALUE) {
+                throw ObjectStoreException.QuotaExceeded(
+                    "'${request.key}' is ${request.sizeBytes} bytes; this store holds at most ${Int.MAX_VALUE}",
+                )
+            }
             val uploadId = "upload-${++nextUploadId}"
             val expiresAt = clock.now() + urlTtl
             val session =
@@ -78,6 +85,13 @@ public class InMemoryObjectStore(
 
         return mutex.withLock {
             val upload = activeUpload(session)
+            // A real provider only signed the parts it planned; a stray part number is a bug that
+            // would otherwise be stored and then quietly ignored when the object is assembled.
+            if (part !in session.parts) {
+                throw ObjectStoreException.AccessDenied(
+                    "part ${part.number} is not part of upload '${session.uploadId}'",
+                )
+            }
             upload.parts[part.number] = bytes.copyOf()
             UploadedPart(number = part.number, etag = "part-${part.number}", size = part.size)
         }
