@@ -133,9 +133,23 @@ jobs:
             echo "::warning::jq is not available, so SARIF reports cannot be collected."
             exit 0
           fi
+          # Code scanning rejects a submission with more than 20 runs, and every module emits a
+          # detekt and a lint run, so the reports are grouped into batches that are uploaded
+          # separately.
+          max_runs_per_batch=20
+          batch=1
+          batch_runs=0
           find . \( -path '*/build/reports/*.sarif' -o -path '*/build/reports/*/*.sarif' \) -print0 | while IFS= read -r -d '' report; do
             safe_name=${report#./}
             safe_name=${safe_name//\//-}
+            runs=$(jq '.runs | length' "$report")
+            if [ "$batch_runs" -gt 0 ] && [ $((batch_runs + runs)) -gt "$max_runs_per_batch" ]; then
+              batch=$((batch + 1))
+              batch_runs=0
+            fi
+            batch_runs=$((batch_runs + runs))
+            batch_dir="build/ci-sarif/batch-$batch"
+            mkdir -p "$batch_dir"
             # Every module emits a detekt and a lint run under the same tool name, and code
             # scanning rejects several runs that share a category. Deriving the automation id
             # from the report path gives each run its own category.
@@ -147,14 +161,35 @@ jobs:
                     automationDetails: ((.value.automationDetails // {}) + {id: "\($prefix)/\(.key)/"})
                   }
               ]
-            ' "$report" > "build/ci-sarif/$safe_name"
+            ' "$report" > "$batch_dir/$safe_name"
           done
+          if [ -d build/ci-sarif/batch-5 ]; then
+            echo "::warning::More static analysis reports than the upload steps cover; add another batch step."
+          fi
 
-      - name: Publish static analysis annotations
-        if: ${{ !cancelled() && hashFiles('build/ci-sarif/*.sarif') != '' }}
+      - name: Publish static analysis annotations (batch 1)
+        if: ${{ !cancelled() && hashFiles('build/ci-sarif/batch-1/*.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: build/ci-sarif
+          sarif_file: build/ci-sarif/batch-1
+
+      - name: Publish static analysis annotations (batch 2)
+        if: ${{ !cancelled() && hashFiles('build/ci-sarif/batch-2/*.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: build/ci-sarif/batch-2
+
+      - name: Publish static analysis annotations (batch 3)
+        if: ${{ !cancelled() && hashFiles('build/ci-sarif/batch-3/*.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: build/ci-sarif/batch-3
+
+      - name: Publish static analysis annotations (batch 4)
+        if: ${{ !cancelled() && hashFiles('build/ci-sarif/batch-4/*.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: build/ci-sarif/batch-4
 
       - name: Upload reports
         if: ${{ !cancelled() }}
