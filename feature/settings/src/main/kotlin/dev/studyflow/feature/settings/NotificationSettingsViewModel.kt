@@ -104,7 +104,9 @@ public class NotificationSettingsViewModel
 
         public val state: StateFlow<NotificationSettingsUiState> =
             combine(systemState, rationale) { system, rationaleKey ->
-                system.copy(rationale = rationaleKey?.let(NotificationMessageKey::valueOf))
+                // Resolved by name rather than valueOf: a saved key from a previous app version may
+                // no longer exist, and a dropped rationale is better than a crash on restore.
+                system.copy(rationale = NotificationMessageKey.entries.firstOrNull { it.name == rationaleKey })
             }.stateInViewModel(systemState.value)
 
         override fun onEvent(event: NotificationSettingsUiEvent) {
@@ -169,7 +171,15 @@ public class NotificationSettingsViewModel
 
                 is NotificationPermissionAction.OpenSystemSettings -> {
                     systemState.value = systemState.value.copy(degradation = action.degradationKey)
-                    emitEffect(NotificationSettingsUiEffect.OpenSystemSettings(source.appSettingsIntent()))
+                    emitEffect(
+                        NotificationSettingsUiEffect.OpenSystemSettings(
+                            intent =
+                                action.channel
+                                    ?.let(source::channelSettingsIntent)
+                                    ?: source.appSettingsIntent(),
+                            fallbackIntent = source.appSettingsIntent(),
+                        ),
+                    )
                 }
 
                 NotificationPermissionAction.None -> {

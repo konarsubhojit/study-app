@@ -174,6 +174,18 @@ class NotificationSettingsViewModelTest {
             assertEquals(NotificationMessageKey.RATIONALE_GENERIC, restored.state.value.rationale)
         }
 
+    @Test
+    fun `an explanation saved by an older version is dropped rather than crashing on restore`() =
+        runTest(mainDispatcher.dispatcher) {
+            val savedState =
+                SavedStateHandle(mapOf("notificationSettings.rationale" to "RATIONALE_FROM_A_PAST_RELEASE"))
+
+            val viewModel = viewModel(savedState)
+            advanceUntilIdle()
+
+            assertNull(viewModel.state.value.rationale)
+        }
+
     private fun viewModel(savedState: SavedStateHandle = SavedStateHandle()) =
         NotificationSettingsViewModel(savedState, source)
 

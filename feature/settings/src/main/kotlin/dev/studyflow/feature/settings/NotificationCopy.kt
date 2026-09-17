@@ -33,7 +33,12 @@ internal object NotificationCopy {
                 "Allow notifications to see upload progress and to be told if an upload fails."
             }
 
-            else -> {
+            NotificationMessageKey.DEGRADED_GENERIC,
+            NotificationMessageKey.DEGRADED_TIMER,
+            NotificationMessageKey.DEGRADED_REMINDER,
+            NotificationMessageKey.DEGRADED_ALARM,
+            NotificationMessageKey.DEGRADED_UPLOAD,
+            -> {
                 degradation(key)
             }
         }
@@ -56,7 +61,13 @@ internal object NotificationCopy {
                 "Uploads still finish in the background, but you will not see progress or failures."
             }
 
-            else -> {
+            NotificationMessageKey.DEGRADED_GENERIC,
+            NotificationMessageKey.RATIONALE_GENERIC,
+            NotificationMessageKey.RATIONALE_TIMER,
+            NotificationMessageKey.RATIONALE_REMINDER,
+            NotificationMessageKey.RATIONALE_ALARM,
+            NotificationMessageKey.RATIONALE_UPLOAD,
+            -> {
                 "Notifications are off, so StudyFlow cannot tell you about anything that happens."
             }
         }

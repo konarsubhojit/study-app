@@ -111,7 +111,10 @@ public data class NotificationPermissionState(
     val canPost: Boolean
         get() =
             notificationsEnabled &&
-                status in setOf(NotificationPermissionStatus.GRANTED, NotificationPermissionStatus.NOT_REQUIRED)
+                (
+                    status == NotificationPermissionStatus.GRANTED ||
+                        status == NotificationPermissionStatus.NOT_REQUIRED
+                )
 }
 
 /** What the UI should do next about notifications at a given [NotificationMoment]. */
