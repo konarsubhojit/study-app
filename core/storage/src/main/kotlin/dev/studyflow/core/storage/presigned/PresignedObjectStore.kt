@@ -54,8 +54,12 @@ public class PresignedObjectStore(
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Throwable) {
-                // The URL is a bearer credential: it must not reach a log line or a crash report.
-                throw ObjectStoreException.Transient("part ${part.number} of '${session.key}' failed", failure)
+                // The URL is a bearer credential, and engine exceptions routinely carry the failed
+                // request URL in their message, so the cause is named but never attached: nothing
+                // that reaches a log line or a crash report may contain the signature.
+                throw ObjectStoreException.Transient(
+                    "part ${part.number} of '${session.key}' failed: ${failure::class.simpleName}",
+                )
             }
 
         if (!response.status.isSuccess()) {

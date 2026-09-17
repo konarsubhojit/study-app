@@ -85,6 +85,8 @@ public class InMemoryObjectStore(
 
         return mutex.withLock {
             val upload = activeUpload(session)
+            // A rejected upload is never resumable, so its buffered parts are dropped rather than
+            // held for the life of the process.
             // A real provider only signed the parts it planned; a stray part number is a bug that
             // would otherwise be stored and then quietly ignored when the object is assembled.
             if (part !in session.parts) {
@@ -106,6 +108,7 @@ public class InMemoryObjectStore(
             val acknowledged = parts.map { it.number }.toSet()
             val missing = session.parts.map { it.number }.filterNot { it in acknowledged }
             if (missing.isNotEmpty()) {
+                uploads.remove(session.uploadId)
                 throw ObjectStoreException.Integrity("parts $missing of '${session.key}' were not acknowledged")
             }
 
@@ -113,16 +116,20 @@ public class InMemoryObjectStore(
             session.parts.forEach { part ->
                 val uploaded =
                     upload.parts[part.number]
-                        ?: throw ObjectStoreException.Integrity(
-                            "part ${part.number} of '${session.key}' was never uploaded",
-                        )
+                        ?: run {
+                            uploads.remove(session.uploadId)
+                            throw ObjectStoreException.Integrity(
+                                "part ${part.number} of '${session.key}' was never uploaded",
+                            )
+                        }
                 uploaded.copyInto(assembled, destinationOffset = part.offset.toInt())
             }
 
             val digest = ContentHash(sha256Hex(assembled))
             if (digest != upload.request.contentHash) {
+                uploads.remove(session.uploadId)
                 throw ObjectStoreException.Integrity(
-                    "'${session.key}' hashes to $digest but ${upload.request.contentHash} was expected",
+                    "'${session.key}' hashes to ${digest.hex} but ${upload.request.contentHash.hex} was expected",
                 )
             }
 
