@@ -207,6 +207,8 @@ public fun TaskWithReminders.asExternalModel(): StudyTask =
                 .map { Subtask(id = it.id, title = it.title, completedAt = it.completedAt) },
         recurrence = task.asExternalRecurrence(),
         completedAt = task.completedAt,
+        // Room does not promise a relation order. Sorting by id gives a deterministic read; a
+        // reminder's position carries no meaning, unlike a subtask's, which has its own column.
         reminders = reminders.sortedBy(ReminderEntity::id).map(ReminderEntity::asExternalModel),
         updatedAt = task.updatedAt,
         deleted = task.deleted,

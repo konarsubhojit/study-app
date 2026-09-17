@@ -44,8 +44,9 @@ baseline; version 2 adds encrypted-material state and covering index refinements
 `MIGRATION_1_2`; version 3 adds the task/reminder model above — all-day and priority, links to
 material and session, tags, checklist rows, per-task recurrence and multiple reminders per task —
 through `MIGRATION_2_3`, which rebuilds both tables, moves the recurrence columns from the reminder
-to its task and backfills the derived UTC instants. Every future version must add an adjacent migration and a semantic migration test.
-The registry continuity test fails if any shipped version is skipped.
+to its task and backfills the derived UTC instants. Every future version must add an adjacent
+migration and a semantic migration test. The registry continuity test fails if any shipped version
+is skipped.
 
 Two deterministic synthetic profiles are provided:
 

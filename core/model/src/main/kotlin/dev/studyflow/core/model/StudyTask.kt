@@ -46,6 +46,8 @@ public data class StudyTask(
     val subtasks: List<Subtask> = emptyList(),
     val recurrence: RecurrenceRule? = null,
     val completedAt: Instant? = null,
+    // Reminders are identified by id, not by position: persistence returns them in id order, so a
+    // caller must not read meaning into where a reminder sits in this list.
     val reminders: List<Reminder> = emptyList(),
     val updatedAt: Instant,
     val deleted: Boolean = false,
@@ -57,6 +59,7 @@ public data class StudyTask(
         require(subtasks.distinctBy(Subtask::id).size == subtasks.size) { "subtask ids must be unique" }
         require(reminders.distinctBy(Reminder::id).size == reminders.size) { "reminder ids must be unique" }
         require(reminders.all { it.taskId == id }) { "every reminder must belong to task $id" }
+        require(!isAllDay || dueAt != null) { "an all-day task must have a due date" }
         require(!isAllDay || dueAt?.time == LocalTime(0, 0)) {
             "an all-day task must be due at local midnight, was ${dueAt?.time}"
         }
