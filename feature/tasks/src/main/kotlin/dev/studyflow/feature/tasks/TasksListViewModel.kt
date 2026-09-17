@@ -12,9 +12,11 @@ import dev.studyflow.core.ui.mvi.MviViewModel
 import dev.studyflow.core.ui.mvi.UiEffect
 import dev.studyflow.core.ui.mvi.UiEvent
 import dev.studyflow.core.ui.mvi.UiState
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.datetime.DateTimeUnit
 import kotlinx.datetime.LocalDateTime
@@ -142,20 +144,29 @@ public class TasksListViewModel
         private val quickAddDueDate = MutableStateFlow<QuickAddDueDate>(QuickAddDueDate.None)
         private val undo = MutableStateFlow<TaskListUndo?>(null)
 
+        private val filterOptions: StateFlow<TaskFilterOptions> =
+            repository
+                .observeTasks()
+                .map { it.filterOptions() }
+                .stateInViewModel(TaskFilterOptions())
+
+        private val allAndOptions: Flow<Pair<List<StudyTask>, TaskFilterOptions>> =
+            combine(repository.observeTasks(), filterOptions) { all, options -> all to options }
+
         private val sections: StateFlow<TasksListSections> =
             combine(
                 repository.observeOverdue(),
                 repository.observeToday(),
                 repository.observeUpcoming(),
-                repository.observeTasks(),
+                allAndOptions,
                 filter,
-            ) { overdue, today, upcoming, all, currentFilter ->
+            ) { overdue, today, upcoming, (all, currentOptions), currentFilter ->
                 TasksListSections(
                     overdue = overdue.applyTo(currentFilter),
                     today = today.applyTo(currentFilter),
                     upcoming = upcoming.applyTo(currentFilter),
                     someday = all.someday().applyTo(currentFilter),
-                    filterOptions = all.filterOptions(),
+                    filterOptions = currentOptions,
                 )
             }.stateInViewModel(TasksListSections())
 

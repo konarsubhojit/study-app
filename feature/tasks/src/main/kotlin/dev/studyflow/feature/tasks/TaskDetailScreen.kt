@@ -341,7 +341,7 @@ private fun RecurrenceSection(
                     onEvent(TaskDetailUiEvent.RecurrenceChanged(recurrence.copy(end = RecurrenceEnd.Never)))
                 }
                 RecurrenceOptionChip(
-                    label = "After $DEFAULT_OCCURRENCE_COUNT",
+                    label = "After $DEFAULT_OCCURRENCE_COUNT occurrences",
                     selected = recurrence.end is RecurrenceEnd.AfterOccurrences,
                 ) {
                     onEvent(
