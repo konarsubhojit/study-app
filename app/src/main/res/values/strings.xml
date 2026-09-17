@@ -1,0 +1,10 @@
+<resources>
+    <string name="timer_notification_title">Study session</string>
+    <string name="timer_notification_restoring">Restoring timer</string>
+    <string name="timer_notification_running">Timer running</string>
+    <string name="timer_notification_paused">Timer paused</string>
+    <string name="timer_notification_action_pause">Pause</string>
+    <string name="timer_notification_action_resume">Resume</string>
+    <string name="timer_notification_action_stop">Stop</string>
+    <string name="timer_notification_action_open">Open</string>
+</resources>

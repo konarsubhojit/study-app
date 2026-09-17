@@ -31,8 +31,8 @@ import dev.studyflow.core.notifications.ChronometerPresentation
 import dev.studyflow.core.notifications.NotificationAction
 import dev.studyflow.core.notifications.NotificationChannelRegistrar
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
-import dev.studyflow.core.notifications.StudyFlowPendingIntents
 import dev.studyflow.core.notifications.StudyFlowNotifier
+import dev.studyflow.core.notifications.StudyFlowPendingIntents
 import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
@@ -70,6 +70,7 @@ internal class TimerForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        startPlaceholderForeground()
         scope.launch {
             when (intent?.action) {
                 ACTION_PAUSE -> applyCommand(TimerCommand.Pause)
@@ -114,10 +115,25 @@ internal class TimerForegroundService : Service() {
                 startTimerForeground(state, sessionRepository.observeActiveSession().first())
             }
             is TimerState.Paused -> {
+                // Only a ticking interval has an anchor to recover; paused elapsed time is already
+                // settled in the event log.
                 activeTimerStore.clear()
                 startTimerForeground(state, sessionRepository.observeActiveSession().first())
             }
         }
+    }
+
+    private fun startPlaceholderForeground() {
+        notificationChannelRegistrar.register()
+        val notification =
+            notificationFactory.ongoingChronometer(
+                title = getString(R.string.timer_notification_title),
+                text = getString(R.string.timer_notification_restoring),
+                startedAtEpochMillis = wallClock.now().toEpochMilliseconds(),
+                contentIntent = openIntent(),
+                chronometer = ChronometerPresentation(usesChronometer = false),
+            )
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
     }
 
     private fun startTimerForeground(
@@ -128,8 +144,13 @@ internal class TimerForegroundService : Service() {
         val now = currentAnchor()
         val notification =
             notificationFactory.ongoingChronometer(
-                title = session?.note ?: "Study session",
-                text = if (state is TimerState.Running) "Timer running" else "Timer paused",
+                title = session?.note?.takeIf(String::isNotBlank) ?: getString(R.string.timer_notification_title),
+                text =
+                    if (state is TimerState.Running) {
+                        getString(R.string.timer_notification_running)
+                    } else {
+                        getString(R.string.timer_notification_paused)
+                    },
                 startedAtEpochMillis = chronometerWhenEpochMillis(state, now),
                 contentIntent = openIntent(),
                 actions = actionsFor(state),
@@ -158,12 +179,28 @@ internal class TimerForegroundService : Service() {
     private fun actionsFor(state: TimerState.Active): List<NotificationAction> =
         listOf(
             if (state is TimerState.Running) {
-                NotificationAction("Pause", R.drawable.ic_notification, serviceIntent(ACTION_PAUSE, REQUEST_PAUSE))
+                NotificationAction(
+                    getString(R.string.timer_notification_action_pause),
+                    R.drawable.ic_notification,
+                    serviceIntent(ACTION_PAUSE, REQUEST_PAUSE),
+                )
             } else {
-                NotificationAction("Resume", R.drawable.ic_notification, serviceIntent(ACTION_RESUME, REQUEST_RESUME))
+                NotificationAction(
+                    getString(R.string.timer_notification_action_resume),
+                    R.drawable.ic_notification,
+                    serviceIntent(ACTION_RESUME, REQUEST_RESUME),
+                )
             },
-            NotificationAction("Stop", R.drawable.ic_notification, serviceIntent(ACTION_STOP, REQUEST_STOP)),
-            NotificationAction("Open", R.drawable.ic_notification, openIntent()),
+            NotificationAction(
+                getString(R.string.timer_notification_action_stop),
+                R.drawable.ic_notification,
+                serviceIntent(ACTION_STOP, REQUEST_STOP),
+            ),
+            NotificationAction(
+                getString(R.string.timer_notification_action_open),
+                R.drawable.ic_notification,
+                openIntent(),
+            ),
         )
 
     private fun serviceIntent(
@@ -225,6 +262,11 @@ class TimerForegroundServiceController
         private val context: Context,
     ) : SessionCommandObserver {
         override fun onSessionCommandApplied(result: SessionCommandResult.Applied) {
-            ContextCompat.startForegroundService(context, TimerForegroundService.refreshIntent(context))
+            val intent = TimerForegroundService.refreshIntent(context)
+            if (result.state is TimerState.Stopped) {
+                context.startService(intent)
+            } else {
+                ContextCompat.startForegroundService(context, intent)
+            }
         }
     }
