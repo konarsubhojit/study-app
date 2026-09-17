@@ -16,18 +16,16 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class TimerForegroundBindings {
+abstract class TimerForegroundModule {
     @Binds
     @IntoSet
     abstract fun timerForegroundObserver(controller: TimerForegroundServiceController): SessionCommandObserver
-}
 
-@Module
-@InstallIn(SingletonComponent::class)
-object TimerForegroundStores {
-    @Provides
-    @Singleton
-    fun activeTimerStore(
-        @ApplicationContext context: Context,
-    ): ActiveTimerStore = context.activeTimerStore()
+    companion object {
+        @Provides
+        @Singleton
+        fun activeTimerStore(
+            @ApplicationContext context: Context,
+        ): ActiveTimerStore = context.activeTimerStore()
+    }
 }

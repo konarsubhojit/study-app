@@ -122,6 +122,12 @@ public class OfflineFirstSessionRepository(
                 }
             }.alsoNotify()
 
+    /**
+     * Runs process-local side effects after [commandLock] is released.
+     *
+     * Observer failures are intentionally ignored because the command is already durable and a
+     * service/notification refresh should never turn a committed timer event into a failed command.
+     */
     private fun SessionCommandResult.alsoNotify(): SessionCommandResult {
         if (this !is SessionCommandResult.Applied) return this
         observers.forEach { observer ->

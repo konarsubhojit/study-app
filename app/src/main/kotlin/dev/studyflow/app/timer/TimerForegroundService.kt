@@ -59,6 +59,7 @@ internal class TimerForegroundService : Service() {
     @Inject lateinit var wallClock: Clock
 
     private lateinit var scope: CoroutineScope
+    private var foregroundStarted = false
 
     override fun onCreate() {
         super.onCreate()
@@ -70,9 +71,10 @@ internal class TimerForegroundService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
-        startPlaceholderForeground()
+        if (!foregroundStarted) startPlaceholderForeground()
         scope.launch {
             when (intent?.action) {
+                ACTION_REFRESH -> refreshFromRepository()
                 ACTION_PAUSE -> applyCommand(TimerCommand.Pause)
                 ACTION_RESUME -> applyCommand(TimerCommand.Resume)
                 ACTION_STOP -> applyCommand(TimerCommand.Stop)
@@ -134,6 +136,7 @@ internal class TimerForegroundService : Service() {
                 chronometer = ChronometerPresentation(usesChronometer = false),
             )
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
+            foregroundStarted = true
     }
 
     private fun startTimerForeground(
@@ -157,12 +160,14 @@ internal class TimerForegroundService : Service() {
                 chronometer = ChronometerPresentation(usesChronometer = state is TimerState.Running),
             )
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
+        foregroundStarted = true
     }
 
     private suspend fun stopTimerForeground() {
         activeTimerStore.clear()
         notifier.cancel(NOTIFICATION_ID)
         stopForeground(STOP_FOREGROUND_REMOVE)
+        foregroundStarted = false
         stopSelf()
     }
 
@@ -262,11 +267,6 @@ class TimerForegroundServiceController
         private val context: Context,
     ) : SessionCommandObserver {
         override fun onSessionCommandApplied(result: SessionCommandResult.Applied) {
-            val intent = TimerForegroundService.refreshIntent(context)
-            if (result.state is TimerState.Stopped) {
-                context.startService(intent)
-            } else {
-                ContextCompat.startForegroundService(context, intent)
-            }
+            ContextCompat.startForegroundService(context, TimerForegroundService.refreshIntent(context))
         }
     }
