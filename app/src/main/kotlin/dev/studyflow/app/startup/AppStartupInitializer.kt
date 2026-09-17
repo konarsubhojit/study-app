@@ -6,6 +6,7 @@ import androidx.startup.Initializer
 import dev.studyflow.app.BuildConfig
 import dev.studyflow.app.logging.AndroidLogging
 import dev.studyflow.core.notifications.NotificationChannelRegistrar
+import dev.studyflow.core.scheduling.DigestScheduler
 
 class AppStartupInitializer : Initializer<Unit> {
     override fun create(context: Context) {
@@ -13,6 +14,10 @@ class AppStartupInitializer : Initializer<Unit> {
         // `POST_NOTIFICATIONS`: creating a channel needs no permission, and the request belongs to
         // a moment of value rather than to cold start (docs/notifications.md).
         NotificationChannelRegistrar(context).register()
+
+        // `KEEP` inside the scheduler means calling this on every cold start is safe: it enqueues
+        // the daily digest job once and leaves an already-running one alone (issue #47).
+        DigestScheduler(context).ensureScheduled()
 
         if (BuildConfig.DEBUG) {
             try {
