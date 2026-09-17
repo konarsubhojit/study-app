@@ -512,6 +512,63 @@ class RecurrenceCalculatorTest {
             )
         }
 
+        @Test
+        fun `a monthly series on the 31st keeps the 31st after a short month`() {
+            val rule = RecurrenceRule(RecurrenceFrequency.MONTHLY)
+            var head = LocalDateTime(2027, 1, 31, 8, 0)
+            var current = rule
+            val visited = mutableListOf(head)
+
+            repeat(3) {
+                val advanced = requireNotNull(RecurrenceCalculator.advance(current, head))
+                head = advanced.start
+                current = advanced.rule
+                visited += head
+            }
+
+            assertEquals(
+                listOf(
+                    LocalDateTime(2027, 1, 31, 8, 0),
+                    LocalDateTime(2027, 2, 28, 8, 0),
+                    LocalDateTime(2027, 3, 31, 8, 0),
+                    LocalDateTime(2027, 4, 30, 8, 0),
+                ),
+                visited,
+                "a short month must borrow the last day, not redefine the series",
+            )
+        }
+
+        @Test
+        fun `a yearly series on 29 February returns to the 29th on the next leap year`() {
+            val rule = RecurrenceRule(RecurrenceFrequency.YEARLY)
+
+            val first = requireNotNull(RecurrenceCalculator.advance(rule, LocalDateTime(2028, 2, 29, 8, 0)))
+
+            assertEquals(LocalDateTime(2029, 2, 28, 8, 0), first.start)
+            assertEquals(
+                LocalDateTime(2032, 2, 29, 8, 0),
+                RecurrenceCalculator.localOccurrences(first.rule, first.start).drop(3).first(),
+                "the leap day is only borrowed away for the three common years",
+            )
+        }
+
+        @Test
+        fun `a head that is not itself on the rule advances to the rule's first occurrence`() {
+            // Created on a Monday for a Tuesday/Thursday rule: the Tuesday must not be skipped.
+            val monday = LocalDateTime(2026, 3, 2, 8, 0)
+            val rule =
+                RecurrenceRule(
+                    frequency = RecurrenceFrequency.WEEKLY,
+                    daysOfWeek = setOf(DayOfWeek.TUESDAY, DayOfWeek.THURSDAY),
+                    end = RecurrenceEnd.AfterOccurrences(2),
+                )
+
+            val advanced = requireNotNull(RecurrenceCalculator.advance(rule, monday))
+
+            assertEquals(LocalDateTime(2026, 3, 3, 8, 0), advanced.start)
+            assertEquals(RecurrenceEnd.AfterOccurrences(2), advanced.rule.end, "no occurrence was consumed yet")
+        }
+
         private fun RecurrenceRule.advancedTo(consumed: Int): RecurrenceRule =
             copy(end = RecurrenceEnd.AfterOccurrences((end as RecurrenceEnd.AfterOccurrences).count - consumed + 1))
     }

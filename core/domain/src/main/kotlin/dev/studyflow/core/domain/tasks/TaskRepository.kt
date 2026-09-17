@@ -42,6 +42,15 @@ public interface TaskRepository {
     public suspend fun save(task: StudyTask)
 
     /**
+     * Saves several aggregates as one unit.
+     *
+     * Splitting a recurring series produces two tasks that only make sense together: the detached
+     * occurrence and the series it was cut from. Writing them one at a time could leave the same
+     * occurrence stored twice if the second write never lands.
+     */
+    public suspend fun saveAll(tasks: List<StudyTask>)
+
+    /**
      * Tombstones a task instead of removing it, so the deletion can be replicated rather than
      * undone by the next sync.
      */

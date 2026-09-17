@@ -51,7 +51,12 @@ public class FakeTaskRepository(
         tasks.map { list -> list.firstOrNull { it.id == id && !it.deleted } }
 
     override suspend fun save(task: StudyTask) {
-        tasks.value = tasks.value.filterNot { it.id == task.id } + task
+        saveAll(listOf(task))
+    }
+
+    override suspend fun saveAll(tasks: List<StudyTask>) {
+        val ids = tasks.mapTo(mutableSetOf(), StudyTask::id)
+        this.tasks.value = this.tasks.value.filterNot { it.id in ids } + tasks
     }
 
     override suspend fun delete(

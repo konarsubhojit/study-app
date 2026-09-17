@@ -110,28 +110,60 @@ public object RecurrenceCalculator {
     ): SeriesAdvance? {
         if (rule == null) return null
 
-        var consumed = 0
-        val nextDate =
-            boundedDates(rule, start.date)
-                .drop(1)
-                .onEach { consumed++ }
-                .firstOrNull { it !in rule.exceptions }
-                ?: return null
+        val anchored = rule.anchoredTo(start.date)
+        val dates = boundedDates(anchored, start.date)
+        // Everything the rule generates before the next live occurrence: the head itself, and any
+        // date the user has removed. Counting them is what keeps "ten times" honest — the budget is
+        // spent by what the rule produced, not by what survived.
+        val spent = dates.takeWhile { it <= start.date || it in anchored.exceptions }.count()
+        val nextDate = dates.drop(spent).firstOrNull() ?: return null
 
         val remaining =
-            when (val end = rule.end) {
-                is RecurrenceEnd.AfterOccurrences -> RecurrenceEnd.AfterOccurrences(end.count - consumed)
-                else -> rule.end
+            when (val end = anchored.end) {
+                is RecurrenceEnd.AfterOccurrences -> RecurrenceEnd.AfterOccurrences(end.count - spent)
+                else -> end
             }
         return SeriesAdvance(
             start = LocalDateTime(nextDate, start.time),
             rule =
-                rule.copy(
+                anchored.copy(
                     end = remaining,
-                    exceptions = rule.exceptions.filterTo(mutableSetOf()) { it > nextDate },
+                    exceptions = anchored.exceptions.filterTo(mutableSetOf()) { it > nextDate },
                 ),
         )
     }
+
+    /**
+     * Writes down whatever the rule was leaving to its start date.
+     *
+     * A rule such as "monthly" means "monthly on the 31st" only for as long as its start says so.
+     * Move the start to the 28th of February — which is where the 31st lands in a short month — and
+     * the unstated day quietly becomes the 28th for the rest of time. Pinning the implied day,
+     * month and weekday to the *current* head before it moves keeps the series the user created.
+     */
+    private fun RecurrenceRule.anchoredTo(start: LocalDate): RecurrenceRule =
+        when (frequency) {
+            RecurrenceFrequency.DAILY -> {
+                this
+            }
+
+            RecurrenceFrequency.WEEKLY -> {
+                if (daysOfWeek.isEmpty()) copy(daysOfWeek = setOf(start.dayOfWeek)) else this
+            }
+
+            RecurrenceFrequency.MONTHLY -> {
+                withPinnedDay(start)
+            }
+
+            RecurrenceFrequency.YEARLY -> {
+                withPinnedDay(start).let {
+                    if (monthOfYear == null) it.copy(monthOfYear = start.month.ordinal + 1) else it
+                }
+            }
+        }
+
+    private fun RecurrenceRule.withPinnedDay(start: LocalDate): RecurrenceRule =
+        if (weekOfMonth == null && dayOfMonth == null) copy(dayOfMonth = start.day) else this
 
     /** The occurrence dates of [rule], with its end applied but its exceptions still present. */
     private fun boundedDates(

@@ -146,6 +146,11 @@ public data class SeriesEdit(
     val occurrence: StudyTask,
     val series: StudyTask?,
 ) {
-    /** Everything that has to be saved, in the order it should be written. */
+    /**
+     * Everything that has to be saved, in the order it should be written.
+     *
+     * Both halves describe the same occurrence until the second one lands, so they belong in a
+     * single `TaskRepository.saveAll` call rather than two saves.
+     */
     public val tasks: List<StudyTask> get() = listOfNotNull(occurrence, series)
 }
