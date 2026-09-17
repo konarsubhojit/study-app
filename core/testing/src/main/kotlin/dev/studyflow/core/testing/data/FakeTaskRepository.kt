@@ -54,9 +54,9 @@ public class FakeTaskRepository(
         saveAll(listOf(task))
     }
 
-    override suspend fun saveAll(tasks: List<StudyTask>) {
-        val ids = tasks.mapTo(mutableSetOf(), StudyTask::id)
-        this.tasks.value = this.tasks.value.filterNot { it.id in ids } + tasks
+    override suspend fun saveAll(values: List<StudyTask>) {
+        val ids = values.mapTo(mutableSetOf(), StudyTask::id)
+        tasks.value = tasks.value.filterNot { it.id in ids } + values
     }
 
     override suspend fun delete(

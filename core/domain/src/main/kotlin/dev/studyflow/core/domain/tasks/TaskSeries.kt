@@ -44,8 +44,8 @@ public object TaskSeries {
     ): StudyTask = advancedOrNull(task, at) ?: task.copy(completedAt = at, updatedAt = at)
 
     /**
-     * Removes the occurrence at the head of [task] from the series without consuming a rule
-     * occurrence anywhere else.
+     * Consumes the occurrence at the head of [task] and returns the series positioned at the next
+     * one.
      *
      * @return the series with the next occurrence at its head, or `null` when there is none left.
      */

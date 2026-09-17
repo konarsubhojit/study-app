@@ -55,8 +55,8 @@ public class OfflineFirstTaskRepository(
         dao.save(task.asEntity())
     }
 
-    override suspend fun saveAll(tasks: List<StudyTask>) {
-        dao.saveAll(tasks.map { it.asEntity() })
+    override suspend fun saveAll(values: List<StudyTask>) {
+        dao.saveAll(values.map { it.asEntity() })
     }
 
     override suspend fun delete(

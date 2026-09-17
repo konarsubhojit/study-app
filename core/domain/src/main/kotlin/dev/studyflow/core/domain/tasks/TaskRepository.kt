@@ -48,7 +48,7 @@ public interface TaskRepository {
      * occurrence and the series it was cut from. Writing them one at a time could leave the same
      * occurrence stored twice if the second write never lands.
      */
-    public suspend fun saveAll(tasks: List<StudyTask>)
+    public suspend fun saveAll(values: List<StudyTask>)
 
     /**
      * Tombstones a task instead of removing it, so the deletion can be replicated rather than

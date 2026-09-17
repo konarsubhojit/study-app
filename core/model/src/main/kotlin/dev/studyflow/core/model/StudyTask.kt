@@ -282,7 +282,7 @@ public data class RecurrenceRule(
             "a WEEKLY recurrence repeats by weekday, not by day of the month"
         }
         require(weekOfMonth == null || daysOfWeek.size == 1) {
-            "weekOfMonth counts one weekday, was ${daysOfWeek.size}"
+            "weekOfMonth counts exactly one weekday, but daysOfWeek held ${daysOfWeek.size}"
         }
         require(weekOfMonth == null || dayOfMonth == null) {
             "a rule picks its day either by number or by counted weekday, not both"
