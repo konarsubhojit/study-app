@@ -11,10 +11,13 @@ import dev.studyflow.core.notifications.StudyFlowNotificationChannel
  * language, the move to `strings.xml` is a mechanical edit of this file and nothing else.
  */
 internal object NotificationCopy {
+    private const val GENERIC_RATIONALE =
+        "StudyFlow needs permission to show notifications before it can tell you anything."
+
     fun rationale(key: NotificationMessageKey): String =
         when (key) {
             NotificationMessageKey.RATIONALE_GENERIC -> {
-                "StudyFlow needs permission to show notifications before it can tell you anything."
+                GENERIC_RATIONALE
             }
 
             NotificationMessageKey.RATIONALE_TIMER -> {
@@ -33,13 +36,15 @@ internal object NotificationCopy {
                 "Allow notifications to see upload progress and to be told if an upload fails."
             }
 
+            // A degradation key has no business in a request dialog, but if one arrives the user
+            // still gets an explanation of what is being asked rather than the wrong kind of copy.
             NotificationMessageKey.DEGRADED_GENERIC,
             NotificationMessageKey.DEGRADED_TIMER,
             NotificationMessageKey.DEGRADED_REMINDER,
             NotificationMessageKey.DEGRADED_ALARM,
             NotificationMessageKey.DEGRADED_UPLOAD,
             -> {
-                degradation(key)
+                GENERIC_RATIONALE
             }
         }
 
