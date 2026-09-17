@@ -9,7 +9,6 @@ import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.database.StudyFlowDatabase
-import dev.studyflow.core.database.StudyFlowDatabaseFactory
 import dev.studyflow.core.database.dao.MaterialDao
 import dev.studyflow.core.database.repository.OfflineFirstMaterialRepository
 import dev.studyflow.core.domain.materials.DurationExtractor
@@ -32,12 +31,6 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 public object MaterialsModule {
-    @Provides
-    @Singleton
-    public fun studyFlowDatabase(
-        @ApplicationContext context: Context,
-    ): StudyFlowDatabase = StudyFlowDatabaseFactory.create(context)
-
     @Provides
     @Singleton
     public fun materialDao(database: StudyFlowDatabase): MaterialDao = database.materialDao()
