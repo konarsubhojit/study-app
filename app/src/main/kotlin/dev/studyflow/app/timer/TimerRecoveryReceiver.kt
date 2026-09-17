@@ -16,7 +16,8 @@ internal class TimerRecoveryReceiver : BroadcastReceiver() {
         intent: Intent,
     ) {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED) {
-            recoveryCoordinator.recoverActiveSession()
+            val pendingResult = goAsync()
+            recoveryCoordinator.recoverActiveSession(onComplete = pendingResult::finish)
         }
     }
 }

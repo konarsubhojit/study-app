@@ -10,6 +10,7 @@ import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.TimeAnchor
 import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
@@ -23,16 +24,23 @@ internal class TimerRecoveryCoordinator
         private val sessionRepository: SessionRepository,
         @ApplicationScope private val applicationScope: CoroutineScope,
     ) {
+        /**
+         * Conservative fallback for rare devices where BOOT_COUNT is unavailable: a fresh process id
+         * makes old monotonic anchors unverifiable instead of pretending they are from this boot.
+         */
         private val fallbackBootId = BootId("unknown-${UUID.randomUUID()}")
 
-        fun recoverActiveSession() {
+        fun recoverActiveSession(onComplete: () -> Unit = {}): Job =
             applicationScope.launch {
-                sessionRepository.reconcile(
-                    eventId = UUID.randomUUID().toString(),
-                    now = currentAnchor(),
-                )
+                try {
+                    sessionRepository.reconcile(
+                        eventId = UUID.randomUUID().toString(),
+                        now = currentAnchor(),
+                    )
+                } finally {
+                    onComplete()
+                }
             }
-        }
 
         private fun currentAnchor(): TimeAnchor =
             TimeAnchor(

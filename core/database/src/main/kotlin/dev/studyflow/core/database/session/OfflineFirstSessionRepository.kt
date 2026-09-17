@@ -158,7 +158,10 @@ public class OfflineFirstSessionRepository(
             requireNotNull(SessionReducer.reduce(stored.session.asDescriptor(), events)) {
                 "event $eventId belongs to an empty session log"
             }
-        dao.upsertSessions(listOf(session.asEntity()))
+        val projection = session.asEntity()
+        if (projection != stored.session) {
+            dao.upsertSessions(listOf(projection))
+        }
         return SessionCommandResult.Applied(session, TimerEngine.fold(events))
     }
 
