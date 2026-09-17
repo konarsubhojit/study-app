@@ -6,7 +6,9 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.common.time.DefaultAnchoredClock
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.dao.MaterialUploadPartDao
 import dev.studyflow.core.database.repository.RoomUploadProgressStore
@@ -20,6 +22,8 @@ import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
+import dev.studyflow.core.scheduling.AndroidBootIdProvider
+import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import dev.studyflow.core.scheduling.AndroidReminderPlatformScheduler
 import dev.studyflow.core.scheduling.AndroidSchedulingCapabilitiesProvider
 import dev.studyflow.core.scheduling.ReminderActionExecutor
@@ -40,6 +44,10 @@ import javax.inject.Singleton
  * The repositories these services depend on ([TaskRepository], [SubjectRepository],
  * [SessionRepository]) are bound by `:core:database`, so this module stays about scheduling and
  * delivery only.
+ *
+ * [AnchoredClock] is bound here too: its real implementation needs [AndroidElapsedRealtimeSource]
+ * and [AndroidBootIdProvider], both of which already live in this module for the same
+ * "no Android-aware home yet" reason described on [AndroidElapsedRealtimeSource].
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -55,6 +63,13 @@ public object SchedulingModule {
     public fun reminderPlatformScheduler(
         @ApplicationContext context: Context,
     ): ReminderPlatformScheduler = AndroidReminderPlatformScheduler(context)
+
+    @Provides
+    @Singleton
+    public fun anchoredClock(
+        clock: Clock,
+        bootIdProvider: AndroidBootIdProvider,
+    ): AnchoredClock = DefaultAnchoredClock(clock, AndroidElapsedRealtimeSource, bootIdProvider)
 
     @Provides
     @Singleton
