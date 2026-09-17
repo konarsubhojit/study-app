@@ -23,8 +23,8 @@ import javax.inject.Singleton
 /**
  * The materials catalogue and file-import pipeline, assembled once for the whole app (issue #37).
  *
- * The database itself is provided by `:core:database`; this module wires the material-specific
- * repository and import pipeline that belong to the installable app.
+ * The shared database is provided by `:core:database`; this module only exposes the material
+ * catalogue adapter and Android file-import bindings.
  */
 @Module
 @InstallIn(SingletonComponent::class)

@@ -55,6 +55,7 @@ graph TD
     core_scheduling --> core_domain
     core_scheduling --> core_model
     core_scheduling --> core_notifications
+    core_scheduling --> core_storage
     core_storage --> core_domain
     core_testing --> core_common
     core_testing --> core_domain

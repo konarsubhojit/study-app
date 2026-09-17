@@ -10,6 +10,7 @@ import dev.studyflow.core.domain.materials.ShareImportInbox
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.coroutines.TestDispatcherProvider
 import dev.studyflow.core.testing.data.FakeMaterialRepository
+import dev.studyflow.core.testing.data.FakeMaterialUploadCoordinator
 import dev.studyflow.core.testing.data.TEST_WALL_CLOCK
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -35,6 +36,7 @@ class MaterialsViewModelTest {
 
     private val repository = FakeMaterialRepository()
     private val shareImportInbox = ShareImportInbox()
+    private val uploadCoordinator = FakeMaterialUploadCoordinator()
 
     @Test
     fun `importing a picked file adds it to the catalogue and reports a result`() =
@@ -51,6 +53,14 @@ class MaterialsViewModelTest {
                 assertTrue(state.results.single().status is MaterialImportResultStatus.Imported)
                 cancelAndIgnoreRemainingEvents()
             }
+            assertEquals(
+                listOf(
+                    viewModel.state.value.catalog
+                        .single()
+                        .id,
+                ),
+                uploadCoordinator.enqueued,
+            )
         }
 
     @Test
@@ -135,6 +145,23 @@ class MaterialsViewModelTest {
             assertTrue(shareImportInbox.pending.value.isEmpty())
         }
 
+    @Test
+    fun `retrying an upload delegates to the coordinator for that material's id`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel(fakeReader("content://one" to "hello".toByteArray()))
+            viewModel.onEvent(MaterialsUiEvent.ImportUris(listOf("content://one")))
+            advanceUntilIdle()
+            val materialId =
+                viewModel.state.value.catalog
+                    .single()
+                    .id
+
+            viewModel.onEvent(MaterialsUiEvent.RetryUpload(materialId))
+            advanceUntilIdle()
+
+            assertEquals(listOf(materialId), uploadCoordinator.retried)
+        }
+
     private fun viewModel(reader: ImportContentReader): MaterialsViewModel {
         val importer =
             MaterialImporter(
@@ -149,6 +176,7 @@ class MaterialsViewModelTest {
             repository = repository,
             importer = importer,
             shareImportInbox = shareImportInbox,
+            uploadCoordinator = uploadCoordinator,
         )
     }
 

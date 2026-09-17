@@ -7,6 +7,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <!-- The material upload worker runs as a foreground service while a transfer is in progress,
+         so a multi-hundred-megabyte lecture recording is not killed as soon as the app is
+         backgrounded (issue #38). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
@@ -54,7 +58,8 @@
         <service
             android:name=".timer.TimerForegroundService"
             android:exported="false"
-            android:foregroundServiceType="specialUse">
+            android:foregroundServiceType="specialUse"
+            tools:targetApi="34">
             <!-- Keeps the user-started study timer visible and controllable (pause, resume, stop,
                  open) after leaving the app without app-driven ticking or wake locks. -->
             <property

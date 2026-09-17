@@ -9,6 +9,10 @@ dependencies {
     implementation(projects.core.common)
     implementation(projects.core.notifications)
     implementation(projects.core.datastore)
+    // The upload worker talks to the object store directly (issue #38): chunking, retries and
+    // notifications are all scheduling concerns, and nothing else in the app binds `ObjectStore`
+    // to a worker yet.
+    implementation(projects.core.storage)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.work.runtime.ktx)
@@ -18,4 +22,5 @@ dependencies {
     implementation(libs.protobuf.javalite)
 
     testImplementation(projects.core.testing)
+    testImplementation(libs.androidx.work.testing)
 }

@@ -133,8 +133,44 @@ public object DatabaseMigrations {
             }
         }
 
+    /**
+     * Version 8 adds per-part upload progress (issue #38): completed part number, etag and size,
+     * keyed by material id. A brand new table rather than columns on `materials` — a material has
+     * anywhere from one to several thousand parts, so the natural shape is a row per part, not a
+     * blob column on the material row.
+     */
+    public val MIGRATION_7_8: Migration =
+        object : Migration(7, 8) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `material_upload_parts` (
+                    `material_id` TEXT NOT NULL, `part_number` INTEGER NOT NULL, `etag` TEXT NOT NULL,
+                    `size_bytes` INTEGER NOT NULL, `completed_at` INTEGER NOT NULL,
+                    PRIMARY KEY(`material_id`, `part_number`),
+                    FOREIGN KEY(`material_id`) REFERENCES `materials`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    """
+                    CREATE INDEX IF NOT EXISTS index_material_upload_parts_material_id
+                    ON material_upload_parts (material_id)
+                    """.trimIndent(),
+                )
+            }
+        }
+
     public val ALL: Array<Migration>
-        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+        get() =
+            arrayOf(
+                MIGRATION_1_2,
+                MIGRATION_2_3,
+                MIGRATION_3_4,
+                MIGRATION_4_5,
+                MIGRATION_5_6,
+                MIGRATION_6_7,
+                MIGRATION_7_8,
+            )
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null
     // columns that SQLite cannot add in place, and Room validates the resulting DDL exactly.
