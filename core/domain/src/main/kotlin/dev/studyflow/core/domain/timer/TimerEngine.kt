@@ -33,8 +33,9 @@ public object TimerEngine {
     /**
      * Recovery auto-pauses an uninterrupted same-boot interval after this cap.
      *
-     * A full day is deliberately generous for normal study while bounding sessions left running
-     * after a service crash, swipe-away, or forgotten timer.
+     * A full day is deliberately generous for normal study while bounding the current open interval
+     * left running after a service crash, swipe-away, or forgotten timer. Earlier settled intervals
+     * remain intact, so a multi-day session can still exceed this in total after explicit pauses.
      */
     public val DEFAULT_MAXIMUM_RUNNING_DURATION: Duration = 24.hours
 

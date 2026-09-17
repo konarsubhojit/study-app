@@ -17,6 +17,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.time.Duration
 
 @Singleton
 internal class TimerRecoveryCoordinator
@@ -27,11 +28,7 @@ internal class TimerRecoveryCoordinator
         @ApplicationScope private val applicationScope: CoroutineScope,
         private val logger: AppLogger,
     ) {
-        /**
-         * Conservative fallback for rare devices where BOOT_COUNT is unavailable: a fresh process id
-         * makes old monotonic anchors unverifiable instead of pretending they are from this boot.
-         */
-        private val fallbackBootId = BootId("unknown-${UUID.randomUUID()}")
+        private val fallbackBootIdLock = Any()
 
         fun recoverActiveSession(onComplete: () -> Unit = {}): Job =
             applicationScope.launch {
@@ -51,19 +48,48 @@ internal class TimerRecoveryCoordinator
                 }
             }
 
-        private fun currentAnchor(): TimeAnchor =
-            TimeAnchor(
-                uptime = AndroidElapsedRealtimeSource.uptime(),
+        private fun currentAnchor(): TimeAnchor {
+            val uptime = AndroidElapsedRealtimeSource.uptime()
+            return TimeAnchor(
+                uptime = uptime,
                 wallClock = SystemWallClock.now(),
-                bootId = currentBootId(),
+                bootId = currentBootId(uptime),
             )
+        }
 
-        private fun currentBootId(): BootId =
+        private fun currentBootId(uptime: Duration): BootId =
             runCatching {
                 BootId(Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT).toString())
-            }.getOrDefault(fallbackBootId)
+            }.getOrElse { fallbackBootId(uptime) }
+
+        /**
+         * Rare fallback for devices where BOOT_COUNT is unavailable. The id is persisted so two
+         * short-lived boot-recovery processes agree within the same boot, and rotated when
+         * elapsedRealtime moves backwards.
+         */
+        private fun fallbackBootId(uptime: Duration): BootId =
+            synchronized(fallbackBootIdLock) {
+                val prefs = context.getSharedPreferences(FALLBACK_BOOT_PREFS, Context.MODE_PRIVATE)
+                val uptimeMillis = uptime.inWholeMilliseconds
+                val storedUptimeMillis = prefs.getLong(KEY_UPTIME_MILLIS, Long.MIN_VALUE)
+                val storedBootId = prefs.getString(KEY_BOOT_ID, null)
+                val bootId =
+                    storedBootId
+                        ?.takeIf { it.isNotBlank() && storedUptimeMillis <= uptimeMillis }
+                        ?: "unknown-${UUID.randomUUID()}"
+
+                prefs
+                    .edit()
+                    .putString(KEY_BOOT_ID, bootId)
+                    .putLong(KEY_UPTIME_MILLIS, uptimeMillis)
+                    .commit()
+                BootId(bootId)
+            }
 
         private companion object {
             const val TAG = "TimerRecovery"
+            const val FALLBACK_BOOT_PREFS = "timer_recovery_boot"
+            const val KEY_BOOT_ID = "boot_id"
+            const val KEY_UPTIME_MILLIS = "uptime_millis"
         }
     }

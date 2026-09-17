@@ -154,10 +154,10 @@ public class OfflineFirstSessionRepository(
         eventId: String,
         stored: SessionWithEvents?,
         expectedType: SessionEventType,
-    ): SessionCommandResult.Applied? {
+    ): SessionCommandResult? {
         val storedEvent = stored?.events?.firstOrNull { it.id == eventId } ?: return null
-        require(storedEvent.type == expectedType) {
-            "event $eventId was already used for ${storedEvent.type}, not $expectedType"
+        if (storedEvent.type != expectedType) {
+            return SessionCommandResult.Failed(DomainError.Validation)
         }
         val events = stored.events.map { it.asExternalModel() }
         val session =
