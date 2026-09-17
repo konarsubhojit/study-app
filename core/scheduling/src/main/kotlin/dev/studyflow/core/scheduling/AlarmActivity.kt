@@ -91,11 +91,13 @@ public class AlarmActivity : ComponentActivity() {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         } else {
+            // FLAG_DISMISS_KEYGUARD is deliberately not set here either — see the class doc: it
+            // would prompt for a PIN on a secure lock screen, exactly the friction Snooze/Dismiss
+            // must not add, even on these older API levels.
             @Suppress("DEPRECATION")
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                     WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
             )
         }
@@ -113,7 +115,8 @@ public class AlarmActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(Color.BLACK)
-            setPadding(PADDING_PX, PADDING_PX, PADDING_PX, PADDING_PX)
+            val paddingPx = dpToPx(PADDING_DP)
+            setPadding(paddingPx, paddingPx, paddingPx, paddingPx)
 
             titleView.setTextColor(Color.WHITE)
             dueView.setTextColor(Color.LTGRAY)
@@ -168,8 +171,11 @@ public class AlarmActivity : ComponentActivity() {
 
         private const val TITLE_TEXT_SIZE_SP = 28f
         private const val BODY_TEXT_SIZE_SP = 18f
-        private const val PADDING_PX = 64
+        private const val PADDING_DP = 32
     }
+
+    /** [PADDING_DP] converted using this device's density, so padding is consistent across screens. */
+    private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 }
 
 /**

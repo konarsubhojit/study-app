@@ -37,7 +37,6 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:launchMode="singleInstance"
-            android:showOnLockScreen="true"
             android:turnScreenOn="true"
             tools:targetApi="27" />
 

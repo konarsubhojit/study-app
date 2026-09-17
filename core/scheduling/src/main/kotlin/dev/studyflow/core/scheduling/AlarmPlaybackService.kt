@@ -134,7 +134,16 @@ public class AlarmPlaybackService : Service() {
                 .Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                 .setAudioAttributes(attributes)
                 .build()
-        audioManager.requestAudioFocus(focusRequest)
+        val focusResult = audioManager.requestAudioFocus(focusRequest)
+        // An alarm rings regardless of the outcome — `AUDIOFOCUS_REQUEST_FAILED` (another app
+        // holding a stronger, non-transient focus) must not silently swallow "wake me for the
+        // exam", and `AUDIOFOCUS_REQUEST_DELAYED` never applies to a transient, non-exclusive
+        // request like this one. The result is only used to decide whether to release focus later:
+        // abandoning a request that was never granted is a harmless no-op, but logging here makes
+        // the (intentional) "play anyway" choice visible rather than silently ignored.
+        if (focusResult != AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
+            Log.w(TAG, "Alarm audio focus was not granted (result=$focusResult); ringing anyway")
+        }
 
         val player =
             MediaPlayer().apply {
