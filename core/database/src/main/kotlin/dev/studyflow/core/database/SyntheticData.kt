@@ -14,6 +14,7 @@ import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.RecurrenceFrequency
 import dev.studyflow.core.model.ReminderPrecision
 import dev.studyflow.core.model.SessionEventType
+import dev.studyflow.core.model.SessionStatus
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
@@ -66,7 +67,7 @@ public object SyntheticDataFactory {
         val subjects = createSubjects(size.subjectCount)
         val folders = createFolders(size.folderCount)
         val tasks = createTasks(size.taskCount, subjects)
-        val sessions = createSessions(size.sessionCount, subjects)
+        val sessions = createSessions(size.sessionCount, subjects, size.eventsPerSession)
         return SyntheticDataSet(
             subjects = subjects,
             folders = folders,
@@ -156,15 +157,31 @@ public object SyntheticDataFactory {
             )
         }
 
+    // The projection mirrors what folding the generated event log produces, so synthetic data
+    // exercises the same reads as real data instead of a shape that could never occur.
     private fun createSessions(
         count: Int,
         subjects: List<SubjectEntity>,
+        eventsPerSession: Int,
     ): List<StudySessionEntity> =
         List(count) { index ->
+            val startedAt = BASE_INSTANT + (index * eventsPerSession).minutes
+            val endedAt = startedAt + (eventsPerSession - 1).minutes
+            val status =
+                when (eventType(eventsPerSession - 1, eventsPerSession)) {
+                    SessionEventType.STOPPED -> SessionStatus.STOPPED
+                    SessionEventType.STARTED, SessionEventType.RESUMED -> SessionStatus.RUNNING
+                    SessionEventType.PAUSED -> SessionStatus.PAUSED
+                }
             StudySessionEntity(
                 id = "session-$index",
                 subjectId = subjects[index % subjects.size].id,
                 note = if (index % 4 == 0) "Synthetic session note" else null,
+                status = status,
+                startedAt = startedAt,
+                endedAt = endedAt.takeIf { status == SessionStatus.STOPPED },
+                deviceId = SYNTHETIC_DEVICE_ID,
+                updatedAt = endedAt,
             )
         }
 
@@ -202,6 +219,7 @@ public object SyntheticDataFactory {
     private val BASE_INSTANT: Instant = Instant.parse("2026-01-01T00:00:00Z")
     private val BASE_DUE_INSTANT: Instant = Instant.parse("2026-01-01T09:00:00Z")
     private val SYNTHETIC_BOOT_ID: BootId = BootId("synthetic-boot")
+    private const val SYNTHETIC_DEVICE_ID: String = "synthetic-device"
 }
 
 /** Inserts a dataset once, atomically. Existing user data is never mixed with generated rows. */

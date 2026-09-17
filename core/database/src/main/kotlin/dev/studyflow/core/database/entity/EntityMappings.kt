@@ -1,5 +1,7 @@
 package dev.studyflow.core.database.entity
 
+import dev.studyflow.core.domain.session.SessionDescriptor
+import dev.studyflow.core.domain.session.SessionReducer
 import dev.studyflow.core.model.Folder
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.RecurrenceEnd
@@ -164,7 +166,32 @@ private fun ReminderEntity.asExternalRecurrenceEnd(): RecurrenceEnd =
         }
     }
 
-public fun StudySession.asEntity(): StudySessionEntity = StudySessionEntity(id, subjectId, note)
+public fun StudySession.asEntity(): StudySessionEntity =
+    StudySessionEntity(
+        id = id,
+        subjectId = subjectId,
+        note = note,
+        status = status,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        deviceId = deviceId,
+        updatedAt = updatedAt,
+        deleted = deleted,
+    )
+
+/**
+ * The metadata the event log does not carry, so the projection can be re-derived from the log.
+ *
+ * Deliberately not a `StudySession` mapping: every timing field of the projection is derived by
+ * [dev.studyflow.core.domain.session.SessionReducer], and reading those columns back would make the
+ * cache a second source of truth.
+ */
+public fun StudySessionEntity.asDescriptor(): SessionDescriptor =
+    SessionDescriptor(id = id, deviceId = deviceId, subjectId = subjectId, note = note, deleted = deleted)
+
+/** Re-derives the projection by replaying the session's events. */
+public fun SessionWithEvents.asExternalModel(): StudySession? =
+    SessionReducer.reduce(session.asDescriptor(), events.map(SessionEventEntity::asExternalModel))
 
 public fun SessionEvent.asEntity(): SessionEventEntity =
     SessionEventEntity(id, sessionId, type, anchor.uptime, anchor.wallClock, anchor.bootId, sequence)

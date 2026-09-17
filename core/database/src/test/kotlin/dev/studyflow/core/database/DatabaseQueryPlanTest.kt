@@ -75,6 +75,25 @@ class DatabaseQueryPlanTest {
             assertFalse(plan.any { it.contains("TEMP B-TREE") })
         }
 
+    @Test
+    fun `active session lookup uses the device index`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(4, 4, 20, 20, 100, 20)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT id FROM study_sessions
+                    WHERE device_id = 'synthetic-device' AND deleted = 0 AND status != 'STOPPED'
+                    """.trimIndent(),
+                )
+
+            assertTrue(plan.any { it.contains("index_study_sessions_device_id_status_deleted") })
+        }
+
     private fun explain(sql: String): List<String> =
         database.query("EXPLAIN QUERY PLAN $sql", emptyArray()).use { cursor ->
             buildList {

@@ -44,6 +44,40 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 2 to 3 derives the session projection from the event log`() {
+        helper.createDatabase(DATABASE_NAME, 2).use { database ->
+            database.insertVersionTwoSession()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database
+                    .query(
+                        "SELECT status, started_at, ended_at, device_id, updated_at, deleted " +
+                            "FROM study_sessions WHERE id = 'legacy-session'",
+                    ).use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("STOPPED", cursor.getString(0))
+                        assertEquals(1_000L, cursor.getLong(1))
+                        assertEquals(3_000L, cursor.getLong(2))
+                        assertEquals(DatabaseMigrations.MIGRATED_DEVICE_ID, cursor.getString(3))
+                        assertEquals(3_000L, cursor.getLong(4))
+                        assertEquals(0, cursor.getInt(5))
+                    }
+                // Rebuilding the table must not take the log with it; the log is the only truth.
+                database.query("SELECT COUNT(*) FROM session_events").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals(2, cursor.getInt(0))
+                }
+            }
+    }
+
+    @Test
     fun `migration registry covers every shipped version`() {
         val paths = DatabaseMigrations.ALL.map { it.startVersion to it.endVersion }
         val expected = (1 until StudyFlowDatabase.VERSION).map { it to it + 1 }
@@ -62,6 +96,22 @@ class DatabaseMigrationTest {
                 'legacy-material', NULL, 'Legacy.pdf', 'application/pdf', 1024,
                 '${"0".repeat(64)}', 1789601069317, 'PENDING', NULL, NULL, NULL, NULL, NULL, 0
             )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionTwoSession() {
+        execSQL("INSERT INTO study_sessions (id, subject_id, note) VALUES ('legacy-session', NULL, 'Algebra')")
+        execSQL(
+            """
+            INSERT INTO session_events (id, session_id, type, uptime, wall_clock, boot_id, sequence)
+            VALUES ('legacy-start', 'legacy-session', 'STARTED', 0, 1000, 'boot-legacy', 0)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO session_events (id, session_id, type, uptime, wall_clock, boot_id, sequence)
+            VALUES ('legacy-stop', 'legacy-session', 'STOPPED', 2000, 3000, 'boot-legacy', 1)
             """.trimIndent(),
         )
     }

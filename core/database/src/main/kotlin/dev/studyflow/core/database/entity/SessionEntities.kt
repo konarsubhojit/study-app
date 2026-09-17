@@ -9,6 +9,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Relation
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.SessionEventType
+import dev.studyflow.core.model.SessionStatus
 import kotlin.time.Duration
 import kotlin.time.Instant
 
@@ -22,7 +23,12 @@ import kotlin.time.Instant
             onDelete = ForeignKey.SET_NULL,
         ),
     ],
-    indices = [Index(value = ["subject_id"], name = "index_study_sessions_subject_id")],
+    indices = [
+        Index(value = ["subject_id"], name = "index_study_sessions_subject_id"),
+        // Serves the active-session lookup, which runs on every timer command and on every
+        // subscription to the running session.
+        Index(value = ["device_id", "status", "deleted"], name = "index_study_sessions_device_id_status_deleted"),
+    ],
 )
 public data class StudySessionEntity(
     @PrimaryKey
@@ -30,6 +36,16 @@ public data class StudySessionEntity(
     @ColumnInfo(name = "subject_id")
     val subjectId: String?,
     val note: String?,
+    val status: SessionStatus,
+    @ColumnInfo(name = "started_at")
+    val startedAt: Instant,
+    @ColumnInfo(name = "ended_at")
+    val endedAt: Instant?,
+    @ColumnInfo(name = "device_id")
+    val deviceId: String,
+    @ColumnInfo(name = "updated_at")
+    val updatedAt: Instant,
+    val deleted: Boolean = false,
 )
 
 @Entity(

@@ -61,6 +61,8 @@ public sealed interface TimerCommand {
     /** Begin a brand-new session with its own event log. */
     public data class Start(
         val sessionId: String,
+        val subjectId: String? = null,
+        val note: String? = null,
     ) : TimerCommand
 
     /** Close the open interval. */
