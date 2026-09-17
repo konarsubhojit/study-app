@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -78,52 +79,54 @@ public fun HistoryScreen(
     modifier: Modifier = Modifier,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
+    val currentOnEvent by rememberUpdatedState(onEvent)
 
     LaunchedEffect(state.undo) {
         if (state.undo != null) {
             val result = snackbarHostState.showSnackbar(message = "Deleted", actionLabel = "Undo")
             if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                onEvent(HistoryUiEvent.UndoRequested)
+                currentOnEvent(HistoryUiEvent.UndoRequested)
             } else {
-                onEvent(HistoryUiEvent.UndoDismissed)
+                currentOnEvent(HistoryUiEvent.UndoDismissed)
             }
         }
     }
 
-    Scaffold(
-        modifier = modifier.fillMaxSize(),
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            StudyFlowTopAppBar(
-                title = if (state.isSelecting) "${state.selectedIds.size} selected" else "History",
-                actions = { HistoryTopBarActions(state = state, onEvent = onEvent) },
-            )
-        },
-        floatingActionButton = {
-            FloatingActionButton(onClick = { onEvent(HistoryUiEvent.ManualEntryRequested) }) {
-                Text("+")
+    LaunchedEffect(state.errorMessage) {
+        val message = state.errorMessage ?: return@LaunchedEffect
+        snackbarHostState.showSnackbar(message.toDisplayText())
+        currentOnEvent(HistoryUiEvent.ErrorMessageDismissed)
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                StudyFlowTopAppBar(
+                    title = if (state.isSelecting) "${state.selectedIds.size} selected" else "History",
+                    actions = { HistoryTopBarActions(state = state, onEvent = onEvent) },
+                )
+            },
+            floatingActionButton = {
+                FloatingActionButton(onClick = { onEvent(HistoryUiEvent.ManualEntryRequested) }) {
+                    Text("+")
+                }
+            },
+        ) { padding ->
+            Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+                FilterRow(state = state, onEvent = onEvent)
+                HistoryList(
+                    pagedSessions = pagedSessions,
+                    state = state,
+                    onEvent = onEvent,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
-        },
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
-            FilterRow(state = state, onEvent = onEvent)
-            HistoryList(
-                pagedSessions = pagedSessions,
-                state = state,
-                onEvent = onEvent,
-                modifier = Modifier.fillMaxSize(),
-            )
         }
-    }
 
-    state.dialog?.let { dialog ->
-        HistoryDialogHost(dialog = dialog, subjectOptions = state.subjectOptions, onEvent = onEvent)
-    }
-
-    state.errorMessage?.let { message ->
-        LaunchedEffect(message) {
-            snackbarHostState.showSnackbar(message.toDisplayText())
-            onEvent(HistoryUiEvent.ErrorMessageDismissed)
+        state.dialog?.let { dialog ->
+            HistoryDialogHost(dialog = dialog, subjectOptions = state.subjectOptions, onEvent = onEvent)
         }
     }
 }
@@ -134,11 +137,13 @@ private fun HistoryTopBarActions(
     onEvent: (HistoryUiEvent) -> Unit,
 ) {
     if (state.isSelecting) {
-        if (state.selectedIds.size >= 2) {
-            TextButton(onClick = { onEvent(HistoryUiEvent.MergeRequested) }) { Text("Merge") }
+        Row {
+            if (state.selectedIds.size >= 2) {
+                TextButton(onClick = { onEvent(HistoryUiEvent.MergeRequested) }) { Text("Merge") }
+            }
+            TextButton(onClick = { onEvent(HistoryUiEvent.BulkDeleteRequested) }) { Text("Delete") }
+            TextButton(onClick = { onEvent(HistoryUiEvent.SelectionCleared) }) { Text("Cancel") }
         }
-        TextButton(onClick = { onEvent(HistoryUiEvent.BulkDeleteRequested) }) { Text("Delete") }
-        TextButton(onClick = { onEvent(HistoryUiEvent.SelectionCleared) }) { Text("Cancel") }
     }
 }
 
@@ -217,26 +222,23 @@ private fun daySessions(
     pagedSessions: androidx.paging.compose.LazyPagingItems<StudySession>,
     startIndex: Int,
     day: String,
-): List<StudySession> {
-    val result = mutableListOf<StudySession>()
-    var index = startIndex
-    while (index < pagedSessions.itemCount) {
-        val session = pagedSessions[index] ?: break
-        if (session.startedAt.toLocalDay() != day) break
-        result += session
-        index++
-    }
-    return result
-}
+): List<StudySession> =
+    (startIndex until pagedSessions.itemCount)
+        .asSequence()
+        .map { index -> pagedSessions[index] }
+        .takeWhile { session -> session != null && session.startedAt.toLocalDay() == day }
+        .filterNotNull()
+        .toList()
 
 @Composable
 private fun DayHeader(
     day: String,
     sessions: List<StudySession>,
 ) {
-    val totalsBySubject = sessions.groupBy { it.subjectId }.mapValues { (_, forSubject) ->
-        forSubject.fold(Duration.ZERO) { acc, session -> acc + session.elapsed.counted }
-    }
+    val totalsBySubject =
+        sessions.groupBy { it.subjectId }.mapValues { (_, forSubject) ->
+            forSubject.fold(Duration.ZERO) { acc, session -> acc + session.elapsed.counted }
+        }
     Column(modifier = Modifier.fillMaxWidth().padding(MaterialTheme.spacing.medium)) {
         Text(text = day, style = MaterialTheme.typography.titleMedium)
         totalsBySubject.forEach { (subjectId, total) ->
@@ -338,7 +340,7 @@ private fun EditSessionDialog(
         SubjectPicker(
             selectedSubjectId = dialog.subjectId,
             subjectOptions = subjectOptions,
-            onSubjectSelected = { onEvent(HistoryUiEvent.EditSubjectChanged(it)) },
+            onSubjectChange = { onEvent(HistoryUiEvent.EditSubjectChanged(it)) },
         )
         OutlinedTextField(
             value = dialog.note,
@@ -355,7 +357,7 @@ private fun SplitSessionDialog(
 ) {
     StudyFlowDialog(
         title = "Split session",
-        text = "The session will be divided into two at the chosen instant.",
+        text = "The session will be divided into two at ${dialog.at}. This defaults to the midpoint.",
         onDismissRequest = { onEvent(HistoryUiEvent.DialogDismissed) },
         confirmButton = {
             TextButton(onClick = { onEvent(HistoryUiEvent.SplitConfirmed) }) { Text("Split") }
@@ -387,7 +389,7 @@ private fun ManualEntryDialog(
         SubjectPicker(
             selectedSubjectId = dialog.subjectId,
             subjectOptions = subjectOptions,
-            onSubjectSelected = { onEvent(HistoryUiEvent.ManualEntrySubjectChanged(it)) },
+            onSubjectChange = { onEvent(HistoryUiEvent.ManualEntrySubjectChanged(it)) },
         )
         OutlinedTextField(
             value = dialog.note,
@@ -401,13 +403,13 @@ private fun ManualEntryDialog(
 private fun SubjectPicker(
     selectedSubjectId: String?,
     subjectOptions: List<Subject>,
-    onSubjectSelected: (String?) -> Unit,
+    onSubjectChange: (String?) -> Unit,
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
         items(subjectOptions, key = { it.id }) { subject ->
             FilterChip(
                 selected = selectedSubjectId == subject.id,
-                onClick = { onSubjectSelected(subject.id) },
+                onClick = { onSubjectChange(subject.id) },
                 label = { Text(subject.name) },
             )
         }

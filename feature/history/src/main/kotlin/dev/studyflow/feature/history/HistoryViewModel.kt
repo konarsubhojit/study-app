@@ -86,6 +86,43 @@ public class HistoryViewModel
 
         override fun onEvent(event: HistoryUiEvent) {
             when (event) {
+                is HistoryUiEvent.SubjectFilterChanged,
+                is HistoryUiEvent.DateRangeFilterChanged,
+                HistoryUiEvent.FilterCleared,
+                is HistoryUiEvent.SelectionToggled,
+                HistoryUiEvent.SelectionCleared,
+                is HistoryUiEvent.SessionOpened,
+                HistoryUiEvent.DialogDismissed,
+                HistoryUiEvent.ErrorMessageDismissed,
+                -> onListEvent(event)
+
+                is HistoryUiEvent.DeleteRequested,
+                HistoryUiEvent.BulkDeleteRequested,
+                HistoryUiEvent.UndoRequested,
+                HistoryUiEvent.UndoDismissed,
+                -> onDeleteEvent(event)
+
+                is HistoryUiEvent.SplitRequested,
+                is HistoryUiEvent.SplitInstantChanged,
+                HistoryUiEvent.SplitConfirmed,
+                HistoryUiEvent.MergeRequested,
+                HistoryUiEvent.MergeConfirmed,
+                -> onSplitOrMergeEvent(event)
+
+                HistoryUiEvent.ManualEntryRequested,
+                is HistoryUiEvent.ManualEntrySubjectChanged,
+                is HistoryUiEvent.ManualEntryNoteChanged,
+                is HistoryUiEvent.ManualEntryTimingChanged,
+                HistoryUiEvent.ManualEntryConfirmed,
+                -> onManualEntryEvent(event)
+
+                else -> onEditEvent(event)
+            }
+        }
+
+        /** Filter, selection and dialog-visibility intents — no correction is applied. */
+        private fun onListEvent(event: HistoryUiEvent) {
+            when (event) {
                 is HistoryUiEvent.SubjectFilterChanged -> {
                     filter.value = filter.value.copy(subjectId = event.subjectId)
                 }
@@ -110,96 +147,6 @@ public class HistoryViewModel
                     dialog.value = event.session.asEditDialog()
                 }
 
-                is HistoryUiEvent.DeleteRequested -> {
-                    delete(listOf(event.sessionId))
-                }
-
-                HistoryUiEvent.BulkDeleteRequested -> {
-                    delete(selectedIds.value.toList())
-                }
-
-                HistoryUiEvent.UndoRequested -> {
-                    undoLastDeletion()
-                }
-
-                HistoryUiEvent.UndoDismissed -> {
-                    undo.value = null
-                }
-
-                is HistoryUiEvent.SplitRequested -> {
-                    val midpoint = event.session.endedAt?.let { midpointOf(event.session.startedAt, it) }
-                    dialog.value = midpoint?.let { HistoryDialog.Split(event.session, it) }
-                }
-
-                is HistoryUiEvent.SplitInstantChanged -> {
-                    (dialog.value as? HistoryDialog.Split)?.let { current ->
-                        dialog.value = current.copy(at = event.at)
-                    }
-                }
-
-                HistoryUiEvent.SplitConfirmed -> {
-                    confirmSplit()
-                }
-
-                HistoryUiEvent.MergeRequested -> {
-                    if (selectedIds.value.size >= MIN_MERGE_SESSIONS) {
-                        dialog.value = HistoryDialog.Merge(selectedIds.value.toList())
-                    }
-                }
-
-                HistoryUiEvent.MergeConfirmed -> {
-                    confirmMerge()
-                }
-
-                HistoryUiEvent.ManualEntryRequested -> {
-                    val now = clock.now()
-                    dialog.value = HistoryDialog.ManualEntry(startedAt = now - DEFAULT_MANUAL_ENTRY_LENGTH, endedAt = now)
-                }
-
-                is HistoryUiEvent.ManualEntrySubjectChanged -> {
-                    (dialog.value as? HistoryDialog.ManualEntry)?.let { current ->
-                        dialog.value = current.copy(subjectId = event.subjectId)
-                    }
-                }
-
-                is HistoryUiEvent.ManualEntryNoteChanged -> {
-                    (dialog.value as? HistoryDialog.ManualEntry)?.let { current ->
-                        dialog.value = current.copy(note = event.note)
-                    }
-                }
-
-                is HistoryUiEvent.ManualEntryTimingChanged -> {
-                    (dialog.value as? HistoryDialog.ManualEntry)?.let { current ->
-                        dialog.value = current.copy(startedAt = event.startedAt, endedAt = event.endedAt)
-                    }
-                }
-
-                HistoryUiEvent.ManualEntryConfirmed -> {
-                    confirmManualEntry()
-                }
-
-                is HistoryUiEvent.EditSubjectChanged -> {
-                    (dialog.value as? HistoryDialog.Edit)?.let { current ->
-                        dialog.value = current.copy(subjectId = event.subjectId)
-                    }
-                }
-
-                is HistoryUiEvent.EditNoteChanged -> {
-                    (dialog.value as? HistoryDialog.Edit)?.let { current ->
-                        dialog.value = current.copy(note = event.note)
-                    }
-                }
-
-                is HistoryUiEvent.EditTimingChanged -> {
-                    (dialog.value as? HistoryDialog.Edit)?.let { current ->
-                        dialog.value = current.copy(startedAt = event.startedAt, endedAt = event.endedAt)
-                    }
-                }
-
-                HistoryUiEvent.EditConfirmed -> {
-                    confirmEdit()
-                }
-
                 HistoryUiEvent.DialogDismissed -> {
                     dialog.value = null
                 }
@@ -207,6 +154,97 @@ public class HistoryViewModel
                 HistoryUiEvent.ErrorMessageDismissed -> {
                     errorMessage.value = null
                 }
+
+                else -> Unit
+            }
+        }
+
+        /** Delete and undo intents — either applies a tombstone or reverses the last one. */
+        private fun onDeleteEvent(event: HistoryUiEvent) {
+            when (event) {
+                is HistoryUiEvent.DeleteRequested -> delete(listOf(event.sessionId))
+                HistoryUiEvent.BulkDeleteRequested -> delete(selectedIds.value.toList())
+                HistoryUiEvent.UndoRequested -> undoLastDeletion()
+                HistoryUiEvent.UndoDismissed -> undo.value = null
+                else -> Unit
+            }
+        }
+
+        /** Split/merge intents — each either opens a confirmation dialog or applies one. */
+        private fun onSplitOrMergeEvent(event: HistoryUiEvent) {
+            when (event) {
+                is HistoryUiEvent.SplitRequested -> {
+                    val midpoint = event.session.endedAt?.let { midpointOf(event.session.startedAt, it) }
+                    dialog.value = midpoint?.let { HistoryDialog.Split(event.session, it) }
+                }
+
+                is HistoryUiEvent.SplitInstantChanged -> {
+                    val current = dialog.value as? HistoryDialog.Split
+                    if (current != null) dialog.value = current.copy(at = event.at)
+                }
+
+                HistoryUiEvent.SplitConfirmed -> confirmSplit()
+
+                HistoryUiEvent.MergeRequested -> {
+                    if (selectedIds.value.size >= MIN_MERGE_SESSIONS) {
+                        dialog.value = HistoryDialog.Merge(selectedIds.value.toList())
+                    }
+                }
+
+                HistoryUiEvent.MergeConfirmed -> confirmMerge()
+                else -> Unit
+            }
+        }
+
+        /** Manual-entry field edits and submission — all mutate the open dialog's draft. */
+        private fun onManualEntryEvent(event: HistoryUiEvent) {
+            when (event) {
+                HistoryUiEvent.ManualEntryRequested -> {
+                    val now = clock.now()
+                    dialog.value =
+                        HistoryDialog.ManualEntry(startedAt = now - DEFAULT_MANUAL_ENTRY_LENGTH, endedAt = now)
+                }
+
+                is HistoryUiEvent.ManualEntrySubjectChanged -> {
+                    val current = dialog.value as? HistoryDialog.ManualEntry
+                    if (current != null) dialog.value = current.copy(subjectId = event.subjectId)
+                }
+
+                is HistoryUiEvent.ManualEntryNoteChanged -> {
+                    val current = dialog.value as? HistoryDialog.ManualEntry
+                    if (current != null) dialog.value = current.copy(note = event.note)
+                }
+
+                is HistoryUiEvent.ManualEntryTimingChanged -> {
+                    val current = dialog.value as? HistoryDialog.ManualEntry
+                    if (current != null) dialog.value = current.copy(startedAt = event.startedAt, endedAt = event.endedAt)
+                }
+
+                HistoryUiEvent.ManualEntryConfirmed -> confirmManualEntry()
+                else -> Unit
+            }
+        }
+
+        /** Edit-dialog field edits and submission — all mutate the open dialog's draft. */
+        private fun onEditEvent(event: HistoryUiEvent) {
+            when (event) {
+                is HistoryUiEvent.EditSubjectChanged -> {
+                    val current = dialog.value as? HistoryDialog.Edit
+                    if (current != null) dialog.value = current.copy(subjectId = event.subjectId)
+                }
+
+                is HistoryUiEvent.EditNoteChanged -> {
+                    val current = dialog.value as? HistoryDialog.Edit
+                    if (current != null) dialog.value = current.copy(note = event.note)
+                }
+
+                is HistoryUiEvent.EditTimingChanged -> {
+                    val current = dialog.value as? HistoryDialog.Edit
+                    if (current != null) dialog.value = current.copy(startedAt = event.startedAt, endedAt = event.endedAt)
+                }
+
+                HistoryUiEvent.EditConfirmed -> confirmEdit()
+                else -> Unit
             }
         }
 
@@ -231,7 +269,7 @@ public class HistoryViewModel
                     val result = repository.editSubject(session.id, edit.subjectId, newId(), clock.now())
                     if (!result.handle()) return@launch
                 }
-                if (edit.note != (session.note ?: "")) {
+                if (edit.note != session.note.orEmpty()) {
                     val result = repository.editNote(session.id, edit.note.ifBlank { null }, newId(), clock.now())
                     if (!result.handle()) return@launch
                 }
@@ -303,7 +341,9 @@ public class HistoryViewModel
         /** Reports [this] against the shared error/dialog state; returns whether the call applied. */
         private fun SessionHistoryCommandResult.handle(): Boolean =
             when (this) {
-                is SessionHistoryCommandResult.Applied -> true
+                is SessionHistoryCommandResult.Applied -> {
+                    true
+                }
 
                 is SessionHistoryCommandResult.Rejected -> {
                     errorMessage.value = reason.toUserMessage()
@@ -327,7 +367,7 @@ public class HistoryViewModel
                 HistoryDialog.Edit(
                     session = this,
                     subjectId = subjectId,
-                    note = note ?: "",
+                    note = note.orEmpty(),
                     startedAt = startedAt,
                     endedAt = endedAt ?: startedAt,
                 )

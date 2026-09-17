@@ -33,13 +33,15 @@ import javax.inject.Singleton
  * responsibility yet.
  *
  * This is, for now, the only place [TaskRepository], [SubjectRepository], [SessionRepository] and
- * [SessionHistoryRepository] are bound — split out from [SchedulingModule] (which owns this feature's own services) purely so
- * that module does not also carry bindings that belong to the app's data layer. When a feature
- * module takes ownership of these repositories, this whole file should move there rather than
- * being duplicated — Hilt only tolerates one binding per type in the graph.
+ * [SessionHistoryRepository] are bound — split out from [SchedulingModule] (which owns this
+ * feature's own services) purely so that module does not also carry bindings that belong to the
+ * app's data layer. When a feature module takes ownership of these repositories, this whole file
+ * should move there rather than being duplicated — Hilt only tolerates one binding per type in the
+ * graph.
  */
 @Module
 @InstallIn(SingletonComponent::class)
+@Suppress("TooManyFunctions")
 public object ProvisionalRepositoryModule {
     @Provides
     @Singleton

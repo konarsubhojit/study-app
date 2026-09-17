@@ -50,43 +50,23 @@ internal object StudyFlowDeepLinks {
         if (uri?.scheme != SCHEME) return null
         val segments = uri.pathSegments
         return when (uri.host) {
-            HOME -> {
-                HomeRoute.takeIf { segments.isEmpty() }
-            }
-
-            TIMER -> {
-                when {
-                    segments.isEmpty() -> TimerRoute()
-                    segments == listOf(RUNNING) -> TimerRoute(openRunningTimer = true)
-                    else -> null
-                }
-            }
-
-            MATERIALS -> {
-                identifier(segments)?.let(::MaterialsRoute) ?: MaterialsRoute().takeIf { segments.isEmpty() }
-            }
-
-            TASKS -> {
-                identifier(segments)?.let(::TasksRoute) ?: TasksRoute().takeIf { segments.isEmpty() }
-            }
-
-            HISTORY -> {
-                HistoryRoute.takeIf { segments.isEmpty() }
-            }
-
-            SETTINGS -> {
-                SettingsRoute.takeIf { segments.isEmpty() }
-            }
-
-            WIDGET -> {
-                widgetRoute(segments)
-            }
-
-            else -> {
-                null
-            }
+            HOME -> HomeRoute.takeIf { segments.isEmpty() }
+            TIMER -> timerRoute(segments)
+            MATERIALS -> identifier(segments)?.let(::MaterialsRoute) ?: MaterialsRoute().takeIf { segments.isEmpty() }
+            TASKS -> identifier(segments)?.let(::TasksRoute) ?: TasksRoute().takeIf { segments.isEmpty() }
+            HISTORY -> HistoryRoute.takeIf { segments.isEmpty() }
+            SETTINGS -> SettingsRoute.takeIf { segments.isEmpty() }
+            WIDGET -> widgetRoute(segments)
+            else -> null
         }
     }
+
+    private fun timerRoute(segments: List<String>): TimerRoute? =
+        when {
+            segments.isEmpty() -> TimerRoute()
+            segments == listOf(RUNNING) -> TimerRoute(openRunningTimer = true)
+            else -> null
+        }
 
     private fun uri(
         host: String,
