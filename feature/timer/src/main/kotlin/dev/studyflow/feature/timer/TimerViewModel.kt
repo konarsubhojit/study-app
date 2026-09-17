@@ -30,6 +30,7 @@ public class TimerViewModel(
     timerStates: Flow<TimerState>,
     private val now: () -> TimeAnchor,
 ) : MviViewModel<TimerUiEvent, TimerUiEffect>(savedStateHandle) {
+    // Refreshes are rendering invalidations; if several arrive together, one fresh re-read is enough.
     private val refreshes =
         MutableSharedFlow<Unit>(
             extraBufferCapacity = 1,

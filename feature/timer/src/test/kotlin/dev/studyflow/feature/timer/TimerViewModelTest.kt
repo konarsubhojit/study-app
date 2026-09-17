@@ -62,7 +62,12 @@ class TimerViewModelTest {
         }
 
     private fun startedState(device: FakeDevice): TimerState.Running {
-        val result = TimerEngine.execute(TimerState.Idle, TimerCommand.Start("session-1"), "event-1", device.anchor())
+            val result = TimerEngine.execute(TimerState.Idle, TimerCommand.Start(TEST_SESSION_ID), TEST_EVENT_ID, device.anchor())
         return (result as TimerCommandResult.Accepted).state as TimerState.Running
     }
+
+        private companion object {
+            const val TEST_SESSION_ID = "session-1"
+            const val TEST_EVENT_ID = "event-1"
+        }
 }
