@@ -7,16 +7,22 @@ import dev.studyflow.core.database.entity.MaterialSyncState
 import dev.studyflow.core.database.entity.ReminderEntity
 import dev.studyflow.core.database.entity.SessionEventEntity
 import dev.studyflow.core.database.entity.StudySessionEntity
+import dev.studyflow.core.database.entity.RecurrenceEndType
+import dev.studyflow.core.database.entity.ReminderTriggerType
 import dev.studyflow.core.database.entity.StudyTaskEntity
 import dev.studyflow.core.database.entity.SubjectEntity
+import dev.studyflow.core.database.entity.SubtaskEntity
+import dev.studyflow.core.database.entity.TaskTagEntity
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.RecurrenceFrequency
 import dev.studyflow.core.model.ReminderPrecision
 import dev.studyflow.core.model.SessionEventType
+import dev.studyflow.core.model.TaskPriority
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -53,6 +59,8 @@ public data class SyntheticDataSet(
     val materials: List<MaterialEntity>,
     val tasks: List<StudyTaskEntity>,
     val reminders: List<ReminderEntity>,
+    val taskTags: List<TaskTagEntity>,
+    val subtasks: List<SubtaskEntity>,
     val sessions: List<StudySessionEntity>,
     val sessionEvents: List<SessionEventEntity>,
 )
@@ -73,6 +81,8 @@ public object SyntheticDataFactory {
             materials = createMaterials(size.materialCount, folders),
             tasks = tasks,
             reminders = createReminders(tasks),
+            taskTags = createTaskTags(tasks),
+            subtasks = createSubtasks(tasks),
             sessions = sessions,
             sessionEvents = createSessionEvents(sessions, size.eventsPerSession),
         )
@@ -128,32 +138,95 @@ public object SyntheticDataFactory {
         subjects: List<SubjectEntity>,
     ): List<StudyTaskEntity> =
         List(count) { index ->
+            val dueAtUtc = BASE_DUE_INSTANT + (index * 15).minutes
             StudyTaskEntity(
                 id = "task-$index",
                 title = "Task ${index.toString().padStart(5, '0')}",
                 notes = if (index % 3 == 0) "Synthetic task notes" else null,
                 subjectId = subjects[index % subjects.size].id,
-                dueAt = (BASE_DUE_INSTANT + (index * 15).minutes).toLocalDateTime(TimeZone.UTC),
+                materialId = null,
+                sessionId = null,
+                dueAt = dueAtUtc.toLocalDateTime(TimeZone.UTC),
+                dueAtUtc = dueAtUtc,
                 timeZone = TimeZone.UTC,
+                isAllDay = index % 9 == 0,
+                priority = TaskPriority.entries[index % TaskPriority.entries.size],
+                recurrenceFrequency = if (index % 2 == 0) RecurrenceFrequency.WEEKLY else null,
+                recurrenceInterval = if (index % 2 == 0) 1 else null,
+                recurrenceDaysOfWeek =
+                    if (index % 2 == 0) setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY) else null,
+                recurrenceDayOfMonth = null,
+                recurrenceEndType = if (index % 2 == 0) RecurrenceEndType.NEVER else null,
+                recurrenceEndCount = null,
+                recurrenceEndDate = null,
                 completedAt = if (index % 5 == 0) BASE_INSTANT else null,
+                updatedAt = BASE_INSTANT + index.minutes,
+                deleted = index % 23 == 0,
             )
         }
 
+    // Every second task carries a lead-time reminder and every seventh an extra alarm, so the
+    // fixture exercises the many-reminders-per-task cardinality the queries have to survive.
     private fun createReminders(tasks: List<StudyTaskEntity>): List<ReminderEntity> =
-        tasks.filterIndexed { index, _ -> index % 2 == 0 }.mapIndexed { index, task ->
-            ReminderEntity(
-                id = "reminder-$index",
-                taskId = task.id,
-                leadTime = 15.minutes,
-                precision = ReminderPrecision.GENTLE,
-                recurrenceFrequency = RecurrenceFrequency.WEEKLY,
-                recurrenceInterval = 1,
-                recurrenceDaysOfWeek = setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY),
-                recurrenceDayOfMonth = null,
-                recurrenceEndType = dev.studyflow.core.database.entity.RecurrenceEndType.NEVER,
-                recurrenceEndCount = null,
-                recurrenceEndDate = null,
-            )
+        tasks.flatMapIndexed { index, task ->
+            buildList {
+                if (index % 2 == 0) {
+                    add(
+                        ReminderEntity(
+                            id = "reminder-$index-lead",
+                            taskId = task.id,
+                            triggerType = ReminderTriggerType.BEFORE_DUE,
+                            leadTime = 15.minutes,
+                            triggerInstant = null,
+                            triggerTimeZone = null,
+                            triggerAtUtc = task.dueAtUtc?.minus(15.minutes),
+                            precision = ReminderPrecision.GENTLE,
+                            snoozeUntil = null,
+                            snoozeCount = null,
+                            lastFiredAt = null,
+                            schedulingId = null,
+                        ),
+                    )
+                }
+                if (index % 7 == 0) {
+                    val ringAt = requireNotNull(task.dueAtUtc) - 1.hours
+                    add(
+                        ReminderEntity(
+                            id = "reminder-$index-alarm",
+                            taskId = task.id,
+                            triggerType = ReminderTriggerType.AT_INSTANT,
+                            leadTime = null,
+                            triggerInstant = ringAt,
+                            triggerTimeZone = TimeZone.UTC,
+                            triggerAtUtc = ringAt,
+                            precision = ReminderPrecision.ALARM,
+                            snoozeUntil = null,
+                            snoozeCount = null,
+                            lastFiredAt = null,
+                            schedulingId = null,
+                        ),
+                    )
+                }
+            }
+        }
+
+    private fun createTaskTags(tasks: List<StudyTaskEntity>): List<TaskTagEntity> =
+        tasks.flatMapIndexed { index, task ->
+            TAGS.filterIndexed { tagIndex, _ -> (index + tagIndex) % TAGS.size == 0 }
+                .map { TaskTagEntity(taskId = task.id, tag = it) }
+        }
+
+    private fun createSubtasks(tasks: List<StudyTaskEntity>): List<SubtaskEntity> =
+        tasks.filterIndexed { index, _ -> index % 4 == 0 }.flatMap { task ->
+            List(SUBTASKS_PER_TASK) { position ->
+                SubtaskEntity(
+                    id = "${task.id}-subtask-$position",
+                    taskId = task.id,
+                    position = position,
+                    title = "Step ${position + 1}",
+                    completedAt = if (position == 0) BASE_INSTANT else null,
+                )
+            }
         }
 
     private fun createSessions(
@@ -197,6 +270,8 @@ public object SyntheticDataFactory {
             else -> SessionEventType.RESUMED
         }
 
+    private val TAGS: List<String> = listOf("exam", "homework", "revision")
+    private const val SUBTASKS_PER_TASK: Int = 3
     private const val ROOT_FOLDER_COUNT: Int = 4
     private const val HASH_LENGTH: Int = 64
     private val BASE_INSTANT: Instant = Instant.parse("2026-01-01T00:00:00Z")
@@ -224,6 +299,8 @@ public object SyntheticDataSeeder {
                 database.materialDao().upsertAll(data.materials)
                 database.studyTaskDao().upsertTasks(data.tasks)
                 database.studyTaskDao().insertReminders(data.reminders)
+                database.studyTaskDao().insertTags(data.taskTags)
+                database.studyTaskDao().insertSubtasks(data.subtasks)
                 database.sessionDao().upsertSessions(data.sessions)
                 database.sessionDao().insertEvents(data.sessionEvents)
                 true

@@ -97,14 +97,9 @@ class StudyFlowDatabaseTest {
             assertEquals(size.subjectCount, database.subjectDao().count())
             assertEquals(size.folderCount, database.folderDao().count())
             assertEquals(size.materialCount, database.materialDao().count())
-            assertEquals(
-                size.taskCount,
-                database
-                    .studyTaskDao()
-                    .observeAll()
-                    .first()
-                    .size,
-            )
+            // Row count, not the list flow: the flow deliberately hides the tombstoned rows the
+            // fixture contains so that soft deletion is exercised by the list queries too.
+            assertEquals(size.taskCount, database.studyTaskDao().count())
             assertEquals(
                 size.sessionCount,
                 database

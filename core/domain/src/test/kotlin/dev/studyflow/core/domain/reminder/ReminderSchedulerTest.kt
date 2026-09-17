@@ -4,13 +4,14 @@ import dev.studyflow.core.model.RecurrenceFrequency
 import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.ReminderPrecision
+import dev.studyflow.core.model.ReminderTrigger
+import dev.studyflow.core.model.SnoozeState
 import dev.studyflow.core.model.StudyTask
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
-import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Nested
@@ -166,6 +167,50 @@ class ReminderSchedulerTest {
         }
 
         @Test
+        fun `a snooze postpones this delivery without moving the occurrence`() {
+            val snoozedUntil = Instant.parse("2026-03-02T08:10:00Z")
+            val task =
+                task().copy(
+                    reminders =
+                        listOf(
+                            Reminder(
+                                id = "reminder-1",
+                                taskId = "task-1",
+                                trigger = ReminderTrigger.BeforeDue(),
+                                snooze = SnoozeState(until = snoozedUntil),
+                            ),
+                        ),
+                )
+
+            val plan = ReminderScheduler.plan(task, SchedulingCapabilities(), now).single()
+
+            assertEquals("2026-03-02T08:00", plan.occurrenceAt.toLocalDateTime(london).toString())
+            assertEquals(snoozedUntil, plan.triggerAt)
+        }
+
+        @Test
+        fun `an absolute trigger fires at the instant the user picked, whatever the due time`() {
+            val ringAt = Instant.parse("2026-03-02T07:00:00Z")
+            val task =
+                task().copy(
+                    reminders =
+                        listOf(
+                            Reminder(
+                                id = "reminder-1",
+                                taskId = "task-1",
+                                trigger = ReminderTrigger.AtInstant(ringAt, london),
+                                precision = ReminderPrecision.ALARM,
+                            ),
+                        ),
+                )
+
+            val plan = ReminderScheduler.plan(task, SchedulingCapabilities(), now).single()
+
+            assertEquals(ringAt, plan.triggerAt)
+            assertEquals("2026-03-02T08:00", plan.occurrenceAt.toLocalDateTime(london).toString())
+        }
+
+        @Test
         fun `a recurring reminder rolls on to the next occurrence`() {
             val plan =
                 plan(
@@ -185,26 +230,55 @@ class ReminderSchedulerTest {
         fun `a completed task is not scheduled`() {
             val task = task().copy(completedAt = now)
 
-            assertNull(ReminderScheduler.plan(task, SchedulingCapabilities(), now))
+            assertTrue(ReminderScheduler.plan(task, SchedulingCapabilities(), now).isEmpty())
+        }
+
+        @Test
+        fun `a deleted task is not scheduled`() {
+            val task = task().copy(deleted = true)
+
+            assertTrue(ReminderScheduler.plan(task, SchedulingCapabilities(), now).isEmpty())
         }
 
         @Test
         fun `a task with no reminder is not scheduled`() {
-            val task = task().copy(reminder = null)
+            val task = task().copy(reminders = emptyList())
 
-            assertNull(ReminderScheduler.plan(task, SchedulingCapabilities(), now))
+            assertTrue(ReminderScheduler.plan(task, SchedulingCapabilities(), now).isEmpty())
         }
 
         @Test
         fun `a one-off reminder in the past is not rescheduled`() {
-            val plan =
+            val plans =
                 ReminderScheduler.plan(
                     task = task(),
                     capabilities = SchedulingCapabilities(),
                     now = Instant.parse("2026-04-01T00:00:00Z"),
                 )
 
-            assertNull(plan)
+            assertTrue(plans.isEmpty())
+        }
+
+        @Test
+        fun `an absolute reminder that already fired is not fired again`() {
+            val ringAt = Instant.parse("2026-03-02T07:00:00Z")
+            val task =
+                task().copy(
+                    reminders =
+                        listOf(
+                            Reminder(
+                                id = "reminder-alarm",
+                                taskId = "task-1",
+                                trigger = ReminderTrigger.AtInstant(ringAt, london),
+                                precision = ReminderPrecision.ALARM,
+                                lastFiredAt = ringAt,
+                            ),
+                        ),
+                )
+
+            assertTrue(
+                ReminderScheduler.plan(task, SchedulingCapabilities(), Instant.parse("2026-03-02T08:30:00Z")).isEmpty(),
+            )
         }
     }
 
@@ -224,6 +298,37 @@ class ReminderSchedulerTest {
 
             assertEquals(listOf("a", "c"), plans.map { it.taskId })
         }
+
+        @Test
+        fun `every reminder on a task is planned independently`() {
+            val task =
+                task().copy(
+                    reminders =
+                        listOf(
+                            Reminder(
+                                id = "reminder-lead",
+                                taskId = "task-1",
+                                trigger = ReminderTrigger.BeforeDue(10.minutes),
+                            ),
+                            Reminder(
+                                id = "reminder-alarm",
+                                taskId = "task-1",
+                                trigger =
+                                    ReminderTrigger.AtInstant(Instant.parse("2026-03-02T07:00:00Z"), london),
+                                precision = ReminderPrecision.ALARM,
+                            ),
+                        ),
+                )
+
+            val plans = ReminderScheduler.plan(task, SchedulingCapabilities(), now)
+
+            assertEquals(listOf("reminder-lead", "reminder-alarm"), plans.map { it.reminderId })
+            assertEquals(
+                listOf("2026-03-02T07:50", "2026-03-02T07:00"),
+                plans.map { it.triggerAt.toLocalDateTime(london).toString() },
+            )
+            assertEquals(listOf(ReminderDelivery.INEXACT, ReminderDelivery.ALARM_CLOCK), plans.map { it.delivery })
+        }
     }
 
     private fun plan(
@@ -234,11 +339,12 @@ class ReminderSchedulerTest {
         now: Instant = this.now,
     ): ReminderPlan =
         requireNotNull(
-            ReminderScheduler.plan(
-                task = task(precision = precision, leadTime = leadTime, recurrence = recurrence),
-                capabilities = capabilities,
-                now = now,
-            ),
+            ReminderScheduler
+                .plan(
+                    task = task(precision = precision, leadTime = leadTime, recurrence = recurrence),
+                    capabilities = capabilities,
+                    now = now,
+                ).singleOrNull(),
         ) { "expected a plan for $precision" }
 
     private fun task(
@@ -251,12 +357,16 @@ class ReminderSchedulerTest {
         title = "Revise chapter 4",
         dueAt = LocalDateTime(2026, 3, 2, 8, 0),
         timeZone = london,
-        reminder =
-            Reminder(
-                id = "reminder-$id",
-                leadTime = leadTime,
-                precision = precision,
-                recurrence = recurrence,
+        recurrence = recurrence,
+        reminders =
+            listOf(
+                Reminder(
+                    id = "reminder-$id",
+                    taskId = id,
+                    trigger = ReminderTrigger.BeforeDue(leadTime),
+                    precision = precision,
+                ),
             ),
+        updatedAt = Instant.parse("2026-03-01T00:00:00Z"),
     )
 }

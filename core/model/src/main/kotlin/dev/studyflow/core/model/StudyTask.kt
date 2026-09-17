@@ -3,56 +3,147 @@ package dev.studyflow.core.model
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.LocalTime
 import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toInstant
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
- * A to-do item, optionally with a [Reminder].
+ * A to-do item, with zero or more [Reminder]s attached.
  *
  * @property dueAt the *local* wall-clock time the task is due. Deliberately not an [Instant]:
  *   "revise at 09:00" means 09:00 where the user is, and pinning it to an absolute instant makes it
- *   drift by an hour every time DST flips or the user flies somewhere.
- * @property timeZone the zone [dueAt] is interpreted in.
+ *   drift by an hour every time DST flips or the user flies somewhere. [dueAtUtc] is the absolute
+ *   instant that local time resolves to, which is what scheduling, sorting and the list queries use.
+ * @property timeZone the zone [dueAt] is interpreted in, retained so the wall-clock meaning
+ *   survives travel and daylight-saving changes.
+ * @property isAllDay true when only the date matters. All-day tasks are anchored to local midnight
+ *   so "due Friday" does not become Thursday for a user five hours west of the author.
+ * @property recurrence how the task repeats; `null` means it happens once. The rule lives on the
+ *   task rather than on a reminder because every reminder of a repeating task repeats with it.
+ * @property subtasks an ordered checklist. Order is the list order; there is no separate rank
+ *   field to keep consistent with it.
+ * @property materialId optional link to the material this task is about (for example the chapter
+ *   to revise), and [sessionId] to the study session it was planned from or completed in.
+ * @property updatedAt last local modification, used by sync to order writes.
+ * @property deleted soft-delete marker. Rows are tombstoned rather than removed so a deletion can
+ *   be replicated instead of silently resurrected by the next sync.
  */
+@Suppress("LongParameterList")
 public data class StudyTask(
     val id: String,
     val title: String,
     val notes: String? = null,
     val subjectId: String? = null,
+    val materialId: String? = null,
+    val sessionId: String? = null,
     val dueAt: LocalDateTime? = null,
     val timeZone: TimeZone = TimeZone.UTC,
+    val isAllDay: Boolean = false,
+    val priority: TaskPriority = TaskPriority.NORMAL,
+    val tags: Set<String> = emptySet(),
+    val subtasks: List<Subtask> = emptyList(),
+    val recurrence: RecurrenceRule? = null,
     val completedAt: Instant? = null,
-    val reminder: Reminder? = null,
+    val reminders: List<Reminder> = emptyList(),
+    val updatedAt: Instant,
+    val deleted: Boolean = false,
 ) {
     init {
         require(id.isNotBlank()) { "StudyTask.id must not be blank" }
         require(title.isNotBlank()) { "StudyTask.title must not be blank" }
-        require(reminder == null || dueAt != null) { "a reminder needs a due time to fire relative to" }
+        require(tags.all(String::isNotBlank)) { "StudyTask.tags must not contain blank tags" }
+        require(subtasks.distinctBy(Subtask::id).size == subtasks.size) { "subtask ids must be unique" }
+        require(reminders.distinctBy(Reminder::id).size == reminders.size) { "reminder ids must be unique" }
+        require(reminders.all { it.taskId == id }) { "every reminder must belong to task $id" }
+        require(!isAllDay || dueAt?.time == LocalTime(0, 0)) {
+            "an all-day task must be due at local midnight, was ${dueAt?.time}"
+        }
+        require(dueAt != null || reminders.none { it.trigger is ReminderTrigger.BeforeDue }) {
+            "a reminder relative to the due time needs a due time to fire relative to"
+        }
+        require(dueAt != null || recurrence == null) { "a recurring task needs a due time to repeat from" }
     }
 
     /** True when the user has ticked this off. */
+    public val isCompleted: Boolean get() = completedAt != null
+
+    /**
+     * The absolute instant [dueAt] resolves to, or `null` for a task with no due date.
+     *
+     * Persisted alongside the local time rather than recomputed per row: every list screen orders
+     * and filters by it, and an index cannot be built on a value the database has to call back into
+     * Kotlin to compute.
+     */
+    public val dueAtUtc: Instant? get() = dueAt?.toInstant(timeZone)
+
+    /** True when the task is due, still open and its due instant has passed. */
+    public fun isOverdueAt(now: Instant): Boolean = !isCompleted && !deleted && (dueAtUtc?.let { it < now } == true)
+}
+
+/** How much the user cares, used for ordering within a day and for notification importance. */
+public enum class TaskPriority { NONE, LOW, NORMAL, HIGH }
+
+/** One item of a task's checklist. */
+public data class Subtask(
+    val id: String,
+    val title: String,
+    val completedAt: Instant? = null,
+) {
+    init {
+        require(id.isNotBlank()) { "Subtask.id must not be blank" }
+        require(title.isNotBlank()) { "Subtask.title must not be blank" }
+    }
+
+    /** True when the user has ticked this item off. */
     public val isCompleted: Boolean get() = completedAt != null
 }
 
 /**
  * When and how insistently to nudge the user about a [StudyTask].
  *
- * @property leadTime how far *before* the task's due time to fire. Zero means "at the due time".
+ * A task may carry several of these — "the evening before" *and* "ten minutes before" is a normal
+ * thing to want — so a reminder names the task it belongs to rather than being an optional field
+ * on it.
+ *
+ * @property trigger what the reminder fires relative to; see [ReminderTrigger].
  * @property precision how much the user cares that this lands on the second — which decides what
  *   Android scheduling primitive is used, and how loudly the app should complain if the OS refuses.
- * @property recurrence optional repeat rule; `null` means fire once.
+ * @property snooze set while the user has postponed this reminder; `null` once it is dismissed or
+ *   has never been snoozed.
+ * @property lastFiredAt when this reminder was last delivered, so a one-shot reminder is not
+ *   re-delivered after a reboot or a reschedule.
+ * @property schedulingId the platform registration this reminder currently owns (alarm request id
+ *   or work name), so it can be cancelled without re-deriving how it was scheduled.
  */
 public data class Reminder(
     val id: String,
-    val leadTime: kotlin.time.Duration = kotlin.time.Duration.ZERO,
+    val taskId: String,
+    val trigger: ReminderTrigger = ReminderTrigger.BeforeDue(),
     val precision: ReminderPrecision = ReminderPrecision.GENTLE,
-    val recurrence: RecurrenceRule? = null,
+    val snooze: SnoozeState? = null,
+    val lastFiredAt: Instant? = null,
+    val schedulingId: String? = null,
 ) {
     init {
         require(id.isNotBlank()) { "Reminder.id must not be blank" }
-        require(!leadTime.isNegative()) { "Reminder.leadTime must not be negative, was $leadTime" }
+        require(taskId.isNotBlank()) { "Reminder.taskId must not be blank" }
     }
+
+    /**
+     * Whether this reminder should take over the screen or merely post a notification.
+     *
+     * Derived from [precision] rather than stored next to it: two fields that can disagree about
+     * the same decision is how a reminder ends up claiming to be an alarm while being scheduled
+     * inexactly.
+     */
+    public val mode: ReminderMode
+        get() = if (precision == ReminderPrecision.ALARM) ReminderMode.ALARM else ReminderMode.NOTIFICATION
 }
+
+/** How a fired [Reminder] presents itself to the user. */
+public enum class ReminderMode { NOTIFICATION, ALARM }
 
 /**
  * How precisely a reminder needs to fire.
@@ -80,6 +171,54 @@ public enum class ReminderPrecision {
      * explicitly set as an alarm.
      */
     ALARM,
+}
+
+/**
+ * What a [Reminder] fires relative to.
+ *
+ * The two cases the UI offers — "remind me 10 minutes before" and "ring at exactly 07:00" — are
+ * genuinely different anchors, not one anchor with a special case. A lead time follows the task
+ * when its due date moves or recurs; an absolute time does not.
+ */
+public sealed interface ReminderTrigger {
+    /**
+     * Fire [leadTime] before the task's due time; [Duration.ZERO] means "at the due time". Follows
+     * every occurrence of a recurring task.
+     */
+    public data class BeforeDue(
+        val leadTime: Duration = Duration.ZERO,
+    ) : ReminderTrigger {
+        init {
+            require(!leadTime.isNegative()) { "ReminderTrigger.BeforeDue.leadTime must not be negative" }
+        }
+    }
+
+    /**
+     * Fire at [instant], whatever the task's due time is.
+     *
+     * @property timeZone the zone the user picked the time in, retained so the wall-clock intent
+     *   ("07:00") can still be shown, and re-resolved, after travel or a DST change.
+     */
+    public data class AtInstant(
+        val instant: Instant,
+        val timeZone: TimeZone = TimeZone.UTC,
+    ) : ReminderTrigger
+}
+
+/**
+ * A postponed reminder.
+ *
+ * @property until when it should fire again.
+ * @property count how many times in a row the user has snoozed it, so the UI can stop offering an
+ * infinite snooze for something evidently ignored.
+ */
+public data class SnoozeState(
+    val until: Instant,
+    val count: Int = 1,
+) {
+    init {
+        require(count >= 1) { "SnoozeState.count must be at least 1, was $count" }
+    }
 }
 
 /**

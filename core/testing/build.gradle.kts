@@ -5,6 +5,8 @@ plugins {
 dependencies {
     api(projects.core.model)
     api(projects.core.common)
+    // Repository fakes implement the `:core:domain` contracts they stand in for.
+    api(projects.core.domain)
     // The network fakes answer over the real client, so a feature test exercises production
     // serialization, retries and error mapping rather than a stand-in (issue #63).
     api(projects.core.network)

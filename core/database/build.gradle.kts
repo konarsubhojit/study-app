@@ -15,5 +15,9 @@ extensions.configure<LibraryExtension> {
 
 dependencies {
     implementation(projects.core.model)
+    // The task repository implements the `:core:domain` contract and maps rows to domain models.
+    implementation(projects.core.domain)
     implementation(libs.kotlinx.coroutines.core)
+
+    testImplementation(projects.core.testing)
 }

@@ -3,11 +3,13 @@ package dev.studyflow.core.database
 import androidx.room.TypeConverter
 import dev.studyflow.core.database.entity.MaterialSyncState
 import dev.studyflow.core.database.entity.RecurrenceEndType
+import dev.studyflow.core.database.entity.ReminderTriggerType
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.RecurrenceFrequency
 import dev.studyflow.core.model.ReminderPrecision
 import dev.studyflow.core.model.SessionEventType
+import dev.studyflow.core.model.TaskPriority
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -79,6 +81,19 @@ public class DatabaseConverters {
 
     @TypeConverter
     public fun stringToReminderPrecision(value: String?): ReminderPrecision? = value?.let(ReminderPrecision::valueOf)
+
+    @TypeConverter
+    public fun taskPriorityToString(value: TaskPriority?): String? = value?.name
+
+    @TypeConverter
+    public fun stringToTaskPriority(value: String?): TaskPriority? = value?.let(TaskPriority::valueOf)
+
+    @TypeConverter
+    public fun reminderTriggerTypeToString(value: ReminderTriggerType?): String? = value?.name
+
+    @TypeConverter
+    public fun stringToReminderTriggerType(value: String?): ReminderTriggerType? =
+        value?.let(ReminderTriggerType::valueOf)
 
     @TypeConverter
     public fun recurrenceFrequencyToString(value: RecurrenceFrequency?): String? = value?.name

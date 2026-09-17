@@ -5,12 +5,18 @@ import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.RecurrenceEnd
 import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
+import dev.studyflow.core.model.ReminderTrigger
 import dev.studyflow.core.model.SessionEvent
+import dev.studyflow.core.model.SnoozeState
 import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subject
+import dev.studyflow.core.model.Subtask
 import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.model.TimeAnchor
+import kotlinx.datetime.TimeZone
+import kotlin.time.Duration
+import kotlin.time.Instant
 
 public fun Subject.asEntity(): SubjectEntity = SubjectEntity(id, name, colorArgb, archived)
 
@@ -90,56 +96,160 @@ private fun MaterialEntity.asExternalSyncState(): SyncState =
         }
     }
 
-public fun StudyTask.asEntity(): TaskWithReminder =
-    TaskWithReminder(
-        task = StudyTaskEntity(id, title, notes, subjectId, dueAt, timeZone, completedAt),
-        reminder = reminder?.asEntity(id),
+/**
+ * Flattens the task aggregate into its rows.
+ *
+ * Derived columns (`due_at_utc`, `trigger_at_utc`) are computed here, on the single write path, so
+ * they cannot drift from the authored local time and trigger they are derived from.
+ */
+public fun StudyTask.asEntity(): TaskWithReminders =
+    TaskWithReminders(
+        task =
+            StudyTaskEntity(
+                id = id,
+                title = title,
+                notes = notes,
+                subjectId = subjectId,
+                materialId = materialId,
+                sessionId = sessionId,
+                dueAt = dueAt,
+                dueAtUtc = dueAtUtc,
+                timeZone = timeZone,
+                isAllDay = isAllDay,
+                priority = priority,
+                recurrenceFrequency = recurrence?.frequency,
+                recurrenceInterval = recurrence?.interval,
+                recurrenceDaysOfWeek = recurrence?.daysOfWeek,
+                recurrenceDayOfMonth = recurrence?.dayOfMonth,
+                recurrenceEndType = recurrence?.end?.asEntity(),
+                recurrenceEndCount = (recurrence?.end as? RecurrenceEnd.AfterOccurrences)?.count,
+                recurrenceEndDate = (recurrence?.end as? RecurrenceEnd.OnDate)?.date,
+                completedAt = completedAt,
+                updatedAt = updatedAt,
+                deleted = deleted,
+            ),
+        reminders = reminders.map { it.asEntity(dueAtUtc) },
+        tags = tags.map { TaskTagEntity(taskId = id, tag = it) },
+        subtasks =
+            subtasks.mapIndexed { position, subtask ->
+                SubtaskEntity(
+                    id = subtask.id,
+                    taskId = id,
+                    position = position,
+                    title = subtask.title,
+                    completedAt = subtask.completedAt,
+                )
+            },
     )
 
-private fun Reminder.asEntity(taskId: String): ReminderEntity {
-    val recurrenceEnd = recurrence?.end
-    return ReminderEntity(
+private fun Reminder.asEntity(dueAtUtc: Instant?): ReminderEntity =
+    when (val trigger = trigger) {
+        is ReminderTrigger.BeforeDue ->
+            reminderEntity(
+                triggerType = ReminderTriggerType.BEFORE_DUE,
+                leadTime = trigger.leadTime,
+                triggerInstant = null,
+                triggerTimeZone = null,
+                triggerAtUtc = dueAtUtc?.minus(trigger.leadTime),
+            )
+
+        is ReminderTrigger.AtInstant ->
+            reminderEntity(
+                triggerType = ReminderTriggerType.AT_INSTANT,
+                leadTime = null,
+                triggerInstant = trigger.instant,
+                triggerTimeZone = trigger.timeZone,
+                triggerAtUtc = trigger.instant,
+            )
+    }
+
+@Suppress("LongParameterList")
+private fun Reminder.reminderEntity(
+    triggerType: ReminderTriggerType,
+    leadTime: Duration?,
+    triggerInstant: Instant?,
+    triggerTimeZone: TimeZone?,
+    triggerAtUtc: Instant?,
+): ReminderEntity =
+    ReminderEntity(
         id = id,
         taskId = taskId,
+        triggerType = triggerType,
         leadTime = leadTime,
+        triggerInstant = triggerInstant,
+        triggerTimeZone = triggerTimeZone,
+        triggerAtUtc = triggerAtUtc,
         precision = precision,
-        recurrenceFrequency = recurrence?.frequency,
-        recurrenceInterval = recurrence?.interval,
-        recurrenceDaysOfWeek = recurrence?.daysOfWeek,
-        recurrenceDayOfMonth = recurrence?.dayOfMonth,
-        recurrenceEndType = recurrenceEnd?.asEntity(),
-        recurrenceEndCount = (recurrenceEnd as? RecurrenceEnd.AfterOccurrences)?.count,
-        recurrenceEndDate = (recurrenceEnd as? RecurrenceEnd.OnDate)?.date,
+        snoozeUntil = snooze?.until,
+        snoozeCount = snooze?.count,
+        lastFiredAt = lastFiredAt,
+        schedulingId = schedulingId,
     )
-}
 
-public fun TaskWithReminder.asExternalModel(): StudyTask =
+public fun TaskWithReminders.asExternalModel(): StudyTask =
     StudyTask(
         id = task.id,
         title = task.title,
         notes = task.notes,
         subjectId = task.subjectId,
+        materialId = task.materialId,
+        sessionId = task.sessionId,
         dueAt = task.dueAt,
         timeZone = task.timeZone,
+        isAllDay = task.isAllDay,
+        priority = task.priority,
+        tags = tags.mapTo(linkedSetOf(), TaskTagEntity::tag),
+        subtasks =
+            subtasks
+                .sortedBy(SubtaskEntity::position)
+                .map { Subtask(id = it.id, title = it.title, completedAt = it.completedAt) },
+        recurrence = task.asExternalRecurrence(),
         completedAt = task.completedAt,
-        reminder = reminder?.asExternalModel(),
+        reminders = reminders.sortedBy(ReminderEntity::id).map(ReminderEntity::asExternalModel),
+        updatedAt = task.updatedAt,
+        deleted = task.deleted,
     )
 
-private fun ReminderEntity.asExternalModel(): Reminder =
+private fun StudyTaskEntity.asExternalRecurrence(): RecurrenceRule? =
+    recurrenceFrequency?.let { frequency ->
+        RecurrenceRule(
+            frequency = frequency,
+            interval = requireNotNull(recurrenceInterval) { "recurring task $id has no interval" },
+            daysOfWeek = recurrenceDaysOfWeek.orEmpty(),
+            dayOfMonth = recurrenceDayOfMonth,
+            end = asExternalRecurrenceEnd(),
+        )
+    }
+
+public fun ReminderEntity.asExternalModel(): Reminder =
     Reminder(
         id = id,
-        leadTime = leadTime,
+        taskId = taskId,
+        trigger =
+            when (triggerType) {
+                ReminderTriggerType.BEFORE_DUE -> {
+                    ReminderTrigger.BeforeDue(
+                        leadTime = requireNotNull(leadTime) { "relative reminder $id has no lead time" },
+                    )
+                }
+
+                ReminderTriggerType.AT_INSTANT -> {
+                    ReminderTrigger.AtInstant(
+                        instant = requireNotNull(triggerInstant) { "absolute reminder $id has no instant" },
+                        timeZone = requireNotNull(triggerTimeZone) { "absolute reminder $id has no time zone" },
+                    )
+                }
+            },
         precision = precision,
-        recurrence =
-            recurrenceFrequency?.let { frequency ->
-                RecurrenceRule(
-                    frequency = frequency,
-                    interval = requireNotNull(recurrenceInterval),
-                    daysOfWeek = recurrenceDaysOfWeek.orEmpty(),
-                    dayOfMonth = recurrenceDayOfMonth,
-                    end = asExternalRecurrenceEnd(),
+        snooze =
+            snoozeUntil?.let { until ->
+                SnoozeState(
+                    until = until,
+                    count = requireNotNull(snoozeCount) { "snoozed reminder $id has no snooze count" },
                 )
             },
+        lastFiredAt = lastFiredAt,
+        schedulingId = schedulingId,
     )
 
 private fun RecurrenceEnd.asEntity(): RecurrenceEndType =
@@ -149,18 +259,18 @@ private fun RecurrenceEnd.asEntity(): RecurrenceEndType =
         is RecurrenceEnd.OnDate -> RecurrenceEndType.ON_DATE
     }
 
-private fun ReminderEntity.asExternalRecurrenceEnd(): RecurrenceEnd =
-    when (requireNotNull(recurrenceEndType)) {
+private fun StudyTaskEntity.asExternalRecurrenceEnd(): RecurrenceEnd =
+    when (requireNotNull(recurrenceEndType) { "recurring task $id has no end type" }) {
         RecurrenceEndType.NEVER -> {
             RecurrenceEnd.Never
         }
 
         RecurrenceEndType.AFTER_OCCURRENCES -> {
-            RecurrenceEnd.AfterOccurrences(requireNotNull(recurrenceEndCount))
+            RecurrenceEnd.AfterOccurrences(requireNotNull(recurrenceEndCount) { "task $id has no occurrence count" })
         }
 
         RecurrenceEndType.ON_DATE -> {
-            RecurrenceEnd.OnDate(requireNotNull(recurrenceEndDate))
+            RecurrenceEnd.OnDate(requireNotNull(recurrenceEndDate) { "task $id has no recurrence end date" })
         }
     }
 
