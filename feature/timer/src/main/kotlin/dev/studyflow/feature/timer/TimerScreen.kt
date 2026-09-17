@@ -19,7 +19,7 @@ public fun TimerScreen(
     onEvent: (TimerUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (state.elapsedSeconds == 0) {
+    if (state.elapsedSeconds == 0L) {
         EmptyState(message = "Start a study session when you're ready.", modifier = modifier)
     } else {
         Column(

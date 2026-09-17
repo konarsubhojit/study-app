@@ -14,10 +14,9 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.onStart
-import kotlin.time.Duration
 
 public data class TimerUiState(
-    val elapsedSeconds: Int = 0,
+    val elapsedSeconds: Long = 0,
 ) : UiState
 
 public sealed interface TimerUiEvent : UiEvent {
@@ -28,7 +27,6 @@ public sealed interface TimerUiEffect : UiEffect
 
 public class TimerViewModel(
     savedStateHandle: SavedStateHandle,
-    initialTimerState: TimerState,
     timerStates: Flow<TimerState>,
     private val now: () -> TimeAnchor,
 ) : MviViewModel<TimerUiEvent, TimerUiEffect>(savedStateHandle) {
@@ -41,7 +39,7 @@ public class TimerViewModel(
     public val state: StateFlow<TimerUiState> =
         combine(timerStates, refreshes.onStart { emit(Unit) }) { timerState, _ ->
             timerState.toUiState(now())
-        }.stateInViewModel(initialTimerState.toUiState(now()))
+        }.stateInViewModel(TimerUiState())
 
     override fun onEvent(event: TimerUiEvent) {
         when (event) {
@@ -56,11 +54,7 @@ public class TimerViewModel(
                     TimerEngine
                         .elapsedAt(this, now)
                         .counted
-                        .toDisplaySeconds(),
+                        .inWholeSeconds,
             )
-
-        private fun Duration.toDisplaySeconds(): Int =
-            // TimerUiState uses Int for display; clamp extreme sessions rather than overflowing.
-            inWholeSeconds.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
     }
 }

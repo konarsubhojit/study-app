@@ -29,7 +29,6 @@ class TimerViewModelTest {
             val viewModel =
                 TimerViewModel(
                     savedStateHandle = SavedStateHandle(),
-                    initialTimerState = TimerState.Idle,
                     timerStates = flowOf(TimerState.Idle),
                     now = device::anchor,
                 )
@@ -49,7 +48,6 @@ class TimerViewModelTest {
             val viewModel =
                 TimerViewModel(
                     savedStateHandle = SavedStateHandle(),
-                    initialTimerState = running,
                     timerStates = timerStates,
                     now = device::anchor,
                 )
@@ -58,7 +56,7 @@ class TimerViewModelTest {
                 assertEquals(TimerUiState(), awaitItem())
                 device.advance(10.minutes)
                 viewModel.onEvent(TimerUiEvent.Refresh)
-                assertEquals(TimerUiState(elapsedSeconds = 600), awaitItem())
+                assertEquals(TimerUiState(elapsedSeconds = 600L), awaitItem())
                 cancelAndIgnoreRemainingEvents()
             }
         }
