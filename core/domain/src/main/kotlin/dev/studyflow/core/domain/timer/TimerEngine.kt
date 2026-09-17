@@ -31,6 +31,14 @@ import kotlin.time.Duration.Companion.hours
  */
 public object TimerEngine {
     /**
+     * Recovery auto-pauses an uninterrupted same-boot interval after this cap.
+     *
+     * A full day is deliberately generous for normal study while bounding sessions left running
+     * after a service crash, swipe-away, or forgotten timer.
+     */
+    public val DEFAULT_MAXIMUM_RUNNING_DURATION: Duration = 24.hours
+
+    /**
      * Rebuilds state by replaying a session's event log.
      *
      * Events are ordered by [SessionEvent.sequence] rather than by any timestamp, because the
@@ -380,8 +388,6 @@ public object TimerEngine {
             val NONE = Interval(Duration.ZERO, Duration.ZERO)
         }
     }
-
-    public val DEFAULT_MAXIMUM_RUNNING_DURATION: Duration = 24.hours
 }
 
 /** Result of [TimerEngine.reconcile]. */
@@ -394,6 +400,13 @@ public sealed interface TimerReconciliation {
         override val state: TimerState,
     ) : TimerReconciliation
 
+    /** Reconciliation appended an event and changed the active session projection. */
+    public sealed interface Adjustment : TimerReconciliation {
+        public val event: SessionEvent
+
+        override val state: TimerState.Paused
+    }
+
     /**
      * A reboot interrupted a running session.
      *
@@ -402,10 +415,10 @@ public sealed interface TimerReconciliation {
      *   unknown portion was the device being switched off. Present it to the user, do not count it.
      */
     public data class RebootGap(
-        val event: SessionEvent,
+        override val event: SessionEvent,
         override val state: TimerState.Paused,
         val unverifiedGap: Duration,
-    ) : TimerReconciliation
+    ) : Adjustment
 
     /**
      * A running session exceeded the configured cap during the same boot.
@@ -413,8 +426,8 @@ public sealed interface TimerReconciliation {
      * @property event the auto-pause event at the configured maximum.
      */
     public data class MaximumDurationExceeded(
-        val event: SessionEvent,
+        override val event: SessionEvent,
         override val state: TimerState.Paused,
         val maximumRunningDuration: Duration,
-    ) : TimerReconciliation
+    ) : Adjustment
 }

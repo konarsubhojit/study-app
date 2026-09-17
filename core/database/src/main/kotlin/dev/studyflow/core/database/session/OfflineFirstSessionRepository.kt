@@ -119,19 +119,11 @@ public class OfflineFirstSessionRepository(
                         SessionCommandResult.Unchanged(outcome.state)
                     }
 
-                    is TimerReconciliation.RebootGap,
-                    is TimerReconciliation.MaximumDurationExceeded,
-                    -> {
-                        val event =
-                            when (outcome) {
-                                is TimerReconciliation.RebootGap -> outcome.event
-                                is TimerReconciliation.MaximumDurationExceeded -> outcome.event
-                                is TimerReconciliation.Unchanged -> error("handled above")
-                            }
+                    is TimerReconciliation.Adjustment -> {
                         commit(
                             descriptor = active.session.asDescriptor(),
-                            events = active.eventsPlus(event),
-                            event = event,
+                            events = active.eventsPlus(outcome.event),
+                            event = outcome.event,
                         )
                     }
                 }
@@ -160,7 +152,7 @@ public class OfflineFirstSessionRepository(
         eventId: String,
         stored: SessionWithEvents?,
     ): SessionCommandResult.Applied? {
-        if (stored?.events?.none { it.id == eventId } != false) return null
+        if (stored == null || stored.events.none { it.id == eventId }) return null
         val events = stored.events.map { it.asExternalModel() }
         val session =
             requireNotNull(SessionReducer.reduce(stored.session.asDescriptor(), events)) {

@@ -23,6 +23,8 @@ internal class TimerRecoveryCoordinator
         private val sessionRepository: SessionRepository,
         @ApplicationScope private val applicationScope: CoroutineScope,
     ) {
+        private val fallbackBootId = BootId("unknown-${UUID.randomUUID()}")
+
         fun recoverActiveSession() {
             applicationScope.launch {
                 sessionRepository.reconcile(
@@ -40,5 +42,7 @@ internal class TimerRecoveryCoordinator
             )
 
         private fun currentBootId(): BootId =
-            BootId(Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, 0).toString())
+            runCatching {
+                BootId(Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT).toString())
+            }.getOrDefault(fallbackBootId)
     }
