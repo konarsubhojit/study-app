@@ -9,6 +9,8 @@ import kotlinx.datetime.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 
 @DisplayName("RecurrenceSummary")
 class RecurrenceSummaryTest {
@@ -103,6 +105,17 @@ class RecurrenceSummaryTest {
         val rule = RecurrenceRule(RecurrenceFrequency.MONTHLY, dayOfMonth = 31)
 
         assertEquals("Every month on the 31st", RecurrenceSummary.describe(rule))
+    }
+
+    @ParameterizedTest
+    @CsvSource("1, 1st", "2, 2nd", "3, 3rd", "11, 11th", "12, 12th", "13, 13th", "21, 21st", "23, 23rd")
+    fun `the teens keep the th suffix that the same last digit loses elsewhere`(
+        dayOfMonth: Int,
+        expected: String,
+    ) {
+        val rule = RecurrenceRule(RecurrenceFrequency.MONTHLY, dayOfMonth = dayOfMonth)
+
+        assertEquals("Every month on the $expected", RecurrenceSummary.describe(rule))
     }
 
     @Test
