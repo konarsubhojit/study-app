@@ -35,4 +35,11 @@ message UserSettings {
   // build that still has an old value serialized under one of them must keep failing to parse it
   // as this field rather than silently reinterpreting old bytes.
   optional bool digest_enabled = 16 [default = false];
+
+  // The sound an ALARM_CLOCK-precision reminder plays (issue #48). Empty means "use the device's
+  // default alarm sound" rather than a hardcoded URI: the default is chosen by RingtoneManager at
+  // playback time, so a user who changes their system default alarm later gets the new one without
+  // this app needing to know about it. A non-empty value is whatever content URI the system
+  // ringtone picker (`RingtoneManager.ACTION_RINGTONE_PICKER`) returned, persisted verbatim.
+  optional string alarm_ringtone_uri = 17 [default = ""];
 }

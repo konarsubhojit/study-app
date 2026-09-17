@@ -58,6 +58,20 @@ public object StudyFlowPendingIntents {
         return PendingIntent.getBroadcast(context, requestCode, intent, IMMUTABLE_UPDATE)
     }
 
+    /**
+     * Opens an explicit activity outside the app's own deep-link scheme — used for the alarm-style
+     * reminder's `fullScreenIntent` (issue #48), which must launch a specific activity in
+     * `:core:scheduling` rather than resolve through `studyflow://` like [activity] does.
+     */
+    public fun explicitActivity(
+        context: Context,
+        requestCode: Int,
+        intent: Intent,
+    ): PendingIntent {
+        require(intent.component != null) { "A full-screen or explicit activity intent must set a component." }
+        return PendingIntent.getActivity(context, requestCode, intent, IMMUTABLE_UPDATE)
+    }
+
     /** Starts a foreground-capable service, used by the timer's own transport controls. */
     public fun service(
         context: Context,

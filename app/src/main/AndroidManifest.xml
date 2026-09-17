@@ -10,6 +10,7 @@
          backgrounded (issue #38). -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <application
         android:name=".StudyFlowApplication"
@@ -56,6 +57,15 @@
         <receiver
             android:name=".injection.StudyFlowInjectionReceiver"
             android:exported="false" />
+
+        <receiver
+            android:name=".timer.TimerRecoveryReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
 
         <provider
             android:name="androidx.startup.InitializationProvider"

@@ -17,6 +17,7 @@ dependencies {
     // notifications are all scheduling concerns, and nothing else in the app binds `ObjectStore`
     // to a worker yet.
     implementation(projects.core.storage)
+    implementation(libs.androidx.activity)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)

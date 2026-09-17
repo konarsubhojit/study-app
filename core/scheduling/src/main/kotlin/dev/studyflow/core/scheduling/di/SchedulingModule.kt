@@ -79,6 +79,7 @@ public object SchedulingModule {
         notifier: StudyFlowNotifier,
         notificationFactory: StudyFlowNotificationFactory,
         settingsStore: UserSettingsStore,
+        capabilitiesProvider: SchedulingCapabilitiesProvider,
     ): ReminderDeliveryCoordinator =
         ReminderDeliveryCoordinator(
             context = context,
@@ -87,6 +88,7 @@ public object SchedulingModule {
             notifier = notifier,
             notificationFactory = notificationFactory,
             digestEnabled = { settingsStore.data.first().digestEnabled },
+            capabilitiesProvider = capabilitiesProvider,
         )
 
     @Provides

@@ -81,6 +81,12 @@ internal object NotificationCopy {
 
     fun channelPurpose(channel: StudyFlowNotificationChannel): String = channel.description
 
+    // issue #48: users must understand that Do Not Disturb will not silence this channel, since
+    // `AudioManager.STREAM_ALARM` is designed to play through it.
+    const val ALARM_DND_EXPLANATION: String =
+        "Alarms ring even when Do Not Disturb is on — Android treats them the " +
+            "same as a phone alarm, so an exam reminder still reaches you."
+
     fun channelState(status: NotificationChannelStatus): String =
         when {
             !status.enabled -> "Turned off in system settings"

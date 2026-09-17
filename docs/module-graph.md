@@ -75,6 +75,7 @@ graph TD
     feature_materials --> core_model
     feature_materials --> core_ui
     feature_settings --> core_common
+    feature_settings --> core_datastore
     feature_settings --> core_designsystem
     feature_settings --> core_domain
     feature_settings --> core_model
