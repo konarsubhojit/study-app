@@ -53,13 +53,18 @@ public class AlarmPlaybackService : Service() {
 
     @Inject internal lateinit var dispatcherProvider: DispatcherProvider
 
-
     @Inject internal lateinit var reminderActionExecutorProvider: dagger.Lazy<ReminderActionExecutor>
 
     @Inject internal lateinit var notificationFactory: StudyFlowNotificationFactory
 
     private val serviceScope by lazy { CoroutineScope(SupervisorJob() + dispatcherProvider.default) }
-    private val sessions = mutableMapOf<Int, PlaybackSession>()
+
+    // `onStartCommand` runs on the main thread while `stopWhenTaskNoLongerNeedsIt`'s task
+    // observation runs on `dispatcherProvider.default`, and both can call into `stopSession` — a
+    // plain `mutableMapOf` is not safe under that concurrent access, so this is a
+    // `ConcurrentHashMap` rather than the ordinary in-memory map every other piece of session
+    // state in this module uses.
+    private val sessions = java.util.concurrent.ConcurrentHashMap<Int, PlaybackSession>()
 
     override fun onBind(intent: Intent?): IBinder? = null
 

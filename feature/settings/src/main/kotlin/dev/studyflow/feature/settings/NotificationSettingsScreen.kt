@@ -205,12 +205,8 @@ private fun ChannelCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
             if (status.channel == StudyFlowNotificationChannel.ALARMS) {
-                // issue #48: users must understand that Do Not Disturb will not silence this
-                // channel, since `AudioManager.STREAM_ALARM` is designed to play through it.
                 Text(
-                    text =
-                        "Alarms ring even when Do Not Disturb is on — Android treats them the " +
-                            "same as a phone alarm, so an exam reminder still reaches you.",
+                    text = NotificationCopy.ALARM_DND_EXPLANATION,
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
