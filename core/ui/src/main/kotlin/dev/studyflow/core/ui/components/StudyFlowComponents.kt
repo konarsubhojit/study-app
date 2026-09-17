@@ -121,7 +121,12 @@ public fun DurationText(
     )
 }
 
-/** Displays a user-provided time label with an explicit spoken equivalent. */
+/**
+ * Displays a user-provided time label with an explicit spoken equivalent.
+ *
+ * The visual label remains a [String] to support localized and relative times, which cannot be
+ * reliably converted into speech here; callers therefore provide its localized spoken form.
+ */
 @Composable
 public fun TimeText(
     time: String,
@@ -177,7 +182,7 @@ public fun PermissionRationaleSheet(
     }
 }
 
-private fun Duration.toDisplayStrings(): DurationDisplay {
+internal fun Duration.toDisplayStrings(): DurationDisplay {
     val safeDuration = coerceAtLeast(ZERO)
     val totalMinutes = safeDuration.inWholeMinutes
     val hours = totalMinutes / MINUTES_PER_HOUR
@@ -186,21 +191,23 @@ private fun Duration.toDisplayStrings(): DurationDisplay {
         hours > 0L && minutes > 0L -> {
             DurationDisplay(
                 visual = "$hours h $minutes min",
-                spoken = "$hours hours $minutes minutes",
+                spoken = "$hours ${hours.unit("hour")} $minutes ${minutes.unit("minute")}",
             )
         }
 
         hours > 0L -> {
-            DurationDisplay(visual = "$hours h", spoken = "$hours hours")
+            DurationDisplay(visual = "$hours h", spoken = "$hours ${hours.unit("hour")}")
         }
 
         else -> {
-            DurationDisplay(visual = "$minutes min", spoken = "$minutes minutes")
+            DurationDisplay(visual = "$minutes min", spoken = "$minutes ${minutes.unit("minute")}")
         }
     }
 }
 
-private data class DurationDisplay(
+private fun Long.unit(singular: String): String = if (this == 1L) singular else "${singular}s"
+
+internal data class DurationDisplay(
     val visual: String,
     val spoken: String,
 )
