@@ -26,7 +26,6 @@ public data class MaterialsUiState(
     val loaded: Boolean = false,
     val isImporting: Boolean = false,
     val results: List<MaterialImportResult> = emptyList(),
-    val highlightedMaterialId: String? = null,
 ) : UiState
 
 /** One file's outcome from a picker, document, or share-sheet import. */
@@ -67,13 +66,21 @@ public sealed interface MaterialsUiEvent : UiEvent {
     /** Clears the results banner once the user has seen it. */
     public data object DismissResults : MaterialsUiEvent
 
-    /** A duplicate result's "view existing" action: highlights the item already in the catalogue. */
+    /** A catalogue row, or a duplicate result's "view existing" action, was selected. */
     public data class ViewExisting(
         val materialId: String,
     ) : MaterialsUiEvent
 }
 
-public sealed interface MaterialsUiEffect : UiEffect
+public sealed interface MaterialsUiEffect : UiEffect {
+    /**
+     * Asks the app shell to open the material detail destination for [materialId], the same one a
+     * catalogue row and a duplicate import's "view existing" action both resolve to.
+     */
+    public data class NavigateToMaterial(
+        val materialId: String,
+    ) : MaterialsUiEffect
+}
 
 @HiltViewModel
 public class MaterialsViewModel
@@ -87,24 +94,17 @@ public class MaterialsViewModel
         private val results = MutableStateFlow<List<MaterialImportResult>>(emptyList())
         private val importing = MutableStateFlow(false)
 
-        // Which catalogue row to draw attention to survives process death: it is the direct result
-        // of a user action ("show me the one I already have"), not state that should reset silently.
-        private val highlightChanges = MutableStateFlow<String?>(savedStateHandle[HIGHLIGHT_KEY])
-        private val highlighted = highlightChanges.stateInSavedState(HIGHLIGHT_KEY, null)
-
         public val state: StateFlow<MaterialsUiState> =
             combine(
                 repository.observeAll(),
                 results,
                 importing,
-                highlighted,
-            ) { catalog, results, importing, highlighted ->
+            ) { catalog, results, importing ->
                 MaterialsUiState(
                     catalog = catalog,
                     loaded = true,
                     isImporting = importing,
                     results = results,
-                    highlightedMaterialId = highlighted,
                 )
             }.stateInViewModel(MaterialsUiState())
 
@@ -126,7 +126,7 @@ public class MaterialsViewModel
             when (event) {
                 is MaterialsUiEvent.ImportUris -> importAll(event.uris)
                 MaterialsUiEvent.DismissResults -> results.value = emptyList()
-                is MaterialsUiEvent.ViewExisting -> highlightChanges.value = event.materialId
+                is MaterialsUiEvent.ViewExisting -> emitEffect(MaterialsUiEffect.NavigateToMaterial(event.materialId))
             }
         }
 
@@ -179,8 +179,4 @@ public class MaterialsViewModel
                     )
                 }
             }
-
-        private companion object {
-            const val HIGHLIGHT_KEY = "materials.highlightedMaterialId"
-        }
     }

@@ -26,11 +26,13 @@ public class OfflineFirstMaterialRepository(
     override fun observeInFolder(folderId: String?): Flow<List<Material>> =
         dao.observeInFolder(folderId).asExternalModels()
 
+    override fun observeById(id: String): Flow<Material?> = dao.observeById(id).map { it?.material?.asExternalModel() }
+
     override suspend fun findByContentHash(contentHash: ContentHash): Material? =
         dao.findByContentHash(contentHash)?.asExternalModel()
 
     override suspend fun save(material: Material) {
-        dao.upsert(material.asEntity())
+        dao.save(material.asEntity())
     }
 
     private fun Flow<List<MaterialEntity>>.asExternalModels(): Flow<List<Material>> =

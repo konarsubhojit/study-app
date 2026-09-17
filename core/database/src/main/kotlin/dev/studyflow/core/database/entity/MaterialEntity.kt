@@ -10,6 +10,7 @@ import androidx.room.Junction
 import androidx.room.PrimaryKey
 import androidx.room.Relation
 import dev.studyflow.core.model.ContentHash
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 @Entity(
@@ -88,6 +89,10 @@ public data class MaterialEntity(
     val pinnedForOffline: Boolean,
     val encrypted: Boolean,
     val deleted: Boolean,
+    @ColumnInfo(name = "page_count")
+    val pageCount: Int?,
+    @ColumnInfo(name = "duration_millis")
+    val duration: Duration?,
 )
 
 public enum class MaterialSyncState {

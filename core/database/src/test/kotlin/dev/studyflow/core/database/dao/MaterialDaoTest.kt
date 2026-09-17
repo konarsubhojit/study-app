@@ -173,6 +173,8 @@ class MaterialDaoTest {
             pinnedForOffline = false,
             encrypted = true,
             deleted = false,
+            pageCount = null,
+            duration = null,
         )
 
     private companion object {

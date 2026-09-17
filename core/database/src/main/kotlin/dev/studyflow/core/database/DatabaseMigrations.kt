@@ -119,8 +119,22 @@ public object DatabaseMigrations {
             }
         }
 
+    /**
+     * Version 7 adds the cheap metadata computed while an import streams past: a PDF's page count
+     * and an audio or video file's container duration (issue #37). Both columns are plain nullable
+     * additions — every existing row simply has neither, exactly as if the importer had not been
+     * able to read one — so no backfill or table rebuild is needed.
+     */
+    public val MIGRATION_6_7: Migration =
+        object : Migration(6, 7) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE materials ADD COLUMN page_count INTEGER")
+                connection.execSQL("ALTER TABLE materials ADD COLUMN duration_millis INTEGER")
+            }
+        }
+
     public val ALL: Array<Migration>
-        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null
     // columns that SQLite cannot add in place, and Room validates the resulting DDL exactly.

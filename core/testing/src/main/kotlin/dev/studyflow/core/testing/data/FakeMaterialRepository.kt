@@ -19,6 +19,8 @@ public class FakeMaterialRepository : MaterialRepository {
     override fun observeInFolder(folderId: String?): Flow<List<Material>> =
         observeAll().map { list -> list.filter { it.folderId == folderId } }
 
+    override fun observeById(id: String): Flow<Material?> = materials.map { list -> list.firstOrNull { it.id == id } }
+
     override suspend fun findByContentHash(contentHash: ContentHash): Material? =
         materials.value.firstOrNull { it.contentHash == contentHash }
 

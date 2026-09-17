@@ -137,6 +137,8 @@ public object SyntheticDataFactory {
                 pinnedForOffline = index % 10 == 0,
                 encrypted = index % 7 == 0,
                 deleted = index % DELETED_MATERIAL_MODULUS == 0,
+                pageCount = null,
+                duration = null,
             )
         }
 

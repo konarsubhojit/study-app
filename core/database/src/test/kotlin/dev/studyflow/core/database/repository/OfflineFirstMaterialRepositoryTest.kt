@@ -19,6 +19,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.minutes
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [DATABASE_ROBOLECTRIC_SDK])
@@ -61,6 +62,24 @@ class OfflineFirstMaterialRepositoryTest {
         }
 
     @Test
+    fun `page count and duration round-trip through the database`() =
+        runBlocking {
+            val material =
+                testMaterial(
+                    id = "with-metadata",
+                    contentHash = testContentHash("with-metadata"),
+                    pageCount = 12,
+                    duration = 90.minutes,
+                )
+            repository.save(material)
+
+            val found = repository.findByContentHash(material.contentHash)
+
+            assertEquals(12, found?.pageCount)
+            assertEquals(90.minutes, found?.duration)
+        }
+
+    @Test
     fun `finding by content hash is how a duplicate import is detected`() =
         runBlocking {
             val hash = testContentHash("shared-bytes")
@@ -70,6 +89,17 @@ class OfflineFirstMaterialRepositoryTest {
             val found = repository.findByContentHash(hash)
 
             assertEquals(original, found)
+        }
+
+    @Test
+    fun `observing by id reflects a saved material and null once it is gone`() =
+        runBlocking {
+            assertNull(repository.observeById("never-saved").first())
+
+            val material = testMaterial(id = "detail-target", contentHash = testContentHash("detail-target"))
+            repository.save(material)
+
+            assertEquals(material, repository.observeById("detail-target").first())
         }
 
     @Test

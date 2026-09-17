@@ -18,6 +18,9 @@ public interface MaterialRepository {
     /** Materials in one folder, or the top level when [folderId] is `null`. */
     public fun observeInFolder(folderId: String?): Flow<List<Material>>
 
+    /** The single material with [id], or `null` once it no longer exists (deleted or never did). */
+    public fun observeById(id: String): Flow<Material?>
+
     /** The catalogue entry already stored under [contentHash], if any. */
     public suspend fun findByContentHash(contentHash: ContentHash): Material?
 

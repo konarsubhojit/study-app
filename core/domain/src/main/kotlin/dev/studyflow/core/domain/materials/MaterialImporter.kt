@@ -97,7 +97,13 @@ public class MaterialImporter(
         val copy = copyAndDigest(uri, destination, provisionalKind)
 
         val sniffed = FileSignatureSniffer.sniff(copy.sniffWindow, copy.sniffedBytes)
-        val resolvedMime = resolveMimeType(metadata.mimeType, sniffed, displayName)
+        val officeMime =
+            if (sniffed == FileSignature.ZIP) {
+                OoxmlContainerSniffer.sniff(copy.sniffWindow, copy.sniffedBytes)
+            } else {
+                null
+            }
+        val resolvedMime = resolveMimeType(metadata.mimeType, sniffed, officeMime, displayName)
         val kind = MaterialKind.of(resolvedMime, displayName)
         val hash = ContentHash(copy.digestBytes.toHex())
 
@@ -127,6 +133,8 @@ public class MaterialImporter(
         hash: ContentHash,
         copy: CopyResult,
     ): ImportOutcome.Imported {
+        val pageCount = if (kind == MaterialKind.PDF) copy.pdfPageCounter.pageCount() else null
+        val duration = durationOf(kind, destination, resolvedMime)
         val material =
             Material(
                 id = id,
@@ -137,15 +145,13 @@ public class MaterialImporter(
                 contentHash = hash,
                 createdAt = clock.now(),
                 sync = SyncState.Pending,
-                localUri = destination.toURI().toString(),
+                localPath = destination.toURI().toString(),
+                pageCount = pageCount,
+                duration = duration,
             )
         repository.save(material)
 
-        return ImportOutcome.Imported(
-            material = material,
-            pageCount = if (kind == MaterialKind.PDF) copy.pdfPageCounter.pageCount() else null,
-            duration = durationOf(kind, destination, resolvedMime),
-        )
+        return ImportOutcome.Imported(material = material, pageCount = pageCount, duration = duration)
     }
 
     /** Streams [uri] into [destination], updating a digest, a sniff window and a page counter. */
@@ -156,7 +162,7 @@ public class MaterialImporter(
     ): CopyResult =
         withContext(dispatcherProvider.io) {
             val digest = MessageDigest.getInstance("SHA-256")
-            val sniffWindow = ByteArray(FileSignature.MAX_HEADER_BYTES)
+            val sniffWindow = ByteArray(OoxmlContainerSniffer.SCAN_WINDOW_BYTES)
             var sniffedBytes = 0
             var totalBytes = 0L
             val pdfPageCounter = PdfPageCounter()
@@ -238,6 +244,7 @@ public class MaterialImporter(
     private fun resolveMimeType(
         declared: String?,
         sniffed: FileSignature?,
+        officeMime: String?,
         fileName: String,
     ): String {
         val normalizedDeclared =
@@ -246,11 +253,20 @@ public class MaterialImporter(
                 ?.trim()
                 ?.lowercase(Locale.ROOT)
                 ?.takeIf(String::isNotBlank)
-        if (sniffed != null && mimeTrumpedBySignature(normalizedDeclared, sniffed)) return sniffed.mimeType
-        return normalizedDeclared
+        // A confidently detected office package entry (`word/`, `xl/`, `ppt/`) is a stronger claim
+        // than the coarse "it is a ZIP" a plain signature match makes, so it wins outright rather
+        // than going through the same top-level comparison a merely generic archive would.
+        val signatureMime = officeMime ?: trumpingSignatureMime(normalizedDeclared, sniffed)
+        return signatureMime
+            ?: normalizedDeclared
             ?: EXTENSION_MIME_FALLBACK[fileName.substringAfterLast('.', "").lowercase(Locale.ROOT)]
             ?: GENERIC_MIME
     }
+
+    private fun trumpingSignatureMime(
+        normalizedDeclared: String?,
+        sniffed: FileSignature?,
+    ): String? = sniffed?.takeIf { mimeTrumpedBySignature(normalizedDeclared, it) }?.mimeType
 
     private fun mimeTrumpedBySignature(
         normalizedDeclared: String?,

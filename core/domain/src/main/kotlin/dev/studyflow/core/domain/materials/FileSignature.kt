@@ -51,10 +51,9 @@ public enum class FileSignature(
  * ### What it deliberately does not do
  *
  * Office documents (`.docx`, `.xlsx`, `.pptx`) are themselves ZIP containers, so a sniff of one
- * with a generic or missing declared type yields [FileSignature.ZIP] rather than the specific
- * office format — still a correction of a false claim, just a coarser one. Distinguishing them
- * would mean reading the archive's central directory, which is not "cheap" in the sense this object
- * promises.
+ * yields only [FileSignature.ZIP] here — the specific office format is a separate, coarser-grained
+ * question answered by [OoxmlContainerSniffer] from the same captured window, once this sniffer has
+ * confirmed the file is ZIP-shaped in the first place.
  */
 public object FileSignatureSniffer {
     /**

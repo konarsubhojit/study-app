@@ -17,7 +17,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -38,6 +40,7 @@ import java.util.Locale
 @Composable
 public fun MaterialsRoute(
     modifier: Modifier = Modifier,
+    onOpenMaterial: (String) -> Unit = {},
     viewModel: MaterialsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -50,6 +53,17 @@ public fun MaterialsRoute(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
             if (uris.isNotEmpty()) viewModel.onEvent(MaterialsUiEvent.ImportUris(uris.map(Uri::toString)))
         }
+
+    // Read through a remembered snapshot, not the parameter itself: this effect is keyed on
+    // `viewModel` alone so it is not restarted every time a caller passes a fresh lambda literal.
+    val currentOnOpenMaterial by rememberUpdatedState(onOpenMaterial)
+    LaunchedEffect(viewModel) {
+        viewModel.effects.collect { effect ->
+            when (effect) {
+                is MaterialsUiEffect.NavigateToMaterial -> currentOnOpenMaterial(effect.materialId)
+            }
+        }
+    }
 
     MaterialsScreen(
         state = state,
@@ -91,7 +105,10 @@ public fun MaterialsScreen(
         if (state.loaded && state.catalog.isEmpty()) {
             EmptyState(message = "Add a photo, a document, or share a file here to start your library.")
         } else {
-            MaterialsList(catalog = state.catalog, highlightedMaterialId = state.highlightedMaterialId)
+            MaterialsList(
+                catalog = state.catalog,
+                onMaterialClick = { id -> onEvent(MaterialsUiEvent.ViewExisting(id)) },
+            )
         }
     }
 }
@@ -183,7 +200,7 @@ private fun ImportResultRow(
 @Composable
 private fun MaterialsList(
     catalog: List<Material>,
-    highlightedMaterialId: String?,
+    onMaterialClick: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
@@ -193,13 +210,13 @@ private fun MaterialsList(
             StudyFlowListItem(
                 headline = material.displayName,
                 supportingText = "${material.mimeType} · ${formatSize(material.sizeBytes)}",
-                overlineText = if (material.id == highlightedMaterialId) "Just viewed" else null,
+                onClick = { onMaterialClick(material.id) },
             )
         }
     }
 }
 
-private fun formatSize(sizeBytes: Long): String {
+internal fun formatSize(sizeBytes: Long): String {
     val kib = sizeBytes / BYTES_PER_KIB.toDouble()
     return when {
         sizeBytes < BYTES_PER_KIB -> "$sizeBytes B"
@@ -209,4 +226,4 @@ private fun formatSize(sizeBytes: Long): String {
 }
 
 private const val ALL_MIME_TYPES = "*/*"
-private const val BYTES_PER_KIB = 1024L
+internal const val BYTES_PER_KIB = 1024L

@@ -1,0 +1,1156 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 7,
+    "identityHash": "5b7c8b882cb49e271bd2a19a274a339f",
+    "entities": [
+      {
+        "tableName": "subjects",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `colorArgb` INTEGER NOT NULL, `archived` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "colorArgb",
+            "columnName": "colorArgb",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archived",
+            "columnName": "archived",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_subjects_archived_name",
+            "unique": false,
+            "columnNames": [
+              "archived",
+              "name",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_subjects_archived_name` ON `${TABLE_NAME}` (`archived`, `name`, `id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "folders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `parent_id` TEXT, `name` TEXT NOT NULL, `created_at` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`parent_id`) REFERENCES `folders`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE DEFERRABLE INITIALLY DEFERRED)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "parentId",
+            "columnName": "parent_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_folders_parent_id_name",
+            "unique": false,
+            "columnNames": [
+              "parent_id",
+              "name",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_folders_parent_id_name` ON `${TABLE_NAME}` (`parent_id`, `name`, `id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "folders",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "parent_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "materials",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `folder_id` TEXT, `subject_id` TEXT, `display_name` TEXT NOT NULL, `mime_type` TEXT NOT NULL, `size_bytes` INTEGER NOT NULL, `content_hash` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `notes` TEXT, `remote_key` TEXT, `sync_state` TEXT NOT NULL, `uploaded_bytes` INTEGER, `upload_total_bytes` INTEGER, `failure_reason` TEXT, `failure_retryable` INTEGER, `local_path` TEXT, `pinned_for_offline` INTEGER NOT NULL, `encrypted` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, `page_count` INTEGER, `duration_millis` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`folder_id`) REFERENCES `folders`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "folderId",
+            "columnName": "folder_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subjectId",
+            "columnName": "subject_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mimeType",
+            "columnName": "mime_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sizeBytes",
+            "columnName": "size_bytes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "contentHash",
+            "columnName": "content_hash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "remoteKey",
+            "columnName": "remote_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "syncState",
+            "columnName": "sync_state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uploadedBytes",
+            "columnName": "uploaded_bytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "uploadTotalBytes",
+            "columnName": "upload_total_bytes",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "failureReason",
+            "columnName": "failure_reason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "failureRetryable",
+            "columnName": "failure_retryable",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "localPath",
+            "columnName": "local_path",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pinnedForOffline",
+            "columnName": "pinned_for_offline",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encrypted",
+            "columnName": "encrypted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deleted",
+            "columnName": "deleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pageCount",
+            "columnName": "page_count",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "duration",
+            "columnName": "duration_millis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_materials_folder_id_updated_at",
+            "unique": false,
+            "columnNames": [
+              "deleted",
+              "folder_id",
+              "updated_at",
+              "id"
+            ],
+            "orders": [
+              "ASC",
+              "ASC",
+              "DESC",
+              "ASC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_folder_id_updated_at` ON `${TABLE_NAME}` (`deleted` ASC, `folder_id` ASC, `updated_at` DESC, `id` ASC)"
+          },
+          {
+            "name": "index_materials_subject_id_updated_at",
+            "unique": false,
+            "columnNames": [
+              "deleted",
+              "subject_id",
+              "updated_at",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_subject_id_updated_at` ON `${TABLE_NAME}` (`deleted`, `subject_id`, `updated_at`, `id`)"
+          },
+          {
+            "name": "index_materials_mime_type_updated_at",
+            "unique": false,
+            "columnNames": [
+              "deleted",
+              "mime_type",
+              "updated_at",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_mime_type_updated_at` ON `${TABLE_NAME}` (`deleted`, `mime_type`, `updated_at`, `id`)"
+          },
+          {
+            "name": "index_materials_folder_id",
+            "unique": false,
+            "columnNames": [
+              "folder_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_folder_id` ON `${TABLE_NAME}` (`folder_id`)"
+          },
+          {
+            "name": "index_materials_subject_id",
+            "unique": false,
+            "columnNames": [
+              "subject_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_subject_id` ON `${TABLE_NAME}` (`subject_id`)"
+          },
+          {
+            "name": "index_materials_sync_state_updated_at",
+            "unique": false,
+            "columnNames": [
+              "deleted",
+              "sync_state",
+              "updated_at",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_sync_state_updated_at` ON `${TABLE_NAME}` (`deleted`, `sync_state`, `updated_at`, `id`)"
+          },
+          {
+            "name": "index_materials_content_hash",
+            "unique": false,
+            "columnNames": [
+              "content_hash"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_content_hash` ON `${TABLE_NAME}` (`content_hash`)"
+          },
+          {
+            "name": "index_materials_updated_at",
+            "unique": false,
+            "columnNames": [
+              "deleted",
+              "updated_at",
+              "id"
+            ],
+            "orders": [
+              "ASC",
+              "DESC",
+              "ASC"
+            ],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_updated_at` ON `${TABLE_NAME}` (`deleted` ASC, `updated_at` DESC, `id` ASC)"
+          },
+          {
+            "name": "index_materials_size_bytes",
+            "unique": false,
+            "columnNames": [
+              "deleted",
+              "size_bytes",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_size_bytes` ON `${TABLE_NAME}` (`deleted`, `size_bytes`, `id`)"
+          },
+          {
+            "name": "index_materials_display_name",
+            "unique": false,
+            "columnNames": [
+              "deleted",
+              "display_name",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_display_name` ON `${TABLE_NAME}` (`deleted`, `display_name`, `id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "folders",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "folder_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "subjects",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "subject_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "tags",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, PRIMARY KEY(`name`))",
+        "fields": [
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "name"
+          ]
+        }
+      },
+      {
+        "tableName": "material_tags",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`material_id` TEXT NOT NULL, `tag` TEXT NOT NULL, PRIMARY KEY(`material_id`, `tag`), FOREIGN KEY(`material_id`) REFERENCES `materials`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`tag`) REFERENCES `tags`(`name`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "materialId",
+            "columnName": "material_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tag",
+            "columnName": "tag",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "material_id",
+            "tag"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_material_tags_tag",
+            "unique": false,
+            "columnNames": [
+              "tag",
+              "material_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_material_tags_tag` ON `${TABLE_NAME}` (`tag`, `material_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "materials",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "material_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "tags",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "tag"
+            ],
+            "referencedColumns": [
+              "name"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "material_fts",
+        "createSql": "CREATE VIRTUAL TABLE IF NOT EXISTS `${TABLE_NAME}` USING FTS4(`material_id` TEXT NOT NULL, `display_name` TEXT NOT NULL, `notes` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "materialId",
+            "columnName": "material_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "displayName",
+            "columnName": "display_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": []
+        },
+        "ftsVersion": "FTS4",
+        "ftsOptions": {
+          "tokenizer": "simple",
+          "tokenizerArgs": [],
+          "contentTable": "",
+          "languageIdColumnName": "",
+          "matchInfo": "FTS4",
+          "notIndexedColumns": [],
+          "prefixSizes": [],
+          "preferredOrder": "ASC"
+        },
+        "contentSyncTriggers": []
+      },
+      {
+        "tableName": "study_tasks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `notes` TEXT, `subject_id` TEXT, `material_id` TEXT, `session_id` TEXT, `due_at` TEXT, `due_at_utc` INTEGER, `time_zone` TEXT NOT NULL, `is_all_day` INTEGER NOT NULL, `priority` TEXT NOT NULL, `recurrence_frequency` TEXT, `recurrence_interval` INTEGER, `recurrence_days_of_week` TEXT, `recurrence_day_of_month` INTEGER, `recurrence_week_of_month` INTEGER, `recurrence_month_of_year` INTEGER, `recurrence_exceptions` TEXT, `recurrence_end_type` TEXT, `recurrence_end_count` INTEGER, `recurrence_end_date` TEXT, `completed_at` INTEGER, `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`material_id`) REFERENCES `materials`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`session_id`) REFERENCES `study_sessions`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "notes",
+            "columnName": "notes",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "subjectId",
+            "columnName": "subject_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "materialId",
+            "columnName": "material_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dueAt",
+            "columnName": "due_at",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dueAtUtc",
+            "columnName": "due_at_utc",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "timeZone",
+            "columnName": "time_zone",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isAllDay",
+            "columnName": "is_all_day",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recurrenceFrequency",
+            "columnName": "recurrence_frequency",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "recurrenceInterval",
+            "columnName": "recurrence_interval",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recurrenceDaysOfWeek",
+            "columnName": "recurrence_days_of_week",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "recurrenceDayOfMonth",
+            "columnName": "recurrence_day_of_month",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recurrenceWeekOfMonth",
+            "columnName": "recurrence_week_of_month",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recurrenceMonthOfYear",
+            "columnName": "recurrence_month_of_year",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recurrenceExceptions",
+            "columnName": "recurrence_exceptions",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "recurrenceEndType",
+            "columnName": "recurrence_end_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "recurrenceEndCount",
+            "columnName": "recurrence_end_count",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recurrenceEndDate",
+            "columnName": "recurrence_end_date",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completed_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deleted",
+            "columnName": "deleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_study_tasks_open_due_at_utc",
+            "unique": false,
+            "columnNames": [
+              "deleted",
+              "completed_at",
+              "due_at_utc",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_open_due_at_utc` ON `${TABLE_NAME}` (`deleted`, `completed_at`, `due_at_utc`, `id`)"
+          },
+          {
+            "name": "index_study_tasks_subject_id_due_at",
+            "unique": false,
+            "columnNames": [
+              "subject_id",
+              "due_at_utc",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_subject_id_due_at` ON `${TABLE_NAME}` (`subject_id`, `due_at_utc`, `id`)"
+          },
+          {
+            "name": "index_study_tasks_material_id",
+            "unique": false,
+            "columnNames": [
+              "material_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_material_id` ON `${TABLE_NAME}` (`material_id`)"
+          },
+          {
+            "name": "index_study_tasks_session_id",
+            "unique": false,
+            "columnNames": [
+              "session_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_session_id` ON `${TABLE_NAME}` (`session_id`)"
+          },
+          {
+            "name": "index_study_tasks_updated_at",
+            "unique": false,
+            "columnNames": [
+              "updated_at",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_updated_at` ON `${TABLE_NAME}` (`updated_at`, `id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "subjects",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "subject_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "materials",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "material_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "study_sessions",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "session_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "reminders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `task_id` TEXT NOT NULL, `trigger_type` TEXT NOT NULL, `lead_time` INTEGER, `trigger_instant` INTEGER, `trigger_time_zone` TEXT, `trigger_at_utc` INTEGER, `precision` TEXT NOT NULL, `snooze_until` INTEGER, `snooze_count` INTEGER, `last_fired_at` INTEGER, `scheduling_id` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`task_id`) REFERENCES `study_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "triggerType",
+            "columnName": "trigger_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leadTime",
+            "columnName": "lead_time",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "triggerInstant",
+            "columnName": "trigger_instant",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "triggerTimeZone",
+            "columnName": "trigger_time_zone",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "triggerAtUtc",
+            "columnName": "trigger_at_utc",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "precision",
+            "columnName": "precision",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "snoozeUntil",
+            "columnName": "snooze_until",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "snoozeCount",
+            "columnName": "snooze_count",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastFiredAt",
+            "columnName": "last_fired_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "schedulingId",
+            "columnName": "scheduling_id",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_reminders_task_id",
+            "unique": false,
+            "columnNames": [
+              "task_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_reminders_task_id` ON `${TABLE_NAME}` (`task_id`)"
+          },
+          {
+            "name": "index_reminders_trigger_at_utc",
+            "unique": false,
+            "columnNames": [
+              "trigger_at_utc",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_reminders_trigger_at_utc` ON `${TABLE_NAME}` (`trigger_at_utc`, `id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "study_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "task_tags",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`task_id` TEXT NOT NULL, `tag` TEXT NOT NULL, PRIMARY KEY(`task_id`, `tag`), FOREIGN KEY(`task_id`) REFERENCES `study_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tag",
+            "columnName": "tag",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "task_id",
+            "tag"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_task_tags_tag",
+            "unique": false,
+            "columnNames": [
+              "tag",
+              "task_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_task_tags_tag` ON `${TABLE_NAME}` (`tag`, `task_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "study_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "task_subtasks",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `task_id` TEXT NOT NULL, `position` INTEGER NOT NULL, `title` TEXT NOT NULL, `completed_at` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`task_id`) REFERENCES `study_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "position",
+            "columnName": "position",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completedAt",
+            "columnName": "completed_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_task_subtasks_task_id_position",
+            "unique": true,
+            "columnNames": [
+              "task_id",
+              "position"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_task_subtasks_task_id_position` ON `${TABLE_NAME}` (`task_id`, `position`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "study_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "study_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `subject_id` TEXT, `note` TEXT, `status` TEXT NOT NULL, `started_at` INTEGER NOT NULL, `ended_at` INTEGER, `device_id` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "subjectId",
+            "columnName": "subject_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "started_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "ended_at",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deleted",
+            "columnName": "deleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_study_sessions_subject_id",
+            "unique": false,
+            "columnNames": [
+              "subject_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_sessions_subject_id` ON `${TABLE_NAME}` (`subject_id`)"
+          },
+          {
+            "name": "index_study_sessions_device_id_status_deleted",
+            "unique": false,
+            "columnNames": [
+              "device_id",
+              "status",
+              "deleted"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_sessions_device_id_status_deleted` ON `${TABLE_NAME}` (`device_id`, `status`, `deleted`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "subjects",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "subject_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "session_events",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `session_id` TEXT NOT NULL, `type` TEXT NOT NULL, `uptime` INTEGER NOT NULL, `wall_clock` INTEGER NOT NULL, `boot_id` TEXT NOT NULL, `sequence` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`session_id`) REFERENCES `study_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "session_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "uptime",
+            "columnName": "uptime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "wallClock",
+            "columnName": "wall_clock",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bootId",
+            "columnName": "boot_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sequence",
+            "columnName": "sequence",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_session_events_session_id_sequence",
+            "unique": true,
+            "columnNames": [
+              "session_id",
+              "sequence"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_session_events_session_id_sequence` ON `${TABLE_NAME}` (`session_id`, `sequence`)"
+          },
+          {
+            "name": "index_session_events_wall_clock",
+            "unique": false,
+            "columnNames": [
+              "wall_clock"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_session_events_wall_clock` ON `${TABLE_NAME}` (`wall_clock`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "study_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "session_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '5b7c8b882cb49e271bd2a19a274a339f')"
+    ]
+  }
+}

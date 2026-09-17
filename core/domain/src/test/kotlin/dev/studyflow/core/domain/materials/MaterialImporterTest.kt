@@ -25,6 +25,8 @@ import java.io.InputStream
 import java.net.URI
 import java.security.MessageDigest
 import java.util.Locale
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @DisplayName("MaterialImporter")
@@ -51,7 +53,7 @@ class MaterialImporterTest {
             assertEquals(sha256Hex(bytes), imported.material.contentHash.hex)
             assertEquals(imported.material, repository.findByContentHash(imported.material.contentHash))
 
-            val stagedFile = File(URI(imported.material.localUri))
+            val stagedFile = File(URI(requireNotNull(imported.material.localPath)))
             assertTrue(stagedFile.exists())
             assertTrue(bytes.contentEquals(stagedFile.readBytes()))
         }
@@ -98,6 +100,121 @@ class MaterialImporterTest {
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
                 outcome.material.mimeType,
             )
+        }
+
+    @Test
+    fun `a docx is recognised from its package entries even when the resolver MIME is missing`() =
+        runTest {
+            val bytes = zipBytes("[Content_Types].xml", "_rels/.rels", "word/document.xml")
+            val reader =
+                fakeReader("content://media/docx" to Fixture(bytes, displayName = "essay", mimeType = null))
+
+            val outcome =
+                importer(reader).import("content://media/docx") as? ImportOutcome.Imported
+                    ?: error("expected an import")
+
+            assertEquals(
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                outcome.material.mimeType,
+            )
+        }
+
+    @Test
+    fun `an xlsx is recognised from its package entries even when the resolver MIME is generic`() =
+        runTest {
+            val bytes = zipBytes("[Content_Types].xml", "xl/workbook.xml")
+            val reader =
+                fakeReader(
+                    "content://media/xlsx" to
+                        Fixture(bytes, displayName = "grades.xlsx", mimeType = "application/octet-stream"),
+                )
+
+            val outcome =
+                importer(reader).import("content://media/xlsx") as? ImportOutcome.Imported
+                    ?: error("expected an import")
+
+            assertEquals(
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                outcome.material.mimeType,
+            )
+        }
+
+    @Test
+    fun `a pptx is recognised from its package entries even when the resolver MIME is misleading`() =
+        runTest {
+            val bytes = zipBytes("[Content_Types].xml", "ppt/presentation.xml")
+            val reader =
+                fakeReader(
+                    "content://media/pptx" to Fixture(bytes, displayName = "slides", mimeType = "application/zip"),
+                )
+
+            val outcome =
+                importer(reader).import("content://media/pptx") as? ImportOutcome.Imported
+                    ?: error("expected an import")
+
+            assertEquals(
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                outcome.material.mimeType,
+            )
+        }
+
+    @Test
+    fun `a plain ZIP archive is not misclassified as an office document`() =
+        runTest {
+            val bytes = zipBytes("readme.txt", "photos/vacation.jpg")
+            val reader =
+                fakeReader("content://media/zip" to Fixture(bytes, displayName = "archive.zip", mimeType = null))
+
+            val outcome =
+                importer(reader).import("content://media/zip") as? ImportOutcome.Imported
+                    ?: error("expected an import")
+
+            assertEquals("application/zip", outcome.material.mimeType)
+        }
+
+    @Test
+    fun `a page count and duration computed while streaming are persisted on the catalogue entry`() =
+        runTest {
+            val pdfBytes =
+                ("%PDF-1.4\n1 0 obj<</Type/Page/Parent 2 0 R>>endobj 3 0 obj<</Type/Page/Parent 2 0 R>>endobj")
+                    .toByteArray(Charsets.ISO_8859_1)
+            val reader =
+                fakeReader(
+                    "content://media/pdf" to Fixture(pdfBytes, displayName = "notes.pdf", mimeType = "application/pdf"),
+                )
+            val duration = 90.seconds
+            val extractor = DurationExtractor { _, _ -> duration }
+
+            val outcome =
+                importer(reader, durationExtractor = extractor).import("content://media/pdf") as? ImportOutcome.Imported
+                    ?: error("expected an import")
+
+            // A PDF has no media duration; the extractor must not even be asked for one.
+            assertEquals(2, outcome.pageCount)
+            assertEquals(2, outcome.material.pageCount)
+            assertNull(outcome.duration)
+            assertNull(outcome.material.duration)
+        }
+
+    @Test
+    fun `a video's container duration is persisted on the catalogue entry`() =
+        runTest {
+            val bytes = byteArrayOf(0x00, 0x00, 0x00, 0x18) + "ftypisom".toByteArray(Charsets.US_ASCII)
+            val reader =
+                fakeReader(
+                    "content://media/video" to Fixture(bytes, displayName = "lecture.mp4", mimeType = "video/mp4"),
+                )
+            val duration = 42.minutes
+            val extractor = DurationExtractor { _, _ -> duration }
+
+            val outcome =
+                importer(reader, durationExtractor = extractor).import("content://media/video")
+                    as? ImportOutcome.Imported ?: error("expected an import")
+
+            assertEquals(duration, outcome.duration)
+            assertEquals(duration, outcome.material.duration)
+            assertNull(outcome.pageCount)
+            assertNull(outcome.material.pageCount)
         }
 
     @Test
@@ -266,6 +383,7 @@ class MaterialImporterTest {
     private fun TestScope.importer(
         reader: ImportContentReader,
         limits: ImportLimits = ImportLimits.DEFAULT,
+        durationExtractor: DurationExtractor = DurationExtractor.NONE,
     ): MaterialImporter =
         MaterialImporter(
             contentReader = reader,
@@ -273,6 +391,7 @@ class MaterialImporterTest {
             destinationDirectory = { stagingDir },
             clock = clock,
             dispatcherProvider = testDispatcherProvider(),
+            durationExtractor = durationExtractor,
             limits = limits,
         )
 
@@ -300,6 +419,22 @@ class MaterialImporterTest {
     private fun pngBytes(): ByteArray =
         byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A) + ByteArray(64) { it.toByte() }
 
+    /** A ZIP local-file-header sequence for each [names] entry, with no compressed entry data. */
+    private fun zipBytes(vararg names: String): ByteArray =
+        names.fold(ByteArray(0)) { bytes, name -> bytes + localFileHeader(name) }
+
+    private fun localFileHeader(name: String): ByteArray {
+        val nameBytes = name.toByteArray(Charsets.US_ASCII)
+        return byteArrayOf(0x50, 0x4B, 0x03, 0x04) +
+            ByteArray(ZIP_FIXED_HEADER_REMAINDER_BEFORE_NAME_LENGTH) +
+            littleEndianShort(nameBytes.size) +
+            littleEndianShort(0) +
+            nameBytes
+    }
+
+    private fun littleEndianShort(value: Int): ByteArray =
+        byteArrayOf((value and 0xFF).toByte(), ((value shr Byte.SIZE_BITS) and 0xFF).toByte())
+
     private fun sha256Hex(bytes: ByteArray): String =
         MessageDigest
             .getInstance("SHA-256")
@@ -308,5 +443,9 @@ class MaterialImporterTest {
 
     private companion object {
         const val TINY_LIMIT_BYTES = 16L
+
+        // Version, flags, method, time, date, crc32, compressed size, uncompressed size: 22 bytes
+        // between a ZIP local file header's signature and its file-name-length field.
+        const val ZIP_FIXED_HEADER_REMAINDER_BEFORE_NAME_LENGTH = 22
     }
 }

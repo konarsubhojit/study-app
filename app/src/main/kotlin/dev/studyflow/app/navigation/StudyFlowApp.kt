@@ -30,10 +30,11 @@ import dev.studyflow.core.designsystem.layout.StudyFlowScaffold
 import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
 import dev.studyflow.core.designsystem.theme.spacing
-import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
+import dev.studyflow.feature.materials.MaterialDetailRoute
 import dev.studyflow.feature.settings.NotificationSettingsRoute
 import dev.studyflow.feature.tasks.TaskDetailRoute
 import dev.studyflow.feature.tasks.TasksListRoute
+import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
 
 @Composable
 internal fun StudyFlowApp(
@@ -94,8 +95,8 @@ private fun AppNavDisplay(
                             if (route.openRunningTimer) "Running timer" else "Timer",
                         )
                     }
-                    entry<MaterialsRoute> {
-                        MaterialsScreenRoute()
+                    entry<MaterialsRoute> { route ->
+                        MaterialsEntry(route = route, backStack = backStack)
                     }
                     entry<TasksRoute> { route ->
                         if (route.taskId == null) {
@@ -128,6 +129,27 @@ private fun AppNavDisplay(
                 StudyFlowMotion.popEnter togetherWith StudyFlowMotion.popExit
             },
             sharedTransitionScope = this,
+        )
+    }
+}
+
+@Composable
+private fun MaterialsEntry(
+    route: MaterialsRoute,
+    backStack: NavBackStack<NavKey>,
+) {
+    if (route.materialId == null) {
+        MaterialsScreenRoute(
+            onOpenMaterial = { materialId ->
+                if (backStack.lastOrNull() != MaterialsRoute(materialId)) {
+                    backStack.add(MaterialsRoute(materialId))
+                }
+            },
+        )
+    } else {
+        MaterialDetailRoute(
+            materialId = route.materialId,
+            onBack = { backStack.removeLastOrNull() },
         )
     }
 }

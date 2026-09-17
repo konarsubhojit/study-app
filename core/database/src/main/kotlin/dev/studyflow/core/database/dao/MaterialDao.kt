@@ -52,7 +52,7 @@ public abstract class MaterialDao {
      * than a scan, however large the catalogue grows.
      */
     @Query("SELECT * FROM materials WHERE content_hash = :contentHash LIMIT 1")
-    public suspend fun findByContentHash(contentHash: ContentHash): MaterialEntity?
+    public abstract suspend fun findByContentHash(contentHash: ContentHash): MaterialEntity?
 
     @Query(
         """

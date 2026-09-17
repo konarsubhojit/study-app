@@ -95,7 +95,7 @@ class MaterialsViewModelTest {
         }
 
     @Test
-    fun `viewing an existing duplicate highlights it in the catalogue`() =
+    fun `viewing an existing duplicate navigates to its detail destination`() =
         runTest(mainDispatcher.dispatcher) {
             val viewModel =
                 viewModel(
@@ -111,10 +111,12 @@ class MaterialsViewModelTest {
                     .single()
                     .id
 
-            viewModel.onEvent(MaterialsUiEvent.ViewExisting(existingId))
-            advanceUntilIdle()
+            viewModel.effects.test {
+                viewModel.onEvent(MaterialsUiEvent.ViewExisting(existingId))
 
-            assertEquals(existingId, viewModel.state.value.highlightedMaterialId)
+                assertEquals(MaterialsUiEffect.NavigateToMaterial(existingId), awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
         }
 
     @Test
