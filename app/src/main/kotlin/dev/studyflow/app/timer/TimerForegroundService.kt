@@ -133,16 +133,16 @@ internal class TimerForegroundService : Service() {
                 startedAtEpochMillis = wallClock.now().toEpochMilliseconds(),
                 contentIntent = openIntent(),
                 chronometer = ChronometerPresentation(usesChronometer = false),
-                )
-            ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
+            )
+        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
     }
 
     private fun startTimerForeground(state: TimerState.Active) {
-            notificationChannelRegistrar.register()
-            val now = currentAnchor()
-            val notification =
-                notificationFactory.ongoingChronometer(
-                    title = getString(R.string.timer_notification_title),
+        notificationChannelRegistrar.register()
+        val now = currentAnchor()
+        val notification =
+            notificationFactory.ongoingChronometer(
+                title = getString(R.string.timer_notification_title),
                 text =
                     if (state is TimerState.Running) {
                         getString(R.string.timer_notification_running)
@@ -255,13 +255,21 @@ internal class TimerForegroundService : Service() {
     }
 }
 
-class TimerForegroundServiceController
+internal class TimerForegroundServiceController
     @Inject
     constructor(
         @ApplicationContext
         private val context: Context,
+        private val notifier: StudyFlowNotifier,
     ) : SessionCommandObserver {
         override fun onSessionCommandApplied(result: SessionCommandResult.Applied) {
-            ContextCompat.startForegroundService(context, TimerForegroundService.refreshIntent(context))
+            if (result.state is TimerState.Stopped) {
+                notifier.cancel(NOTIFICATION_ID)
+                context.stopService(TimerForegroundService.refreshIntent(context))
+            } else {
+                runCatching {
+                    ContextCompat.startForegroundService(context, TimerForegroundService.refreshIntent(context))
+                }
+            }
         }
     }

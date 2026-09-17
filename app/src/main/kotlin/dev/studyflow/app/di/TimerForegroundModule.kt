@@ -16,7 +16,7 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class TimerForegroundModule {
+internal abstract class TimerForegroundModule {
     @Binds
     @IntoSet
     abstract fun timerForegroundObserver(controller: TimerForegroundServiceController): SessionCommandObserver
