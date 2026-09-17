@@ -50,7 +50,7 @@ public fun NotificationSettingsRoute(
     val context = LocalContext.current
     val activity = LocalActivity.current
     val permissionLauncher =
-        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
             viewModel.onEvent(
                 NotificationSettingsUiEvent.PermissionResult(
                     shouldShowRationale = activity.shouldExplainNotifications(),
