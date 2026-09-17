@@ -33,9 +33,10 @@ public object TimerEngine {
     /**
      * Recovery auto-pauses an uninterrupted same-boot interval after this cap.
      *
-     * A full day is deliberately generous for normal study while bounding the current open interval
-     * left running after a service crash, swipe-away, or forgotten timer. Earlier settled intervals
-     * remain intact, so a multi-day session can still exceed this in total after explicit pauses.
+     * A full day is deliberately generous for normal study while bounding only the current
+     * `openedAt`→`now` interval left running after a service crash, swipe-away, or forgotten timer.
+     * Earlier [TimerState.Running.settled] time is not compared to this value; it is preserved, and
+     * the capped open-interval amount is added to it during recovery.
      */
     public val DEFAULT_MAXIMUM_RUNNING_DURATION: Duration = 24.hours
 

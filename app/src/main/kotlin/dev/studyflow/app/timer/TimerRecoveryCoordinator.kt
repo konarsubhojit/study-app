@@ -12,8 +12,10 @@ import dev.studyflow.core.model.TimeAnchor
 import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,7 +50,7 @@ internal class TimerRecoveryCoordinator
                 }
             }
 
-        private fun currentAnchor(): TimeAnchor {
+        private suspend fun currentAnchor(): TimeAnchor {
             val uptime = AndroidElapsedRealtimeSource.uptime()
             return TimeAnchor(
                 uptime = uptime,
@@ -57,7 +59,7 @@ internal class TimerRecoveryCoordinator
             )
         }
 
-        private fun currentBootId(uptime: Duration): BootId =
+        private suspend fun currentBootId(uptime: Duration): BootId =
             runCatching {
                 BootId(Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT).toString())
             }.getOrElse { fallbackBootId(uptime) }
@@ -67,23 +69,25 @@ internal class TimerRecoveryCoordinator
          * short-lived boot-recovery processes agree within the same boot, and rotated when
          * elapsedRealtime moves backwards.
          */
-        private fun fallbackBootId(uptime: Duration): BootId =
-            synchronized(fallbackBootIdLock) {
-                val prefs = context.getSharedPreferences(FALLBACK_BOOT_PREFS, Context.MODE_PRIVATE)
-                val uptimeMillis = uptime.inWholeMilliseconds
-                val storedUptimeMillis = prefs.getLong(KEY_UPTIME_MILLIS, Long.MIN_VALUE)
-                val storedBootId = prefs.getString(KEY_BOOT_ID, null)
-                val bootId =
-                    storedBootId
-                        ?.takeIf { it.isNotBlank() && storedUptimeMillis <= uptimeMillis }
-                        ?: "unknown-${UUID.randomUUID()}"
+        private suspend fun fallbackBootId(uptime: Duration): BootId =
+            withContext(Dispatchers.IO) {
+                synchronized(fallbackBootIdLock) {
+                    val prefs = context.getSharedPreferences(FALLBACK_BOOT_PREFS, Context.MODE_PRIVATE)
+                    val uptimeMillis = uptime.inWholeMilliseconds
+                    val storedUptimeMillis = prefs.getLong(KEY_UPTIME_MILLIS, Long.MIN_VALUE)
+                    val storedBootId = prefs.getString(KEY_BOOT_ID, null)
+                    val bootId =
+                        storedBootId
+                            ?.takeIf { it.isNotBlank() && storedUptimeMillis <= uptimeMillis }
+                            ?: "unknown-${UUID.randomUUID()}"
 
-                prefs
-                    .edit()
-                    .putString(KEY_BOOT_ID, bootId)
-                    .putLong(KEY_UPTIME_MILLIS, uptimeMillis)
-                    .commit()
-                BootId(bootId)
+                    prefs
+                        .edit()
+                        .putString(KEY_BOOT_ID, bootId)
+                        .putLong(KEY_UPTIME_MILLIS, uptimeMillis)
+                        .commit()
+                    BootId(bootId)
+                }
             }
 
         private companion object {
