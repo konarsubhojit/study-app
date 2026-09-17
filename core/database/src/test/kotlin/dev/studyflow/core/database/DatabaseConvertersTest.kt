@@ -79,7 +79,11 @@ class DatabaseConvertersTest {
                 subtasks =
                     listOf(
                         Subtask(id = "subtask-1", title = "Read chapter 4"),
-                        Subtask(id = "subtask-2", title = "Past paper", completedAt = Instant.parse("2026-10-24T18:00:00Z")),
+                        Subtask(
+                            id = "subtask-2",
+                            title = "Past paper",
+                            completedAt = Instant.parse("2026-10-24T18:00:00Z"),
+                        ),
                     ),
                 recurrence =
                     RecurrenceRule(

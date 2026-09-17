@@ -48,6 +48,17 @@ reminder therefore stays at 08:00 all year; the underlying interval is 23 hours 
 forward and 25 across the autumn fall back, which is exactly right and is asserted in the tests.
 "The 31st of every month" clamps to the last day of shorter months rather than skipping them.
 
+**A reminder is relative or absolute, and nothing special-cases either.** `ReminderTrigger` is
+`BeforeDue(leadTime)` or `AtInstant(instant, timeZone)`. "Remind me 10 minutes before" follows the
+task's due time — and its next recurrence — without being rewritten; "ring at exactly 07:00" keeps
+its own instant and is unaffected when the due date moves. A task may carry any number of reminders,
+so the two live side by side rather than competing for one field.
+
+**Snoozing postpones the firing, not the occurrence.** `SnoozeState` overrides a reminder's next
+trigger and counts how often the user has pushed it back; the underlying trigger and recurrence are
+untouched, so the following occurrence lands where the rule says it should. `lastFiredAt` records
+what has already been delivered so a reschedule after reboot does not re-fire the past.
+
 **Re-arm aggressively.** Alarms are dropped on reboot, on app update, and on time/timezone change.
 `ReminderScheduler.planAll` recomputes every outstanding reminder, and a daily integrity worker
 re-checks that what should be scheduled is scheduled.

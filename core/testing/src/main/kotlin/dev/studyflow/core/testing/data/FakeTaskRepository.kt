@@ -97,5 +97,9 @@ public class FakeTaskRepository(
     private fun startOfDay(): Instant = now.toLocalDateTime(timeZone).date.atStartOfDayIn(timeZone)
 
     private fun startOfNextDay(): Instant =
-        now.toLocalDateTime(timeZone).date.plus(1, DateTimeUnit.DAY).atStartOfDayIn(timeZone)
+        now
+            .toLocalDateTime(timeZone)
+            .date
+            .plus(1, DateTimeUnit.DAY)
+            .atStartOfDayIn(timeZone)
 }

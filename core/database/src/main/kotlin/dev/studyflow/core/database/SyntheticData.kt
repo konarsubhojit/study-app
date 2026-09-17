@@ -4,11 +4,11 @@ import androidx.room.withTransaction
 import dev.studyflow.core.database.entity.FolderEntity
 import dev.studyflow.core.database.entity.MaterialEntity
 import dev.studyflow.core.database.entity.MaterialSyncState
+import dev.studyflow.core.database.entity.RecurrenceEndType
 import dev.studyflow.core.database.entity.ReminderEntity
+import dev.studyflow.core.database.entity.ReminderTriggerType
 import dev.studyflow.core.database.entity.SessionEventEntity
 import dev.studyflow.core.database.entity.StudySessionEntity
-import dev.studyflow.core.database.entity.RecurrenceEndType
-import dev.studyflow.core.database.entity.ReminderTriggerType
 import dev.studyflow.core.database.entity.StudyTaskEntity
 import dev.studyflow.core.database.entity.SubjectEntity
 import dev.studyflow.core.database.entity.SubtaskEntity
@@ -212,7 +212,8 @@ public object SyntheticDataFactory {
 
     private fun createTaskTags(tasks: List<StudyTaskEntity>): List<TaskTagEntity> =
         tasks.flatMapIndexed { index, task ->
-            TAGS.filterIndexed { tagIndex, _ -> (index + tagIndex) % TAGS.size == 0 }
+            TAGS
+                .filterIndexed { tagIndex, _ -> (index + tagIndex) % TAGS.size == 0 }
                 .map { TaskTagEntity(taskId = task.id, tag = it) }
         }
 

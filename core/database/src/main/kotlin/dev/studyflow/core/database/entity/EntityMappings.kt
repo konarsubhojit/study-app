@@ -128,7 +128,7 @@ public fun StudyTask.asEntity(): TaskWithReminders =
                 updatedAt = updatedAt,
                 deleted = deleted,
             ),
-        reminders = reminders.map { it.asEntity(dueAtUtc) },
+        reminders = reminders.map { it.asReminderEntity(dueAtUtc) },
         tags = tags.map { TaskTagEntity(taskId = id, tag = it) },
         subtasks =
             subtasks.mapIndexed { position, subtask ->
@@ -142,9 +142,9 @@ public fun StudyTask.asEntity(): TaskWithReminders =
             },
     )
 
-private fun Reminder.asEntity(dueAtUtc: Instant?): ReminderEntity =
+private fun Reminder.asReminderEntity(dueAtUtc: Instant?): ReminderEntity =
     when (val trigger = trigger) {
-        is ReminderTrigger.BeforeDue ->
+        is ReminderTrigger.BeforeDue -> {
             reminderEntity(
                 triggerType = ReminderTriggerType.BEFORE_DUE,
                 leadTime = trigger.leadTime,
@@ -152,8 +152,9 @@ private fun Reminder.asEntity(dueAtUtc: Instant?): ReminderEntity =
                 triggerTimeZone = null,
                 triggerAtUtc = dueAtUtc?.minus(trigger.leadTime),
             )
+        }
 
-        is ReminderTrigger.AtInstant ->
+        is ReminderTrigger.AtInstant -> {
             reminderEntity(
                 triggerType = ReminderTriggerType.AT_INSTANT,
                 leadTime = null,
@@ -161,6 +162,7 @@ private fun Reminder.asEntity(dueAtUtc: Instant?): ReminderEntity =
                 triggerTimeZone = trigger.timeZone,
                 triggerAtUtc = trigger.instant,
             )
+        }
     }
 
 @Suppress("LongParameterList")

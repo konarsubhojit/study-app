@@ -61,6 +61,8 @@ public object DatabaseMigrations {
         object : Migration(2, 3) {
             override fun migrate(connection: SQLiteConnection) {
                 connection.rebuildTaskTables()
+                connection.createTaskIndices()
+                connection.createTaskChildTables()
                 connection.backfillDueInstants()
                 connection.backfillReminderTriggers()
             }
@@ -69,6 +71,8 @@ public object DatabaseMigrations {
     public val ALL: Array<Migration>
         get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
 
+    // The task tables are rebuilt rather than altered: version 3 adds foreign keys and non-null
+    // columns that SQLite cannot add in place, and Room validates the resulting DDL exactly.
     private fun SQLiteConnection.rebuildTaskTables() {
         execSQL(
             """
@@ -105,6 +109,14 @@ public object DatabaseMigrations {
             LEFT JOIN reminders AS r ON r.task_id = t.id
             """.trimIndent(),
         )
+        rebuildReminders()
+        execSQL("DROP TABLE reminders")
+        execSQL("DROP TABLE study_tasks")
+        execSQL("ALTER TABLE study_tasks_new RENAME TO study_tasks")
+        execSQL("ALTER TABLE reminders_new RENAME TO reminders")
+    }
+
+    private fun SQLiteConnection.rebuildReminders() {
         execSQL(
             """
             CREATE TABLE IF NOT EXISTS `reminders_new` (
@@ -127,10 +139,9 @@ public object DatabaseMigrations {
             FROM reminders
             """.trimIndent(),
         )
-        execSQL("DROP TABLE reminders")
-        execSQL("DROP TABLE study_tasks")
-        execSQL("ALTER TABLE study_tasks_new RENAME TO study_tasks")
-        execSQL("ALTER TABLE reminders_new RENAME TO reminders")
+    }
+
+    private fun SQLiteConnection.createTaskIndices() {
         execSQL(
             """
             CREATE INDEX IF NOT EXISTS index_study_tasks_open_due_at_utc
@@ -148,6 +159,9 @@ public object DatabaseMigrations {
         execSQL("CREATE INDEX IF NOT EXISTS index_study_tasks_updated_at ON study_tasks (updated_at, id)")
         execSQL("CREATE INDEX IF NOT EXISTS index_reminders_task_id ON reminders (task_id)")
         execSQL("CREATE INDEX IF NOT EXISTS index_reminders_trigger_at_utc ON reminders (trigger_at_utc, id)")
+    }
+
+    private fun SQLiteConnection.createTaskChildTables() {
         execSQL(
             """
             CREATE TABLE IF NOT EXISTS `task_tags` (

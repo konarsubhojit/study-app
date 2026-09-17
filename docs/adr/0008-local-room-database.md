@@ -16,7 +16,9 @@ the only offline copy after an upgrade, and storing local task times as instants
 `:core:database` owns a Room database and maps to `:core:model`; Room annotations never enter the
 domain module.
 
-- Subjects, folders, materials and task reminders are normalized tables with foreign keys.
+- Subjects, folders, materials, task reminders, task tags and checklist items are normalized tables
+  with foreign keys. A task owns many reminders; tags and subtasks are child rows rather than blobs,
+  so "everything tagged exam" is an index range scan instead of a full-table string match.
 - A study session table stores metadata only. `session_events` is the source of truth and has a
   unique `(session_id, sequence)` index; status and elapsed time remain projections of the ordered
   event log as required by [ADR 0003](0003-timer-event-sourcing.md).
@@ -26,7 +28,12 @@ domain module.
   write cannot leave a partial aggregate.
 - Absolute `Instant` values are signed UTC epoch milliseconds. Local task due times remain ISO local
   date-times with a separate IANA time-zone id, so persistence does not silently change wall-clock
-  semantics.
+  semantics. The derived UTC instant is additionally stored in `due_at_utc` (and `trigger_at_utc`
+  for reminders), written on every insert from the local time and zone, because SQLite carries no
+  time-zone database and therefore cannot index an expression over the pair. The local value stays
+  authoritative; the derived column exists solely so ordering and range queries have an index.
+- Tasks are deleted by tombstone: `deleted` plus `updated_at`. List queries filter tombstones out,
+  and sync gets a change log for free rather than having to guess at rows that vanished.
 
 `StudyFlowDatabaseFactory` registers every migration. Missing migrations fail by default. A caller
 may request destructive fallback only for development, and the factory checks Android's installed
@@ -34,7 +41,10 @@ may request destructive fallback only for development, and the factory checks An
 
 Room compiler schema exports under `core/database/schemas` are source-controlled. Version 1 is the
 baseline; version 2 adds encrypted-material state and covering index refinements through
-`MIGRATION_1_2`. Every future version must add an adjacent migration and a semantic migration test.
+`MIGRATION_1_2`; version 3 adds the task/reminder model above — all-day and priority, links to
+material and session, tags, checklist rows, per-task recurrence and multiple reminders per task —
+through `MIGRATION_2_3`, which rebuilds both tables, moves the recurrence columns from the reminder
+to its task and backfills the derived UTC instants. Every future version must add an adjacent migration and a semantic migration test.
 The registry continuity test fails if any shipped version is skipped.
 
 Two deterministic synthetic profiles are provided:

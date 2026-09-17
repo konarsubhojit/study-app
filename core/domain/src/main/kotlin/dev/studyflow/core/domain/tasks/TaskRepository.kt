@@ -14,7 +14,11 @@ import kotlin.time.Instant
  *
  * The windows are resolved from the injected clock and time zone when a flow is collected, so a
  * caller that must survive midnight or a flight re-collects rather than trusting a cached boundary.
+ *
+ * Each query is a separate member because each one is a separate index; collapsing them into one
+ * parameterised read would hand the caller a filter that SQLite cannot plan.
  */
+@Suppress("TooManyFunctions")
 public interface TaskRepository {
     /** Every task that has not been deleted, open ones first, in due order. */
     public fun observeTasks(): Flow<List<StudyTask>>
