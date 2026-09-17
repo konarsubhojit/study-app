@@ -11,6 +11,7 @@ import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.SystemTimeZoneProvider
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.common.time.TimeZoneProvider
+import dev.studyflow.core.database.MissingMigrationPolicy
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.StudyFlowDatabaseFactory
 import dev.studyflow.core.database.dao.SessionDao
@@ -40,7 +41,7 @@ public object DatabaseModule {
     @Singleton
     public fun studyFlowDatabase(
         @ApplicationContext context: Context,
-    ): StudyFlowDatabase = StudyFlowDatabaseFactory.create(context)
+    ): StudyFlowDatabase = StudyFlowDatabaseFactory.create(context, MissingMigrationPolicy.FAIL)
 
     @Provides
     public fun studyTaskDao(database: StudyFlowDatabase): StudyTaskDao = database.studyTaskDao()

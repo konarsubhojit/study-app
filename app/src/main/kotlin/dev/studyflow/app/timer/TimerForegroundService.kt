@@ -15,6 +15,7 @@ import dev.studyflow.app.R
 import dev.studyflow.app.navigation.StudyFlowDeepLinks
 import dev.studyflow.app.navigation.TimerRoute
 import dev.studyflow.core.common.coroutines.DispatcherProvider
+import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.datastore.ActiveTimer
 import dev.studyflow.core.datastore.ActiveTimerStore
@@ -261,14 +262,21 @@ internal class TimerForegroundServiceController
         @ApplicationContext
         private val context: Context,
         private val notifier: StudyFlowNotifier,
+        private val logger: AppLogger,
     ) : SessionCommandObserver {
         override fun onSessionCommandApplied(result: SessionCommandResult.Applied) {
             if (result.state is TimerState.Stopped) {
                 notifier.cancel(NOTIFICATION_ID)
                 context.stopService(TimerForegroundService.refreshIntent(context))
             } else {
-                runCatching {
+                try {
                     ContextCompat.startForegroundService(context, TimerForegroundService.refreshIntent(context))
+                } catch (failure: IllegalStateException) {
+                    logger.warning(
+                        tag = "TimerForeground",
+                        message = "Timer foreground service start was deferred by Android",
+                        throwable = failure,
+                    )
                 }
             }
         }
