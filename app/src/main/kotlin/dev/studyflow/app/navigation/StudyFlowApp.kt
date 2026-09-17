@@ -16,9 +16,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.navigation3.runtime.NavBackStack
+import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
@@ -38,14 +41,17 @@ internal fun StudyFlowApp(
         val navigate: (AppRoute) -> Unit = { route ->
             if (backStack.lastOrNull() != route) backStack.add(route)
         }
+        // The handler registration outlives a recomposition, so the effect reads the latest
+        // callback instead of restarting whenever the caller passes a new lambda.
+        val currentRegisterDeepLinkHandler by rememberUpdatedState(registerDeepLinkHandler)
 
         LaunchedEffect(initialRoute) {
             initialRoute?.let(navigate)
         }
 
         DisposableEffect(backStack) {
-            registerDeepLinkHandler(navigate)
-            onDispose { registerDeepLinkHandler({}) }
+            currentRegisterDeepLinkHandler(navigate)
+            onDispose { currentRegisterDeepLinkHandler({}) }
         }
 
         StudyFlowScaffold(
@@ -56,47 +62,58 @@ internal fun StudyFlowApp(
                 )
             },
         ) { padding ->
-            SharedTransitionLayout {
-                NavDisplay(
-                    backStack = backStack,
-                    onBack = { backStack.removeLastOrNull() },
-                    entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
-                    entryProvider =
-                        entryProvider {
-                            entry<HomeRoute> {
-                                DestinationScreen("Home")
-                            }
-                            entry<TimerRoute> { route ->
-                                DestinationScreen(
-                                    if (route.openRunningTimer) "Running timer" else "Timer",
-                                )
-                            }
-                            entry<MaterialsRoute> { route ->
-                                DestinationScreen(
-                                    route.materialId?.let { "Material: $it" } ?: "Materials",
-                                )
-                            }
-                            entry<TasksRoute> { route ->
-                                DestinationScreen(route.taskId?.let { "Task: $it" } ?: "Tasks")
-                            }
-                            entry<SettingsRoute> {
-                                DestinationScreen("Settings")
-                            }
-                        },
-                    modifier = Modifier.padding(padding),
-                    transitionSpec = {
-                        StudyFlowMotion.enter togetherWith StudyFlowMotion.exit
-                    },
-                    popTransitionSpec = {
-                        StudyFlowMotion.popEnter togetherWith StudyFlowMotion.popExit
-                    },
-                    predictivePopTransitionSpec = {
-                        StudyFlowMotion.popEnter togetherWith StudyFlowMotion.popExit
-                    },
-                    sharedTransitionScope = this,
-                )
-            }
+            AppNavDisplay(
+                backStack = backStack,
+                modifier = Modifier.padding(padding),
+            )
         }
+    }
+}
+
+@Composable
+private fun AppNavDisplay(
+    backStack: NavBackStack<NavKey>,
+    modifier: Modifier = Modifier,
+) {
+    SharedTransitionLayout {
+        NavDisplay(
+            backStack = backStack,
+            onBack = { backStack.removeLastOrNull() },
+            entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
+            entryProvider =
+                entryProvider {
+                    entry<HomeRoute> {
+                        DestinationScreen("Home")
+                    }
+                    entry<TimerRoute> { route ->
+                        DestinationScreen(
+                            if (route.openRunningTimer) "Running timer" else "Timer",
+                        )
+                    }
+                    entry<MaterialsRoute> { route ->
+                        DestinationScreen(
+                            route.materialId?.let { "Material: $it" } ?: "Materials",
+                        )
+                    }
+                    entry<TasksRoute> { route ->
+                        DestinationScreen(route.taskId?.let { "Task: $it" } ?: "Tasks")
+                    }
+                    entry<SettingsRoute> {
+                        DestinationScreen("Settings")
+                    }
+                },
+            modifier = modifier,
+            transitionSpec = {
+                StudyFlowMotion.enter togetherWith StudyFlowMotion.exit
+            },
+            popTransitionSpec = {
+                StudyFlowMotion.popEnter togetherWith StudyFlowMotion.popExit
+            },
+            predictivePopTransitionSpec = {
+                StudyFlowMotion.popEnter togetherWith StudyFlowMotion.popExit
+            },
+            sharedTransitionScope = this,
+        )
     }
 }
 

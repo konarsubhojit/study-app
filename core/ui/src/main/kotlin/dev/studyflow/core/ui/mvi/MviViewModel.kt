@@ -22,10 +22,11 @@ import kotlinx.coroutines.launch
 public abstract class MviViewModel<Event : UiEvent, Effect : UiEffect>(
     protected val savedStateHandle: SavedStateHandle,
 ) : ViewModel() {
-    private val mutableEffects = MutableSharedFlow<Effect>(
-        extraBufferCapacity = 1,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    private val mutableEffects =
+        MutableSharedFlow<Effect>(
+            extraBufferCapacity = 1,
+            onBufferOverflow = BufferOverflow.DROP_OLDEST,
+        )
 
     public val effects: SharedFlow<Effect> = mutableEffects.asSharedFlow()
 

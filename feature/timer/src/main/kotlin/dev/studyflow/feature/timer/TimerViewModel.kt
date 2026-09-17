@@ -15,6 +15,7 @@ public data class TimerUiState(
 
 public sealed interface TimerUiEvent : UiEvent {
     public data object Tick : TimerUiEvent
+
     public data object Reset : TimerUiEvent
 }
 
@@ -24,12 +25,14 @@ public class TimerViewModel(
     savedStateHandle: SavedStateHandle,
 ) : MviViewModel<TimerUiEvent, TimerUiEffect>(savedStateHandle) {
     private val elapsedSecondChanges = MutableStateFlow(savedStateHandle[ELAPSED_SECONDS_KEY] ?: 0)
-    private val elapsedSeconds = elapsedSecondChanges
-        .stateInSavedState(ELAPSED_SECONDS_KEY, 0)
+    private val elapsedSeconds =
+        elapsedSecondChanges
+            .stateInSavedState(ELAPSED_SECONDS_KEY, 0)
 
-    public val state: StateFlow<TimerUiState> = elapsedSeconds
-        .map(::TimerUiState)
-        .stateInViewModel(TimerUiState(elapsedSeconds.value))
+    public val state: StateFlow<TimerUiState> =
+        elapsedSeconds
+            .map(::TimerUiState)
+            .stateInViewModel(TimerUiState(elapsedSeconds.value))
 
     override fun onEvent(event: TimerUiEvent) {
         when (event) {

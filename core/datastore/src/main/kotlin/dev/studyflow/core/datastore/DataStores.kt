@@ -23,6 +23,10 @@ private const val SETTINGS_FILE_NAME = "user_settings.pb"
 private const val TIMER_FILE_NAME = "active_timer.pb"
 private const val LEGACY_SETTINGS_NAME = "settings"
 
+/** Valid wall-clock ranges for a reminder time; a legacy value outside them is ignored. */
+private val REMINDER_HOUR_RANGE = 0..23
+private val REMINDER_MINUTE_RANGE = 0..59
+
 /**
  * Settings defaults are encoded in [UserSettings] so a fresh install and a missing legacy key
  * receive the same value without a blocking initialization write.
@@ -159,11 +163,11 @@ internal fun settingsMigrations(context: Context): List<SharedPreferencesMigrati
                     }
                     preferences
                         .getInt("reminder_hour", reminderHour)
-                        .takeIf { it in 0..23 }
+                        .takeIf { it in REMINDER_HOUR_RANGE }
                         ?.let(::setReminderHour)
                     preferences
                         .getInt("reminder_minute", reminderMinute)
-                        .takeIf { it in 0..59 }
+                        .takeIf { it in REMINDER_MINUTE_RANGE }
                         ?.let(::setReminderMinute)
                     preferences
                         .getLong("storage_quota_bytes", storageQuotaBytes)
