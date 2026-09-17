@@ -64,6 +64,7 @@ public object SchedulingModule {
     ): UserSettingsStore = context.userSettingsStore()
 
     @Provides
+    @Singleton
     public fun reminderDeliveryCoordinator(
         @ApplicationContext context: Context,
         taskRepository: TaskRepository,
@@ -82,13 +83,14 @@ public object SchedulingModule {
         )
 
     @Provides
+    @Singleton
     public fun reminderActionExecutor(
         @ApplicationContext context: Context,
         taskRepository: TaskRepository,
         schedulingService: ReminderSchedulingService,
         sessionRepository: SessionRepository,
         notifier: StudyFlowNotifier,
-        groupSummary: ReminderDeliveryCoordinator,
+        deliveryCoordinator: ReminderDeliveryCoordinator,
         clock: Clock,
     ): ReminderActionExecutor =
         ReminderActionExecutor(
@@ -97,7 +99,7 @@ public object SchedulingModule {
             schedulingService = schedulingService,
             sessionRepository = sessionRepository,
             notifier = notifier,
-            groupSummary = groupSummary,
+            deliveryCoordinator = deliveryCoordinator,
             wallClock = clock,
         )
 }

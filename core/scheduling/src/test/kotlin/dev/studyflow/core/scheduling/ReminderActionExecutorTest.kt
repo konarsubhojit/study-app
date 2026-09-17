@@ -71,7 +71,7 @@ class ReminderActionExecutorTest {
             schedulingService = schedulingService,
             sessionRepository = sessionRepository,
             notifier = notifier,
-            groupSummary = groupSummary,
+            deliveryCoordinator = groupSummary,
             wallClock = { NOW },
             idGenerator = idSequence(),
         )

@@ -41,7 +41,7 @@ public class ReminderActionExecutor(
     private val sessionRepository: SessionRepository,
     private val notifier: StudyFlowNotifier,
     /** Refreshed after every action, so a stale count/list never outlives the reminder it named. */
-    private val groupSummary: ReminderDeliveryCoordinator,
+    private val deliveryCoordinator: ReminderDeliveryCoordinator,
     private val wallClock: Clock = SystemWallClock,
     private val elapsedRealtimeSource: ElapsedRealtimeSource = AndroidElapsedRealtimeSource,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
@@ -110,7 +110,7 @@ public class ReminderActionExecutor(
     /** Cancels the reminder that prompted this action and recomputes the group summary around it. */
     private fun dismiss(notificationId: Int) {
         notifier.cancel(notificationId)
-        groupSummary.refreshGroupSummary()
+        deliveryCoordinator.refreshGroupSummary()
     }
 
     /**
