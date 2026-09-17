@@ -286,11 +286,23 @@ private fun TaskRow(
 
 @Composable
 private fun SwipeBackground(direction: SwipeToDismissBoxValue?) {
-    val (label, containerColor) =
+    val (label, containerColor, contentColor) =
         when (direction) {
-            SwipeToDismissBoxValue.StartToEnd -> "Complete" to MaterialTheme.colorScheme.primaryContainer
-            SwipeToDismissBoxValue.EndToStart -> "Snooze" to MaterialTheme.colorScheme.secondaryContainer
-            else -> "" to MaterialTheme.colorScheme.surface
+            SwipeToDismissBoxValue.StartToEnd ->
+                Triple(
+                    "Complete",
+                    MaterialTheme.colorScheme.primaryContainer,
+                    MaterialTheme.colorScheme.onPrimaryContainer,
+                )
+
+            SwipeToDismissBoxValue.EndToStart ->
+                Triple(
+                    "Snooze",
+                    MaterialTheme.colorScheme.secondaryContainer,
+                    MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+
+            else -> Triple("", MaterialTheme.colorScheme.surface, MaterialTheme.colorScheme.onSurface)
         }
     val alignment = if (direction == SwipeToDismissBoxValue.StartToEnd) Alignment.CenterStart else Alignment.CenterEnd
 
@@ -303,7 +315,7 @@ private fun SwipeBackground(direction: SwipeToDismissBoxValue?) {
         contentAlignment = alignment,
     ) {
         if (label.isNotEmpty()) {
-            Text(text = label, color = MaterialTheme.colorScheme.onSurface)
+            Text(text = label, color = contentColor)
         }
     }
 }

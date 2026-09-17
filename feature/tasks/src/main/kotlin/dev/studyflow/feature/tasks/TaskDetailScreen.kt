@@ -340,11 +340,13 @@ private fun RecurrenceSection(
                     onEvent(TaskDetailUiEvent.RecurrenceChanged(recurrence.copy(end = RecurrenceEnd.Never)))
                 }
                 FrequencyChip(
-                    label = "After 10",
+                    label = "After $DEFAULT_OCCURRENCE_COUNT",
                     selected = recurrence.end is RecurrenceEnd.AfterOccurrences,
                 ) {
                     onEvent(
-                        TaskDetailUiEvent.RecurrenceChanged(recurrence.copy(end = RecurrenceEnd.AfterOccurrences(10))),
+                        TaskDetailUiEvent.RecurrenceChanged(
+                            recurrence.copy(end = RecurrenceEnd.AfterOccurrences(DEFAULT_OCCURRENCE_COUNT)),
+                        ),
                     )
                 }
             }
@@ -384,3 +386,6 @@ private fun SectionHeader(title: String) {
         modifier = Modifier.semantics { heading() },
     )
 }
+
+/** The occurrence count the "After N" recurrence-end chip offers; a reasonable default, not a limit. */
+private const val DEFAULT_OCCURRENCE_COUNT = 10
