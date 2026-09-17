@@ -88,6 +88,7 @@ public object SchedulingModule {
         schedulingService: ReminderSchedulingService,
         sessionRepository: SessionRepository,
         notifier: StudyFlowNotifier,
+        groupSummary: ReminderDeliveryCoordinator,
         clock: Clock,
     ): ReminderActionExecutor =
         ReminderActionExecutor(
@@ -96,6 +97,7 @@ public object SchedulingModule {
             schedulingService = schedulingService,
             sessionRepository = sessionRepository,
             notifier = notifier,
+            groupSummary = groupSummary,
             wallClock = clock,
         )
 }

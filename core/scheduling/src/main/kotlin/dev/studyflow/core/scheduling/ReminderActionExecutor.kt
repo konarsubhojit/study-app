@@ -40,6 +40,8 @@ public class ReminderActionExecutor(
     private val schedulingService: ReminderSchedulingService,
     private val sessionRepository: SessionRepository,
     private val notifier: StudyFlowNotifier,
+    /** Refreshed after every action, so a stale count/list never outlives the reminder it named. */
+    private val groupSummary: ReminderDeliveryCoordinator,
     private val wallClock: Clock = SystemWallClock,
     private val elapsedRealtimeSource: ElapsedRealtimeSource = AndroidElapsedRealtimeSource,
     private val idGenerator: () -> String = { UUID.randomUUID().toString() },
@@ -52,7 +54,7 @@ public class ReminderActionExecutor(
         val notificationId = reminderNotificationId(reminderId)
         val task = taskRepository.observeTask(taskId).first()
         if (task == null) {
-            notifier.cancel(notificationId)
+            dismiss(notificationId)
             return
         }
 
@@ -69,7 +71,7 @@ public class ReminderActionExecutor(
     ) {
         taskRepository.save(task.copy(completedAt = wallClock.now()))
         task.reminders.forEach { schedulingService.cancel(it.id) }
-        notifier.cancel(notificationId)
+        dismiss(notificationId)
     }
 
     private suspend fun snooze(
@@ -77,7 +79,7 @@ public class ReminderActionExecutor(
         reminderId: String,
         notificationId: Int,
     ) {
-        val reminder = task.reminders.firstOrNull { it.id == reminderId } ?: return notifier.cancel(notificationId)
+        val reminder = task.reminders.firstOrNull { it.id == reminderId } ?: return dismiss(notificationId)
         val snoozed =
             reminder.copy(
                 snooze =
@@ -90,7 +92,7 @@ public class ReminderActionExecutor(
         taskRepository.updateReminder(snoozed)
         val rescheduledTask = task.copy(reminders = task.reminders.map { if (it.id == reminderId) snoozed else it })
         schedulingService.schedule(rescheduledTask)
-        notifier.cancel(notificationId)
+        dismiss(notificationId)
     }
 
     private suspend fun startSession(
@@ -102,7 +104,13 @@ public class ReminderActionExecutor(
             eventId = idGenerator(),
             anchor = currentAnchor(),
         )
+        dismiss(notificationId)
+    }
+
+    /** Cancels the reminder that prompted this action and recomputes the group summary around it. */
+    private fun dismiss(notificationId: Int) {
         notifier.cancel(notificationId)
+        groupSummary.refreshGroupSummary()
     }
 
     /**

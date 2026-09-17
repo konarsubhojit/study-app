@@ -14,8 +14,10 @@ import dev.studyflow.core.notifications.NotificationChannelRegistrar
 import dev.studyflow.core.notifications.NotificationPermissionState
 import dev.studyflow.core.notifications.NotificationPermissionStatus
 import dev.studyflow.core.notifications.StudyFlowNotificationChannel
+import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.testing.data.FakeSessionRepository
+import dev.studyflow.core.testing.data.FakeSubjectRepository
 import dev.studyflow.core.testing.data.FakeTaskRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -54,6 +56,14 @@ class ReminderActionExecutorTest {
             capabilitiesProvider = { SchedulingCapabilities() },
             platformScheduler = platformScheduler,
         ) { NOW }
+    private val groupSummary =
+        ReminderDeliveryCoordinator(
+            context = context,
+            taskRepository = taskRepository,
+            subjectRepository = FakeSubjectRepository(),
+            notifier = notifier,
+            notificationFactory = StudyFlowNotificationFactory(context, android.R.drawable.ic_dialog_info),
+        )
     private val executor =
         ReminderActionExecutor(
             context = context,
@@ -61,6 +71,7 @@ class ReminderActionExecutorTest {
             schedulingService = schedulingService,
             sessionRepository = sessionRepository,
             notifier = notifier,
+            groupSummary = groupSummary,
             wallClock = { NOW },
             idGenerator = idSequence(),
         )
@@ -131,6 +142,24 @@ class ReminderActionExecutorTest {
             executor.execute(ReminderActionKind.COMPLETE, "reminder-1", "missing-task")
 
             assertNull(sessionRepository.executedCommands.firstOrNull())
+        }
+
+    @Test
+    fun `completing one of a grouped pair refreshes the summary down to a single reminder`() =
+        runBlocking {
+            taskRepository.save(task())
+            taskRepository.save(
+                task().copy(id = "task-2", reminders = listOf(Reminder(id = "reminder-2", taskId = "task-2"))),
+            )
+            groupSummary.deliver("reminder-1", "task-1")
+            groupSummary.deliver("reminder-2", "task-2")
+            val shadowManager = shadowOf(context.getSystemService(NotificationManager::class.java))
+            assertEquals(3, shadowManager.size())
+
+            executor.execute(ReminderActionKind.COMPLETE, "reminder-1", "task-1")
+
+            // One reminder left is below the grouping threshold, so the summary is torn down too.
+            assertEquals(1, shadowManager.size())
         }
 
     private fun task(snooze: SnoozeState? = null): StudyTask =

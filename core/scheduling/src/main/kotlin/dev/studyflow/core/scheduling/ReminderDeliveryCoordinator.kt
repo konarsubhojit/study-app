@@ -82,7 +82,7 @@ public class ReminderDeliveryCoordinator(
                 StudyFlowNotificationChannel.TASK_REMINDERS,
                 notification(task, reminder, subject),
             )
-        if (result.posted) updateGroupSummary()
+        if (result.posted) refreshGroupSummary()
     }
 
     private fun notification(
@@ -155,14 +155,21 @@ public class ReminderDeliveryCoordinator(
     /**
      * Collapses every currently-active reminder into one summary once there are two or more, so
      * ten due tasks show as one grouped, readable notification rather than ten heads-up alerts.
+     *
+     * Also called by [ReminderActionExecutor] after Complete/Snooze/Start-session dismisses one
+     * reminder, so the summary's count and list never lag behind an action taken from the shade.
+     * Matched by group key rather than channel id alone, so the unrelated single digest
+     * notification (same channel, its own id, no group) is never miscounted as one of these.
      */
-    private fun updateGroupSummary() {
+    public fun refreshGroupSummary() {
         val active =
             notificationManager.activeNotifications.filter {
-                it.notification.channelId == StudyFlowNotificationChannel.TASK_REMINDERS.id &&
-                    it.id != GROUP_SUMMARY_NOTIFICATION_ID
+                it.notification.group == REMINDER_GROUP_KEY && it.id != GROUP_SUMMARY_NOTIFICATION_ID
             }
-        if (active.size < MIN_REMINDERS_TO_GROUP) return
+        if (active.size < MIN_REMINDERS_TO_GROUP) {
+            notifier.cancel(GROUP_SUMMARY_NOTIFICATION_ID)
+            return
+        }
 
         val titles =
             active.mapNotNull {
