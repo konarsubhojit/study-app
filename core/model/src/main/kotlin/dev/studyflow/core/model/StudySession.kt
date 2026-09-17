@@ -35,7 +35,12 @@ public data class StudySession(
         require(deviceId.isNotBlank()) { "StudySession.deviceId must not be blank" }
     }
 
-    /** True while the session still accepts commands, i.e. it is running or paused. */
+    /**
+     * True while the session still accepts commands: running or paused, and not tombstoned.
+     *
+     * A [deleted] session is never active, whatever its [status] says, so a deletion that has not
+     * yet been replicated cannot keep occupying the device's single active slot.
+     */
     public val isActive: Boolean get() = !deleted && status != SessionStatus.STOPPED
 }
 

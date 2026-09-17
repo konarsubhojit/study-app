@@ -54,10 +54,13 @@ public class OfflineFirstSessionRepository(
         require(deviceId.isNotBlank()) { "deviceId must not be blank" }
     }
 
+    /**
+     * Deliberately takes the first row rather than asserting there is only one: this flow feeds the
+     * UI, and a corrupted database should not turn every screen into a crash. Writes are where the
+     * invariant is enforced, and [activeSession] is where a violation is surfaced.
+     */
     override fun observeActiveSession(): Flow<StudySession?> =
-        dao.observeActive(deviceId).map { active ->
-            active.firstNotNullOfOrNull(SessionWithEvents::asExternalModel)
-        }
+        dao.observeActive(deviceId).map { active -> active.firstOrNull()?.asExternalModel() }
 
     override fun observeSession(sessionId: String): Flow<StudySession?> =
         dao.observeSession(sessionId).map { it?.asExternalModel() }

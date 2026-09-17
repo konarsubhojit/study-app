@@ -11,6 +11,14 @@ import dev.studyflow.core.database.entity.StudySessionEntity
 import dev.studyflow.core.model.SessionStatus
 import kotlinx.coroutines.flow.Flow
 
+/**
+ * What "active" means, in one place.
+ *
+ * The status literal has to be spelled out for SQLite, so leaving the predicate duplicated across
+ * queries would let three copies drift apart from each other and from [SessionStatus].
+ */
+private const val ACTIVE_ON_DEVICE = "device_id = :deviceId AND deleted = 0 AND status != 'STOPPED'"
+
 @Dao
 public abstract class SessionDao {
     @Transaction
@@ -28,7 +36,7 @@ public abstract class SessionDao {
     @Query(
         """
         SELECT * FROM study_sessions
-        WHERE device_id = :deviceId AND deleted = 0 AND status != 'STOPPED'
+        WHERE $ACTIVE_ON_DEVICE
         ORDER BY started_at DESC, id ASC
         """,
     )
@@ -38,7 +46,7 @@ public abstract class SessionDao {
     @Query(
         """
         SELECT * FROM study_sessions
-        WHERE device_id = :deviceId AND deleted = 0 AND status != 'STOPPED'
+        WHERE $ACTIVE_ON_DEVICE
         ORDER BY started_at DESC, id ASC
         """,
     )
@@ -90,7 +98,7 @@ public abstract class SessionDao {
     @Query(
         """
         SELECT id FROM study_sessions
-        WHERE device_id = :deviceId AND deleted = 0 AND status != 'STOPPED'
+        WHERE $ACTIVE_ON_DEVICE
         """,
     )
     public abstract suspend fun activeSessionIds(deviceId: String): List<String>

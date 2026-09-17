@@ -33,7 +33,9 @@ public interface SessionRepository {
     /**
      * Validates [command] against the stored log and, if legal, appends the event it produces.
      *
-     * @param eventId caller-supplied identifier so that a retried write is idempotent.
+     * @param eventId caller-supplied identifier for the event. It is the log's primary key, so a
+     *   retry that reuses it is refused rather than double-counted; callers that want to know the
+     *   outcome of the original write read it back instead of retrying blind.
      * @param anchor both clocks, read as close as possible to the moment the user acted.
      */
     public suspend fun execute(

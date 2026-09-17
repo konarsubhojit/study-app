@@ -50,6 +50,9 @@ public object DatabaseMigrations {
      * runtime. That is the whole point of event sourcing — a schema change cannot lose a
      * measurement, because the measurement was never stored in the first place.
      *
+     * A row with no events is dropped rather than given a fabricated epoch-dated projection: a
+     * session only exists once it has been started, so an event-less row was never a measurement.
+     *
      * Legacy rows predate the device column and are attributed to [MIGRATED_DEVICE_ID]: the log
      * does not record which device wrote it, and inventing the current device would let a session
      * from another phone contend for the "one active session" slot.
@@ -127,5 +130,6 @@ public object DatabaseMigrations {
             COALESCE((SELECT MAX(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0),
             0
         FROM study_sessions s
+        WHERE EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = s.id)
         """.trimIndent()
 }

@@ -74,6 +74,12 @@ class DatabaseMigrationTest {
                     assertEquals(true, cursor.moveToFirst())
                     assertEquals(2, cursor.getInt(0))
                 }
+                // A session with no events was never started, so it is dropped rather than given
+                // an epoch-dated projection that would read as active forever.
+                database.query("SELECT COUNT(*) FROM study_sessions").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals(1, cursor.getInt(0))
+                }
             }
     }
 
@@ -102,6 +108,7 @@ class DatabaseMigrationTest {
 
     private fun SupportSQLiteDatabase.insertVersionTwoSession() {
         execSQL("INSERT INTO study_sessions (id, subject_id, note) VALUES ('legacy-session', NULL, 'Algebra')")
+        execSQL("INSERT INTO study_sessions (id, subject_id, note) VALUES ('never-started', NULL, NULL)")
         execSQL(
             """
             INSERT INTO session_events (id, session_id, type, uptime, wall_clock, boot_id, sequence)
