@@ -17,6 +17,7 @@ import kotlinx.coroutines.flow.onStart
 
 public data class TimerUiState(
     val elapsedSeconds: Long = 0,
+    val isRestoring: Boolean = true,
 ) : UiState
 
 public sealed interface TimerUiEvent : UiEvent {
@@ -56,6 +57,7 @@ public class TimerViewModel(
                         .elapsedAt(this, now)
                         .counted
                         .inWholeSeconds,
+                isRestoring = false,
             )
     }
 }

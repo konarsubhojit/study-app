@@ -19,20 +19,28 @@ public fun TimerScreen(
     onEvent: (TimerUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (state.elapsedSeconds == 0L) {
-        EmptyState(message = "Start a study session when you're ready.", modifier = modifier)
-    } else {
-        Column(
-            modifier =
-                modifier
-                    .fillMaxSize()
-                    .padding(MaterialTheme.spacing.medium),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium, Alignment.CenterVertically),
-        ) {
-            Text(text = "${state.elapsedSeconds} seconds", style = MaterialTheme.typography.headlineMedium)
-            Button(onClick = { onEvent(TimerUiEvent.Refresh) }) {
-                Text(text = "Refresh")
+    when {
+        state.isRestoring -> {
+            EmptyState(message = "Restoring your study session…", modifier = modifier)
+        }
+
+        state.elapsedSeconds == 0L -> {
+            EmptyState(message = "Start a study session when you're ready.", modifier = modifier)
+        }
+
+        else -> {
+            Column(
+                modifier =
+                    modifier
+                        .fillMaxSize()
+                        .padding(MaterialTheme.spacing.medium),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium, Alignment.CenterVertically),
+            ) {
+                Text(text = "${state.elapsedSeconds} seconds", style = MaterialTheme.typography.headlineMedium)
+                Button(onClick = { onEvent(TimerUiEvent.Refresh) }) {
+                    Text(text = "Refresh")
+                }
             }
         }
     }

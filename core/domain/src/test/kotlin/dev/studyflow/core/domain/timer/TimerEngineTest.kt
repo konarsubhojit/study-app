@@ -258,6 +258,29 @@ class TimerEngineTest {
         }
 
         @Test
+        fun `a same boot session exceeding the configured maximum is paused at the cap`() {
+            val device = FakeDevice()
+            val log = Log(device)
+
+            log.start()
+            device.advance(3.hours)
+
+            val recovery =
+                TimerEngine.reconcile(
+                    state = log.state(),
+                    eventId = "recovery-1",
+                    now = device.anchor(),
+                    maximumRunningDuration = 2.hours,
+                )
+
+            val capped = assertIs<TimerReconciliation.MaximumDurationExceeded>(recovery)
+            assertEquals(SessionEventType.PAUSED, capped.event.type)
+            assertEquals(2.hours, capped.state.settled)
+            assertEquals(Duration.ZERO, capped.state.unverified)
+            assertEquals(2.hours, TimerEngine.elapsedAt(capped.state, device.anchor()).counted)
+        }
+
+        @Test
         fun `a backwards clock across a reboot never yields negative time`() {
             val device = FakeDevice()
             val log = Log(device)
