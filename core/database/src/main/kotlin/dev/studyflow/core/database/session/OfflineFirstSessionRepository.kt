@@ -23,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.time.Duration
 
 /**
  * The Room-backed [SessionRepository].
@@ -39,6 +40,7 @@ import kotlinx.coroutines.sync.withLock
 public class OfflineFirstSessionRepository(
     private val dao: SessionDao,
     private val deviceId: String,
+    private val maximumRunningDuration: Duration = TimerEngine.DEFAULT_MAXIMUM_RUNNING_DURATION,
 ) : SessionRepository {
     /**
      * Serialises command evaluation within the process.
@@ -76,6 +78,7 @@ public class OfflineFirstSessionRepository(
         commandLock.withLock {
             runCatchingStorage {
                 val active = activeSession()
+                appliedDuplicate(eventId, active)?.let { return@runCatchingStorage it }
                 val state = active?.foldEvents() ?: TimerState.Idle
 
                 when (val outcome = TimerEngine.execute(state, command, eventId, anchor)) {
@@ -102,16 +105,33 @@ public class OfflineFirstSessionRepository(
             runCatchingStorage {
                 val active =
                     activeSession() ?: return@runCatchingStorage SessionCommandResult.Unchanged(TimerState.Idle)
-                when (val outcome = TimerEngine.reconcile(active.foldEvents(), eventId, now)) {
+                appliedDuplicate(eventId, active)?.let { return@runCatchingStorage it }
+                when (
+                    val outcome =
+                        TimerEngine.reconcile(
+                            state = active.foldEvents(),
+                            eventId = eventId,
+                            now = now,
+                            maximumRunningDuration = maximumRunningDuration,
+                        )
+                ) {
                     is TimerReconciliation.Unchanged -> {
                         SessionCommandResult.Unchanged(outcome.state)
                     }
 
-                    is TimerReconciliation.RebootGap -> {
+                    is TimerReconciliation.RebootGap,
+                    is TimerReconciliation.MaximumDurationExceeded,
+                    -> {
+                        val event =
+                            when (outcome) {
+                                is TimerReconciliation.RebootGap -> outcome.event
+                                is TimerReconciliation.MaximumDurationExceeded -> outcome.event
+                                is TimerReconciliation.Unchanged -> error("handled above")
+                            }
                         commit(
                             descriptor = active.session.asDescriptor(),
-                            events = active.eventsPlus(outcome.event),
-                            event = outcome.event,
+                            events = active.eventsPlus(event),
+                            event = event,
                         )
                     }
                 }
@@ -129,6 +149,24 @@ public class OfflineFirstSessionRepository(
                 "a committed event always projects to a session"
             }
         dao.appendAndProject(session.asEntity(), event.asEntity())
+        return SessionCommandResult.Applied(session, TimerEngine.fold(events))
+    }
+
+    /**
+     * A command retry with the same event id is a read of the original outcome, not a second write.
+     * If a crash left only the event durable, this also repairs the projection before returning.
+     */
+    private suspend fun appliedDuplicate(
+        eventId: String,
+        stored: SessionWithEvents?,
+    ): SessionCommandResult.Applied? {
+        if (stored?.events?.none { it.id == eventId } != false) return null
+        val events = stored.events.map { it.asExternalModel() }
+        val session =
+            requireNotNull(SessionReducer.reduce(stored.session.asDescriptor(), events)) {
+                "event $eventId belongs to an empty session log"
+            }
+        dao.upsertSessions(listOf(session.asEntity()))
         return SessionCommandResult.Applied(session, TimerEngine.fold(events))
     }
 
