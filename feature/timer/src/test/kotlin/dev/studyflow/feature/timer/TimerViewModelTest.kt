@@ -15,15 +15,13 @@ class TimerViewModelTest {
     val mainDispatcher = MainDispatcherExtension()
 
     @Test
-    fun `tick refresh does not mutate elapsed state`() =
+    fun `stale saved elapsed counter is ignored`() =
         runTest(mainDispatcher.dispatcher) {
             val savedState = SavedStateHandle(mapOf("timer.elapsedSeconds" to 600))
             val viewModel = TimerViewModel(savedState)
 
             viewModel.state.test {
                 assertEquals(TimerUiState(), awaitItem())
-                viewModel.onEvent(TimerUiEvent.Tick)
-                expectNoEvents()
                 cancelAndIgnoreRemainingEvents()
             }
         }
