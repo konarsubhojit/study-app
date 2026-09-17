@@ -17,6 +17,7 @@ import dagger.hilt.android.AndroidEntryPoint
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.model.StudyTask
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
@@ -40,7 +41,7 @@ import javax.inject.Inject
 public class AlarmActivity : ComponentActivity() {
     @Inject internal lateinit var taskRepository: TaskRepository
 
-    private val activityScope = CoroutineScope(SupervisorJob())
+    private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var observeJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -97,8 +98,7 @@ public class AlarmActivity : ComponentActivity() {
             @Suppress("DEPRECATION")
             window.addFlags(
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON,
             )
         }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

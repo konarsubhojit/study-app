@@ -13,8 +13,8 @@ dependencies {
     // module would use, wired here because nothing else in the app binds them yet (issue #47).
     implementation(projects.core.database)
     implementation(projects.core.datastore)
-    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity)
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.androidx.hilt.work)
     // `StudyFlowDatabase` and `UserSettings` are Room/protobuf-lite types the database and
