@@ -1,15 +1,18 @@
 package dev.studyflow.core.database.dao
 
+import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
+import dev.studyflow.core.database.entity.SessionCorrectionEntity
 import dev.studyflow.core.database.entity.SessionEventEntity
 import dev.studyflow.core.database.entity.SessionWithEvents
 import dev.studyflow.core.database.entity.StudySessionEntity
 import dev.studyflow.core.model.SessionStatus
 import kotlinx.coroutines.flow.Flow
+import kotlin.time.Instant
 
 /**
  * What "active" means, in one place.
@@ -20,6 +23,7 @@ import kotlinx.coroutines.flow.Flow
 private const val ACTIVE_ON_DEVICE = "device_id = :deviceId AND deleted = 0 AND status != 'STOPPED'"
 
 @Dao
+@Suppress("TooManyFunctions")
 public abstract class SessionDao {
     @Transaction
     @Query("SELECT * FROM study_sessions ORDER BY id ASC")
@@ -117,6 +121,82 @@ public abstract class SessionDao {
 
     @Query("SELECT COUNT(*) FROM study_sessions")
     public abstract suspend fun count(): Int
+
+    /**
+     * Non-deleted sessions for the history list (issue #32), newest-first, optionally filtered by
+     * subject and/or a wall-clock start-time range.
+     *
+     * A parameterized query rather than [androidx.room.RawQuery]: Room only guarantees the
+     * `@Transaction` + `@Relation` + [PagingSource] combination for a compiled `@Query`, and the
+     * `IS NULL OR` form lets one statement serve every combination of filters without building SQL
+     * by hand. Ordered by `started_at`/`id` — stable regardless of how many sessions load, which is
+     * what lets the day-header grouping in `feature/history` insert separators between pages.
+     */
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM study_sessions
+        WHERE deleted = 0
+            AND (:subjectId IS NULL OR subject_id = :subjectId)
+            AND (:startAtOrAfter IS NULL OR started_at >= :startAtOrAfter)
+            AND (:startBefore IS NULL OR started_at < :startBefore)
+        ORDER BY started_at DESC, id DESC
+        """,
+    )
+    public abstract fun historyPaged(
+        subjectId: String?,
+        startAtOrAfter: Instant?,
+        startBefore: Instant?,
+    ): PagingSource<Int, SessionWithEvents>
+
+    @Transaction
+    @Query("SELECT * FROM study_sessions WHERE id = :sessionId")
+    public abstract suspend fun findWithEvents(sessionId: String): SessionWithEvents?
+
+    /**
+     * Commits a correction's session rewrites and its audit rows in one transaction, so a reader
+     * never observes the new session state without the audit trail that explains it (or vice
+     * versa).
+     */
+    @Transaction
+    public open suspend fun applyCorrection(
+        sessions: List<StudySessionEntity>,
+        corrections: List<SessionCorrectionEntity>,
+    ) {
+        upsertSessions(sessions)
+        insertCorrections(corrections)
+    }
+
+    /** Every correction ever recorded for [sessionId], oldest first — the full audit trail. */
+    @Query(
+        """
+        SELECT * FROM session_corrections
+        WHERE session_id = :sessionId
+        ORDER BY at ASC, id ASC
+        """,
+    )
+    public abstract fun observeCorrections(sessionId: String): Flow<List<SessionCorrectionEntity>>
+
+    /**
+     * Every row of the most recent correction group that touched [sessionId] — for a merge or
+     * split this spans multiple sessions, which is exactly why undo needs the whole group rather
+     * than just this session's row.
+     */
+    @Query(
+        """
+        SELECT * FROM session_corrections
+        WHERE correction_group_id = (
+            SELECT correction_group_id FROM session_corrections
+            WHERE session_id = :sessionId
+            ORDER BY at DESC, id DESC
+            LIMIT 1
+        )
+        """,
+    )
+    public abstract suspend fun lastCorrectionGroup(sessionId: String): List<SessionCorrectionEntity>
+
+    @Insert
+    public abstract suspend fun insertCorrections(corrections: List<SessionCorrectionEntity>)
 
     @Upsert
     protected abstract suspend fun upsertSession(session: StudySessionEntity)

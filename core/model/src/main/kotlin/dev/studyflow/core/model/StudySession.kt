@@ -17,6 +17,14 @@ import kotlin.time.Instant
  * @property updatedAt when the projection was last rewritten, used for sync conflict resolution.
  * @property deleted soft-delete marker; rows are tombstoned rather than removed so a deletion can
  *   still be replicated to other devices.
+ * @property manualOverride true when [startedAt], [endedAt], [status] and [elapsed] were set by a
+ *   human correction (edit, split, merge or manual entry — see `SessionHistoryEditor` in
+ *   `core/domain`) instead of being derived by replaying the [SessionEvent] log. This is a
+ *   deliberate, narrow exception to "the projection is a cache, never a second source of truth":
+ *   a correction is a human decision about what actually happened, not a replayed measurement, so
+ *   it has nothing to replay from. Timing-affecting corrections are the only writers allowed to set
+ *   it; editing [subjectId] or [note] alone never does, because those fields already live outside
+ *   the event log.
  */
 public data class StudySession(
     val id: String,
@@ -29,6 +37,7 @@ public data class StudySession(
     val deviceId: String,
     val updatedAt: Instant,
     val deleted: Boolean = false,
+    val manualOverride: Boolean = false,
 ) {
     init {
         require(id.isNotBlank()) { "StudySession.id must not be blank" }

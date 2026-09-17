@@ -160,6 +160,62 @@ public object DatabaseMigrations {
             }
         }
 
+    /**
+     * Version 9 introduces an append-only correction audit and optional explicit elapsed values for
+     * manually recorded or corrected sessions (issue #32).
+     */
+    public val MIGRATION_8_9: Migration =
+        object : Migration(8, 9) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    "ALTER TABLE study_sessions ADD COLUMN manual_override INTEGER NOT NULL DEFAULT 0",
+                )
+                connection.execSQL("ALTER TABLE study_sessions ADD COLUMN override_counted_millis INTEGER")
+                connection.execSQL("ALTER TABLE study_sessions ADD COLUMN override_unverified_millis INTEGER")
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS session_corrections (
+                        id TEXT NOT NULL PRIMARY KEY,
+                        correction_group_id TEXT NOT NULL,
+                        session_id TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        at INTEGER NOT NULL,
+                        restores_correction_group_id TEXT,
+                        before_subject_id TEXT,
+                        before_note TEXT,
+                        before_started_at INTEGER,
+                        before_ended_at INTEGER,
+                        before_status TEXT,
+                        before_counted_millis INTEGER,
+                        before_unverified_millis INTEGER,
+                        before_deleted INTEGER,
+                        before_manual_override INTEGER,
+                        before_updated_at INTEGER,
+                        after_subject_id TEXT,
+                        after_note TEXT,
+                        after_started_at INTEGER NOT NULL,
+                        after_ended_at INTEGER,
+                        after_status TEXT NOT NULL,
+                        after_counted_millis INTEGER NOT NULL,
+                        after_unverified_millis INTEGER NOT NULL,
+                        after_deleted INTEGER NOT NULL,
+                        after_manual_override INTEGER NOT NULL,
+                        after_updated_at INTEGER NOT NULL,
+                        FOREIGN KEY(session_id) REFERENCES study_sessions(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_session_corrections_session_id_at " +
+                        "ON session_corrections(session_id, at)",
+                )
+                connection.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_session_corrections_correction_group_id " +
+                        "ON session_corrections(correction_group_id)",
+                )
+            }
+        }
+
     public val ALL: Array<Migration>
         get() =
             arrayOf(
@@ -170,6 +226,7 @@ public object DatabaseMigrations {
                 MIGRATION_5_6,
                 MIGRATION_6_7,
                 MIGRATION_7_8,
+                MIGRATION_8_9,
             )
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null

@@ -27,5 +27,8 @@ internal data class TasksRoute(
 @Serializable
 internal data object SettingsRoute : AppRoute
 
+@Serializable
+internal data object HistoryRoute : AppRoute
+
 internal val topLevelRoutes: List<AppRoute> =
-    listOf(HomeRoute, TimerRoute(), MaterialsRoute(), TasksRoute(), SettingsRoute)
+    listOf(HomeRoute, TimerRoute(), MaterialsRoute(), TasksRoute(), HistoryRoute, SettingsRoute)
