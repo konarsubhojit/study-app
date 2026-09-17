@@ -243,7 +243,7 @@ private class InMemorySessionRepository : SessionRepository {
         val state = TimerEngine.fold(logs.getValue(activeId))
         return when (val outcome = TimerEngine.reconcile(state, eventId, now)) {
             is TimerReconciliation.Unchanged -> SessionCommandResult.Unchanged(outcome.state)
-            is TimerReconciliation.RebootGap -> commit(descriptors.getValue(activeId), outcome.event, outcome.state)
+            is TimerReconciliation.Adjustment -> commit(descriptors.getValue(activeId), outcome.event, outcome.state)
         }
     }
 
