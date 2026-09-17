@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
@@ -107,8 +108,8 @@ private fun DialogPreview() {
             title = "Delete session?",
             text = "This cannot be undone.",
             onDismissRequest = {},
-            confirmButton = { Button(onClick = {}) { androidx.compose.material3.Text("Delete") } },
-            dismissButton = { Button(onClick = {}) { androidx.compose.material3.Text("Cancel") } },
+            confirmButton = { Button(onClick = {}) { Text("Delete") } },
+            dismissButton = { Button(onClick = {}) { Text("Cancel") } },
         )
     }
 }
@@ -122,7 +123,7 @@ private fun PermissionRationalePreview() {
             title = "Allow notifications",
             message = "StudyFlow uses notifications to remind you about planned sessions.",
             onDismissRequest = {},
-            action = { Button(onClick = {}) { androidx.compose.material3.Text("Continue") } },
+            action = { Button(onClick = {}) { Text("Continue") } },
         )
     }
 }

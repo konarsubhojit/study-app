@@ -47,7 +47,7 @@ public fun StudyFlowTopAppBar(
     )
 }
 
-/** A selectable row for a study object. */
+/** A selectable row for a session, subject, task, or other study-domain record. */
 @Composable
 public fun StudyFlowListItem(
     headline: String,
@@ -178,10 +178,7 @@ public fun PermissionRationaleSheet(
 }
 
 private fun Duration.toDisplayText(): String {
-    val safeDuration = coerceAtLeast(ZERO)
-    val totalMinutes = safeDuration.inWholeMinutes
-    val hours = totalMinutes / MINUTES_PER_HOUR
-    val minutes = totalMinutes % MINUTES_PER_HOUR
+    val (hours, minutes) = displayParts()
     return when {
         hours > 0L && minutes > 0L -> "$hours h $minutes min"
         hours > 0L -> "$hours h"
@@ -190,15 +187,25 @@ private fun Duration.toDisplayText(): String {
 }
 
 private fun Duration.toSpokenDisplayText(): String {
-    val safeDuration = coerceAtLeast(ZERO)
-    val totalMinutes = safeDuration.inWholeMinutes
-    val hours = totalMinutes / MINUTES_PER_HOUR
-    val minutes = totalMinutes % MINUTES_PER_HOUR
+    val (hours, minutes) = displayParts()
     return when {
         hours > 0L && minutes > 0L -> "$hours hours $minutes minutes"
         hours > 0L -> "$hours hours"
         else -> "$minutes minutes"
     }
 }
+
+private fun Duration.displayParts(): DurationParts {
+    val safeDuration = coerceAtLeast(ZERO)
+    val totalMinutes = safeDuration.inWholeMinutes
+    val hours = totalMinutes / MINUTES_PER_HOUR
+    val minutes = totalMinutes % MINUTES_PER_HOUR
+    return DurationParts(hours = hours, minutes = minutes)
+}
+
+private data class DurationParts(
+    val hours: Long,
+    val minutes: Long,
+)
 
 private const val MINUTES_PER_HOUR: Long = 60
