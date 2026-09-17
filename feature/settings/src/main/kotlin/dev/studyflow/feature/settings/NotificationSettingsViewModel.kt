@@ -145,7 +145,7 @@ public class NotificationSettingsViewModel
             }
         }
 
-        private fun refresh(shouldShowRationale: Boolean = false) {
+        private fun refresh(shouldShowRationale: Boolean) {
             val snapshot = source.snapshot(shouldShowRationale)
             systemState.value =
                 systemState.value.copy(
@@ -180,7 +180,7 @@ public class NotificationSettingsViewModel
                 }
 
                 NotificationPermissionAction.None -> {
-                    refresh()
+                    refresh(shouldShowRationale = false)
                 }
             }
         }

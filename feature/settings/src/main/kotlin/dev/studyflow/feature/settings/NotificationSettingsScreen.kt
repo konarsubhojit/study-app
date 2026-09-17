@@ -26,6 +26,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.core.app.ActivityCompat
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -157,10 +159,12 @@ private fun BlockedCard(
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         ) {
             Text(text = "Notifications are off", style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = state.degradation?.let(NotificationCopy::degradation).orEmpty(),
-                style = MaterialTheme.typography.bodyMedium,
-            )
+            state.degradation?.let {
+                Text(
+                    text = NotificationCopy.degradation(it),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
             TextButton(onClick = { onEvent(NotificationSettingsUiEvent.EnableNotifications) }) {
                 Text(text = if (state.canRequestPermission) "Turn on" else "Open settings")
             }
@@ -193,7 +197,13 @@ private fun ChannelCard(
                     },
                 style = MaterialTheme.typography.labelLarge,
             )
-            TextButton(onClick = onOpenSettings) {
+            TextButton(
+                onClick = onOpenSettings,
+                modifier =
+                    Modifier.semantics {
+                        contentDescription = "Change ${status.channel.channelName} in system settings"
+                    },
+            ) {
                 Text(text = "Change in system settings")
             }
         }
