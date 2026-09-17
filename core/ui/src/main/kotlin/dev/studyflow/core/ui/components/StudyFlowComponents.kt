@@ -113,10 +113,10 @@ public fun DurationText(
     duration: Duration,
     modifier: Modifier = Modifier,
 ) {
-    val text = duration.toDisplayText()
+    val display = duration.toDisplayStrings()
     Text(
-        text = text,
-        modifier = modifier.semantics { contentDescription = duration.toSpokenDisplayText() },
+        text = display.visual,
+        modifier = modifier.semantics { contentDescription = display.spoken },
         style = MaterialTheme.typography.bodyMedium,
     )
 }
@@ -125,7 +125,7 @@ public fun DurationText(
 @Composable
 public fun TimeText(
     time: String,
-    contentDescription: String = time,
+    contentDescription: String,
     modifier: Modifier = Modifier,
 ) {
     Text(
@@ -177,35 +177,32 @@ public fun PermissionRationaleSheet(
     }
 }
 
-private fun Duration.toDisplayText(): String {
-    val (hours, minutes) = displayParts()
-    return when {
-        hours > 0L && minutes > 0L -> "$hours h $minutes min"
-        hours > 0L -> "$hours h"
-        else -> "$minutes min"
-    }
-}
-
-private fun Duration.toSpokenDisplayText(): String {
-    val (hours, minutes) = displayParts()
-    return when {
-        hours > 0L && minutes > 0L -> "$hours hours $minutes minutes"
-        hours > 0L -> "$hours hours"
-        else -> "$minutes minutes"
-    }
-}
-
-private fun Duration.displayParts(): DurationParts {
+private fun Duration.toDisplayStrings(): DurationDisplay {
     val safeDuration = coerceAtLeast(ZERO)
     val totalMinutes = safeDuration.inWholeMinutes
     val hours = totalMinutes / MINUTES_PER_HOUR
     val minutes = totalMinutes % MINUTES_PER_HOUR
-    return DurationParts(hours = hours, minutes = minutes)
+    return when {
+        hours > 0L && minutes > 0L -> {
+            DurationDisplay(
+                visual = "$hours h $minutes min",
+                spoken = "$hours hours $minutes minutes",
+            )
+        }
+
+        hours > 0L -> {
+            DurationDisplay(visual = "$hours h", spoken = "$hours hours")
+        }
+
+        else -> {
+            DurationDisplay(visual = "$minutes min", spoken = "$minutes minutes")
+        }
+    }
 }
 
-private data class DurationParts(
-    val hours: Long,
-    val minutes: Long,
+private data class DurationDisplay(
+    val visual: String,
+    val spoken: String,
 )
 
 private const val MINUTES_PER_HOUR: Long = 60
