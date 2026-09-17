@@ -83,7 +83,6 @@ public class WorkManagerMaterialUploadCoordinator(
                 .setInputData(workDataOf(EXTRA_UPLOAD_MATERIAL_ID to materialId))
                 .setConstraints(constraints())
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.MILLISECONDS)
-                .addTag(materialUploadWorkName(materialId))
                 .build()
         workManager.enqueueUniqueWork(materialUploadWorkName(materialId), existingWorkPolicy, request)
     }
