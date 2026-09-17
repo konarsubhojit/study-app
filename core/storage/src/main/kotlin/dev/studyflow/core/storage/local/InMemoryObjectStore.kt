@@ -85,8 +85,6 @@ public class InMemoryObjectStore(
 
         return mutex.withLock {
             val upload = activeUpload(session)
-            // A rejected upload is never resumable, so its buffered parts are dropped rather than
-            // held for the life of the process.
             // A real provider only signed the parts it planned; a stray part number is a bug that
             // would otherwise be stored and then quietly ignored when the object is assembled.
             if (part !in session.parts) {
@@ -105,45 +103,46 @@ public class InMemoryObjectStore(
     ): StoredObject =
         mutex.withLock {
             val upload = activeUpload(session)
-            val acknowledged = parts.map { it.number }.toSet()
-            val missing = session.parts.map { it.number }.filterNot { it in acknowledged }
-            if (missing.isNotEmpty()) {
-                uploads.remove(session.uploadId)
-                throw ObjectStoreException.Integrity("parts $missing of '${session.key}' were not acknowledged")
-            }
+            // Completion is terminal either way: on success the bytes move to [objects], and a
+            // rejected upload is not resumable, so the buffered parts are dropped rather than held
+            // for the life of the process.
+            try {
+                val acknowledged = parts.map { it.number }.toSet()
+                val missing = session.parts.map { it.number }.filterNot { it in acknowledged }
+                if (missing.isNotEmpty()) {
+                    throw ObjectStoreException.Integrity("parts $missing of '${session.key}' were not acknowledged")
+                }
 
-            val assembled = ByteArray(session.sizeBytes.toInt())
-            session.parts.forEach { part ->
-                val uploaded =
-                    upload.parts[part.number]
-                        ?: run {
-                            uploads.remove(session.uploadId)
-                            throw ObjectStoreException.Integrity(
+                val assembled = ByteArray(session.sizeBytes.toInt())
+                session.parts.forEach { part ->
+                    val uploaded =
+                        upload.parts[part.number]
+                            ?: throw ObjectStoreException.Integrity(
                                 "part ${part.number} of '${session.key}' was never uploaded",
                             )
-                        }
-                uploaded.copyInto(assembled, destinationOffset = part.offset.toInt())
-            }
+                    uploaded.copyInto(assembled, destinationOffset = part.offset.toInt())
+                }
 
-            val digest = ContentHash(sha256Hex(assembled))
-            if (digest != upload.request.contentHash) {
+                val digest = ContentHash(sha256Hex(assembled))
+                if (digest != upload.request.contentHash) {
+                    throw ObjectStoreException.Integrity(
+                        "'${session.key}' hashes to ${digest.hex} but ${upload.request.contentHash.hex} was expected",
+                    )
+                }
+
+                val stored =
+                    StoredObject(
+                        key = session.key,
+                        sizeBytes = assembled.size.toLong(),
+                        contentType = upload.request.contentType,
+                        contentHash = digest,
+                        updatedAt = clock.now(),
+                    )
+                objects[session.key] = StoredBlob(stored, assembled)
+                stored
+            } finally {
                 uploads.remove(session.uploadId)
-                throw ObjectStoreException.Integrity(
-                    "'${session.key}' hashes to ${digest.hex} but ${upload.request.contentHash.hex} was expected",
-                )
             }
-
-            val stored =
-                StoredObject(
-                    key = session.key,
-                    sizeBytes = assembled.size.toLong(),
-                    contentType = upload.request.contentType,
-                    contentHash = digest,
-                    updatedAt = clock.now(),
-                )
-            objects[session.key] = StoredBlob(stored, assembled)
-            uploads.remove(session.uploadId)
-            stored
         }
 
     override suspend fun getDownloadUrl(
@@ -159,6 +158,10 @@ public class InMemoryObjectStore(
             )
         }
 
+    /**
+     * Deletes the completed object, if any. Like a real provider, this does not cancel an upload
+     * that is still in flight for the same key: that upload completes and stores its bytes.
+     */
     override suspend fun delete(key: ObjectKey) {
         mutex.withLock { objects.remove(key) }
     }
