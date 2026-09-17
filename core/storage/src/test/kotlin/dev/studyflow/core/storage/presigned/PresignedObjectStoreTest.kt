@@ -50,7 +50,7 @@ class PresignedObjectStoreTest {
             val uploaded = store.uploadPart(session, session.parts.single(), PAYLOAD)
 
             assertEquals(HttpMethod.Put, seen?.method)
-            assertEquals(PART_URL, seen?.url.toString())
+            assertEquals(PART_URL, seen?.url?.toString())
             assertEquals(UploadedPart(number = 1, etag = "part-etag", size = PAYLOAD.size.toLong()), uploaded)
         }
 

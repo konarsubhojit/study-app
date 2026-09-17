@@ -102,7 +102,7 @@ public class PresignedObjectStore(
 private fun HttpStatusCode.toFailure(subject: String): ObjectStoreException =
     when (this) {
         HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden, HttpStatusCode.NotFound -> {
-            ObjectStoreException.AccessDenied("$subject was refused ($value); the upload URL has expired")
+            ObjectStoreException.AccessDenied("$subject was refused ($value); a fresh signed URL is needed")
         }
 
         HttpStatusCode.PayloadTooLarge, HttpStatusCode.InsufficientStorage -> {

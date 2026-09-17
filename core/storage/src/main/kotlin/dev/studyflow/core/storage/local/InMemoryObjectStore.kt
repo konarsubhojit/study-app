@@ -17,6 +17,7 @@ import dev.studyflow.core.storage.UploadedPart
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
+import java.util.Locale
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 
@@ -94,15 +95,15 @@ public class InMemoryObjectStore(
                 throw ObjectStoreException.Integrity("parts $missing of '${session.key}' were not acknowledged")
             }
 
-            val assembled =
-                session.parts.fold(ByteArray(0)) { bytes, part ->
-                    val uploaded =
-                        upload.parts[part.number]
-                            ?: throw ObjectStoreException.Integrity(
-                                "part ${part.number} of '${session.key}' was never uploaded",
-                            )
-                    bytes + uploaded
-                }
+            val assembled = ByteArray(session.sizeBytes.toInt())
+            session.parts.forEach { part ->
+                val uploaded =
+                    upload.parts[part.number]
+                        ?: throw ObjectStoreException.Integrity(
+                            "part ${part.number} of '${session.key}' was never uploaded",
+                        )
+                uploaded.copyInto(assembled, destinationOffset = part.offset.toInt())
+            }
 
             val digest = ContentHash(sha256Hex(assembled))
             if (digest != upload.request.contentHash) {
@@ -178,6 +179,6 @@ public class InMemoryObjectStore(
             MessageDigest
                 .getInstance("SHA-256")
                 .digest(bytes)
-                .joinToString(separator = "") { byte -> "%02x".format(byte) }
+                .joinToString(separator = "") { byte -> "%02x".format(Locale.ROOT, byte) }
     }
 }
