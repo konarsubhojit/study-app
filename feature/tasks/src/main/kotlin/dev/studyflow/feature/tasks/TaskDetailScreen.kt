@@ -39,6 +39,7 @@ import dev.studyflow.core.model.Subtask
 import dev.studyflow.core.ui.components.StudyFlowTopAppBar
 import dev.studyflow.core.ui.state.EmptyState
 import dev.studyflow.core.ui.state.LoadingState
+import kotlin.time.Duration
 
 /**
  * The task detail screen: notes, subtasks, reminders, recurrence and a study-session shortcut
@@ -281,7 +282,7 @@ private fun ReminderSection(
 private fun ReminderTrigger.describe(): String =
     when (this) {
         is ReminderTrigger.BeforeDue -> {
-            if (leadTime == kotlin.time.Duration.ZERO) "At due time" else "$leadTime before due"
+            if (leadTime == Duration.ZERO) "At due time" else "$leadTime before due"
         }
 
         is ReminderTrigger.AtInstant -> {
@@ -299,11 +300,11 @@ private fun RecurrenceSection(
     Column {
         SectionHeader(title = "Repeat")
         Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            FrequencyChip(label = "None", selected = recurrence == null) {
+            RecurrenceOptionChip(label = "None", selected = recurrence == null) {
                 onEvent(TaskDetailUiEvent.RecurrenceChanged(null))
             }
             RecurrenceFrequency.entries.forEach { frequency ->
-                FrequencyChip(
+                RecurrenceOptionChip(
                     label = frequency.name.lowercase().replaceFirstChar(Char::uppercase),
                     selected =
                         recurrence?.frequency == frequency,
@@ -336,10 +337,10 @@ private fun RecurrenceSection(
             )
 
             Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                FrequencyChip(label = "Never ends", selected = recurrence.end == RecurrenceEnd.Never) {
+                RecurrenceOptionChip(label = "Never ends", selected = recurrence.end == RecurrenceEnd.Never) {
                     onEvent(TaskDetailUiEvent.RecurrenceChanged(recurrence.copy(end = RecurrenceEnd.Never)))
                 }
-                FrequencyChip(
+                RecurrenceOptionChip(
                     label = "After $DEFAULT_OCCURRENCE_COUNT",
                     selected = recurrence.end is RecurrenceEnd.AfterOccurrences,
                 ) {
@@ -355,7 +356,7 @@ private fun RecurrenceSection(
 }
 
 @Composable
-private fun FrequencyChip(
+private fun RecurrenceOptionChip(
     label: String,
     selected: Boolean,
     onClick: () -> Unit,
