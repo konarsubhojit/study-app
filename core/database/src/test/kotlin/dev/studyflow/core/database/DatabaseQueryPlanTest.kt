@@ -1,0 +1,86 @@
+package dev.studyflow.core.database
+
+import androidx.room.Room
+import kotlinx.coroutines.runBlocking
+import org.junit.After
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
+import org.robolectric.annotation.Config
+
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [DATABASE_ROBOLECTRIC_SDK])
+class DatabaseQueryPlanTest {
+    private lateinit var database: StudyFlowDatabase
+
+    @Before
+    fun setUp() {
+        database =
+            Room
+                .inMemoryDatabaseBuilder(
+                    RuntimeEnvironment.getApplication(),
+                    StudyFlowDatabase::class.java,
+                ).allowMainThreadQueries()
+                .build()
+    }
+
+    @After
+    fun tearDown() {
+        database.close()
+    }
+
+    @Test
+    fun `material folder query uses covering order index without temporary sort`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(8, 24, 5_000, 100, 20, 4)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT * FROM materials
+                    WHERE folder_id = 'folder-1'
+                    ORDER BY created_at DESC, id ASC
+                    """.trimIndent(),
+                )
+
+            assertTrue(plan.any { it.contains("index_materials_folder_id_created_at") })
+            assertFalse(plan.any { it.contains("TEMP B-TREE") })
+        }
+
+    @Test
+    fun `session event fold query uses unique sequence index without temporary sort`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(4, 4, 20, 20, 100, 20)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT * FROM session_events
+                    WHERE session_id = 'session-50'
+                    ORDER BY sequence ASC
+                    """.trimIndent(),
+                )
+
+            assertTrue(plan.any { it.contains("index_session_events_session_id_sequence") })
+            assertFalse(plan.any { it.contains("TEMP B-TREE") })
+        }
+
+    private fun explain(sql: String): List<String> =
+        database.query("EXPLAIN QUERY PLAN $sql", emptyArray()).use { cursor ->
+            buildList {
+                while (cursor.moveToNext()) {
+                    add(cursor.getString(3))
+                }
+            }
+        }
+}

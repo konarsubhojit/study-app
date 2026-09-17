@@ -1,0 +1,206 @@
+package dev.studyflow.core.datastore
+
+import android.content.Context
+import androidx.datastore.core.DataStore
+import androidx.datastore.core.DataStoreFactory
+import androidx.datastore.core.Serializer
+import androidx.datastore.dataStore
+import androidx.datastore.dataStoreFile
+import androidx.datastore.migrations.SharedPreferencesMigration
+import dev.studyflow.core.datastore.proto.ActiveTimerAnchor
+import dev.studyflow.core.datastore.proto.SyncMode
+import dev.studyflow.core.datastore.proto.Theme
+import dev.studyflow.core.datastore.proto.UserSettings
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
+import java.io.InputStream
+import java.io.OutputStream
+import kotlin.coroutines.CoroutineContext
+
+private const val SETTINGS_FILE_NAME = "user_settings.pb"
+private const val TIMER_FILE_NAME = "active_timer.pb"
+private const val LEGACY_SETTINGS_NAME = "settings"
+
+/**
+ * Settings defaults are encoded in [UserSettings] so a fresh install and a missing legacy key
+ * receive the same value without a blocking initialization write.
+ */
+private val Context.userSettingsDataStore: DataStore<UserSettings> by dataStore(
+    fileName = SETTINGS_FILE_NAME,
+    serializer = UserSettingsSerializer,
+    produceMigrations = ::settingsMigrations,
+)
+
+/** Typed, transactional user settings with legacy `settings` SharedPreferences migration. */
+public class UserSettingsStore internal constructor(
+    private val dataStore: DataStore<UserSettings>,
+    private val ioContext: CoroutineContext = Dispatchers.IO,
+) {
+    /** Emits settings asynchronously; collecting this flow never blocks the main thread. */
+    public val data: Flow<UserSettings> = dataStore.data
+
+    /** Atomically applies a settings change. */
+    public suspend fun update(transform: UserSettings.Builder.() -> Unit): UserSettings =
+        withContext(ioContext) {
+            dataStore.updateData { current -> current.toBuilder().apply(transform).build() }
+        }
+}
+
+/** Minimal anchor retained only while a timer is active, for direct-boot recovery. */
+public data class ActiveTimer(
+    val sessionId: String,
+    val wallClockEpochMillis: Long,
+    val uptimeMillis: Long,
+    val bootId: String,
+)
+
+/** A device-protected, asynchronous store for the active timer anchor. */
+public class ActiveTimerStore internal constructor(
+    private val dataStore: DataStore<ActiveTimerAnchor>,
+    private val ioContext: CoroutineContext = Dispatchers.IO,
+) {
+    public val activeTimer: Flow<ActiveTimer?> = dataStore.data.map(ActiveTimerAnchor::toActiveTimer)
+
+    /** Replaces the current timer anchor atomically. */
+    public suspend fun set(timer: ActiveTimer): Unit =
+        withContext(ioContext) {
+            require(timer.sessionId.isNotBlank()) { "sessionId must not be blank" }
+            require(timer.uptimeMillis >= 0) { "uptimeMillis must not be negative" }
+            require(timer.bootId.isNotBlank()) { "bootId must not be blank" }
+            dataStore.updateData {
+                ActiveTimerAnchor
+                    .newBuilder()
+                    .setSessionId(timer.sessionId)
+                    .setWallClockEpochMs(timer.wallClockEpochMillis)
+                    .setUptimeMs(timer.uptimeMillis)
+                    .setBootId(timer.bootId)
+                    .build()
+            }
+        }
+
+    /** Clears the anchor once the timer is paused or stopped. */
+    public suspend fun clear(): Unit =
+        withContext(ioContext) {
+            dataStore.updateData { ActiveTimerAnchor.getDefaultInstance() }
+        }
+}
+
+/** Returns the process-singleton settings store for this application context. */
+public fun Context.userSettingsStore(): UserSettingsStore = UserSettingsStore(userSettingsDataStore)
+
+/** Returns the process-singleton, device-protected active-timer store for this application context. */
+public fun Context.activeTimerStore(): ActiveTimerStore =
+    ActiveTimerStore(DeviceProtectedTimerDataStore.get(applicationContext))
+
+internal object UserSettingsSerializer : Serializer<UserSettings> {
+    override val defaultValue: UserSettings = UserSettings.getDefaultInstance()
+
+    override suspend fun readFrom(input: InputStream): UserSettings = UserSettings.parseFrom(input)
+
+    override suspend fun writeTo(
+        t: UserSettings,
+        output: OutputStream,
+    ) {
+        t.writeTo(output)
+    }
+}
+
+internal object ActiveTimerAnchorSerializer : Serializer<ActiveTimerAnchor> {
+    override val defaultValue: ActiveTimerAnchor = ActiveTimerAnchor.getDefaultInstance()
+
+    override suspend fun readFrom(input: InputStream): ActiveTimerAnchor = ActiveTimerAnchor.parseFrom(input)
+
+    override suspend fun writeTo(
+        t: ActiveTimerAnchor,
+        output: OutputStream,
+    ) {
+        t.writeTo(output)
+    }
+}
+
+private object DeviceProtectedTimerDataStore {
+    @Volatile
+    private var instance: DataStore<ActiveTimerAnchor>? = null
+
+    fun get(context: Context): DataStore<ActiveTimerAnchor> =
+        instance ?: synchronized(this) {
+            instance ?: DataStoreFactory
+                .create(
+                    serializer = ActiveTimerAnchorSerializer,
+                    produceFile = {
+                        deviceProtectedTimerFile(context)
+                    },
+                ).also { instance = it }
+        }
+}
+
+internal fun settingsMigrations(context: Context): List<SharedPreferencesMigration<UserSettings>> =
+    listOf(
+        SharedPreferencesMigration(
+            context = context,
+            sharedPreferencesName = LEGACY_SETTINGS_NAME,
+        ) { preferences, current ->
+            current
+                .toBuilder()
+                .apply {
+                    preferences.getString("theme", null)?.let(::legacyTheme)?.let(::setTheme)
+                    preferences
+                        .getInt("default_focus_minutes", defaultFocusMinutes)
+                        .takeIf { it > 0 }
+                        ?.let(::setDefaultFocusMinutes)
+                    preferences
+                        .getInt("default_break_minutes", defaultBreakMinutes)
+                        .takeIf { it > 0 }
+                        ?.let(::setDefaultBreakMinutes)
+                    if (preferences.contains("reminders_enabled")) {
+                        setRemindersEnabled(preferences.getBoolean("reminders_enabled", remindersEnabled))
+                    }
+                    preferences
+                        .getInt("reminder_hour", reminderHour)
+                        .takeIf { it in 0..23 }
+                        ?.let(::setReminderHour)
+                    preferences
+                        .getInt("reminder_minute", reminderMinute)
+                        .takeIf { it in 0..59 }
+                        ?.let(::setReminderMinute)
+                    preferences
+                        .getLong("storage_quota_bytes", storageQuotaBytes)
+                        .takeIf { it > 0 }
+                        ?.let(::setStorageQuotaBytes)
+                    preferences.getString("sync_mode", null)?.let(::legacySyncMode)?.let(::setSyncMode)
+                }.build()
+        },
+    )
+
+internal fun deviceProtectedTimerFile(context: Context) =
+    context.createDeviceProtectedStorageContext().dataStoreFile(TIMER_FILE_NAME)
+
+private fun legacyTheme(value: String): Theme? =
+    when (value.lowercase()) {
+        "system" -> Theme.THEME_SYSTEM
+        "light" -> Theme.THEME_LIGHT
+        "dark" -> Theme.THEME_DARK
+        else -> null
+    }
+
+private fun legacySyncMode(value: String): SyncMode? =
+    when (value.lowercase()) {
+        "wifi_only" -> SyncMode.SYNC_MODE_WIFI_ONLY
+        "any_network" -> SyncMode.SYNC_MODE_ANY_NETWORK
+        "manual" -> SyncMode.SYNC_MODE_MANUAL
+        else -> null
+    }
+
+private fun ActiveTimerAnchor.toActiveTimer(): ActiveTimer? =
+    if (sessionId.isBlank() || bootId.isBlank() || uptimeMs < 0) {
+        null
+    } else {
+        ActiveTimer(
+            sessionId = sessionId,
+            wallClockEpochMillis = wallClockEpochMs,
+            uptimeMillis = uptimeMs,
+            bootId = bootId,
+        )
+    }

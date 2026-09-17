@@ -1,0 +1,239 @@
+package dev.studyflow.core.database
+
+import androidx.room.withTransaction
+import dev.studyflow.core.database.entity.FolderEntity
+import dev.studyflow.core.database.entity.MaterialEntity
+import dev.studyflow.core.database.entity.MaterialSyncState
+import dev.studyflow.core.database.entity.ReminderEntity
+import dev.studyflow.core.database.entity.SessionEventEntity
+import dev.studyflow.core.database.entity.StudySessionEntity
+import dev.studyflow.core.database.entity.StudyTaskEntity
+import dev.studyflow.core.database.entity.SubjectEntity
+import dev.studyflow.core.model.BootId
+import dev.studyflow.core.model.ContentHash
+import dev.studyflow.core.model.RecurrenceFrequency
+import dev.studyflow.core.model.ReminderPrecision
+import dev.studyflow.core.model.SessionEventType
+import kotlinx.datetime.DayOfWeek
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.toLocalDateTime
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
+
+/** Counts are intentional profile parameters rather than business-logic constants. */
+@Suppress("MagicNumber")
+public enum class SyntheticDataProfile(
+    internal val size: SyntheticDataSize,
+) {
+    DEVELOPMENT(SyntheticDataSize(6, 12, 120, 80, 40, 8)),
+    PERFORMANCE(SyntheticDataSize(40, 200, 10_000, 5_000, 2_000, 20)),
+}
+
+public data class SyntheticDataSize(
+    val subjectCount: Int,
+    val folderCount: Int,
+    val materialCount: Int,
+    val taskCount: Int,
+    val sessionCount: Int,
+    val eventsPerSession: Int,
+) {
+    init {
+        require(subjectCount > 0)
+        require(folderCount >= 0)
+        require(materialCount >= 0)
+        require(taskCount >= 0)
+        require(sessionCount >= 0)
+        require(eventsPerSession >= 1)
+    }
+}
+
+public data class SyntheticDataSet(
+    val subjects: List<SubjectEntity>,
+    val folders: List<FolderEntity>,
+    val materials: List<MaterialEntity>,
+    val tasks: List<StudyTaskEntity>,
+    val reminders: List<ReminderEntity>,
+    val sessions: List<StudySessionEntity>,
+    val sessionEvents: List<SessionEventEntity>,
+)
+
+/** Deterministic fixtures large enough to exercise realistic query cardinalities. */
+@Suppress("MagicNumber")
+public object SyntheticDataFactory {
+    public fun create(profile: SyntheticDataProfile): SyntheticDataSet = create(profile.size)
+
+    public fun create(size: SyntheticDataSize): SyntheticDataSet {
+        val subjects = createSubjects(size.subjectCount)
+        val folders = createFolders(size.folderCount)
+        val tasks = createTasks(size.taskCount, subjects)
+        val sessions = createSessions(size.sessionCount, subjects)
+        return SyntheticDataSet(
+            subjects = subjects,
+            folders = folders,
+            materials = createMaterials(size.materialCount, folders),
+            tasks = tasks,
+            reminders = createReminders(tasks),
+            sessions = sessions,
+            sessionEvents = createSessionEvents(sessions, size.eventsPerSession),
+        )
+    }
+
+    private fun createSubjects(count: Int): List<SubjectEntity> =
+        List(count) { index ->
+            SubjectEntity(
+                id = "subject-$index",
+                name = "Subject ${index.toString().padStart(3, '0')}",
+                colorArgb = 0xff000000.toInt() or (index * 2_654_435),
+                archived = index % 11 == 0,
+            )
+        }
+
+    private fun createFolders(count: Int): List<FolderEntity> =
+        List(count) { index ->
+            FolderEntity(
+                id = "folder-$index",
+                parentId = if (index < ROOT_FOLDER_COUNT) null else "folder-${index % ROOT_FOLDER_COUNT}",
+                name = "Folder ${index.toString().padStart(4, '0')}",
+                createdAt = BASE_INSTANT + index.minutes,
+            )
+        }
+
+    private fun createMaterials(
+        count: Int,
+        folders: List<FolderEntity>,
+    ): List<MaterialEntity> =
+        List(count) { index ->
+            val syncState = MaterialSyncState.entries[index % MaterialSyncState.entries.size]
+            MaterialEntity(
+                id = "material-$index",
+                folderId = folders.getOrNull(index % folders.size.coerceAtLeast(1))?.id,
+                displayName = "Lecture ${index.toString().padStart(6, '0')}.pdf",
+                mimeType = "application/pdf",
+                sizeBytes = 1_024L + index,
+                contentHash = ContentHash(index.toString(16).padStart(HASH_LENGTH, '0')),
+                createdAt = BASE_INSTANT + index.minutes,
+                syncState = syncState,
+                uploadedBytes = if (syncState == MaterialSyncState.UPLOADING) 512L else null,
+                uploadTotalBytes = if (syncState == MaterialSyncState.UPLOADING) 1_024L + index else null,
+                failureReason = if (syncState == MaterialSyncState.FAILED) "synthetic transient failure" else null,
+                failureRetryable = if (syncState == MaterialSyncState.FAILED) true else null,
+                localUri = "content://studyflow.synthetic/material-$index",
+                pinnedForOffline = index % 10 == 0,
+                encrypted = index % 7 == 0,
+            )
+        }
+
+    private fun createTasks(
+        count: Int,
+        subjects: List<SubjectEntity>,
+    ): List<StudyTaskEntity> =
+        List(count) { index ->
+            StudyTaskEntity(
+                id = "task-$index",
+                title = "Task ${index.toString().padStart(5, '0')}",
+                notes = if (index % 3 == 0) "Synthetic task notes" else null,
+                subjectId = subjects[index % subjects.size].id,
+                dueAt = (BASE_DUE_INSTANT + (index * 15).minutes).toLocalDateTime(TimeZone.UTC),
+                timeZone = TimeZone.UTC,
+                completedAt = if (index % 5 == 0) BASE_INSTANT else null,
+            )
+        }
+
+    private fun createReminders(tasks: List<StudyTaskEntity>): List<ReminderEntity> =
+        tasks.filterIndexed { index, _ -> index % 2 == 0 }.mapIndexed { index, task ->
+            ReminderEntity(
+                id = "reminder-$index",
+                taskId = task.id,
+                leadTime = 15.minutes,
+                precision = ReminderPrecision.GENTLE,
+                recurrenceFrequency = RecurrenceFrequency.WEEKLY,
+                recurrenceInterval = 1,
+                recurrenceDaysOfWeek = setOf(DayOfWeek.MONDAY, DayOfWeek.THURSDAY),
+                recurrenceDayOfMonth = null,
+                recurrenceEndType = dev.studyflow.core.database.entity.RecurrenceEndType.NEVER,
+                recurrenceEndCount = null,
+                recurrenceEndDate = null,
+            )
+        }
+
+    private fun createSessions(
+        count: Int,
+        subjects: List<SubjectEntity>,
+    ): List<StudySessionEntity> =
+        List(count) { index ->
+            StudySessionEntity(
+                id = "session-$index",
+                subjectId = subjects[index % subjects.size].id,
+                note = if (index % 4 == 0) "Synthetic session note" else null,
+            )
+        }
+
+    private fun createSessionEvents(
+        sessions: List<StudySessionEntity>,
+        eventsPerSession: Int,
+    ): List<SessionEventEntity> =
+        sessions.flatMapIndexed { sessionIndex, session ->
+            List(eventsPerSession) { sequence ->
+                SessionEventEntity(
+                    id = "${session.id}-event-$sequence",
+                    sessionId = session.id,
+                    type = eventType(sequence, eventsPerSession),
+                    uptime = (sessionIndex * eventsPerSession + sequence).minutes,
+                    wallClock = BASE_INSTANT + (sessionIndex * eventsPerSession + sequence).minutes,
+                    bootId = SYNTHETIC_BOOT_ID,
+                    sequence = sequence.toLong(),
+                )
+            }
+        }
+
+    private fun eventType(
+        sequence: Int,
+        eventsPerSession: Int,
+    ): SessionEventType =
+        when {
+            sequence == 0 -> SessionEventType.STARTED
+            sequence == eventsPerSession - 1 -> SessionEventType.STOPPED
+            sequence % 2 == 1 -> SessionEventType.PAUSED
+            else -> SessionEventType.RESUMED
+        }
+
+    private const val ROOT_FOLDER_COUNT: Int = 4
+    private const val HASH_LENGTH: Int = 64
+    private val BASE_INSTANT: Instant = Instant.parse("2026-01-01T00:00:00Z")
+    private val BASE_DUE_INSTANT: Instant = Instant.parse("2026-01-01T09:00:00Z")
+    private val SYNTHETIC_BOOT_ID: BootId = BootId("synthetic-boot")
+}
+
+/** Inserts a dataset once, atomically. Existing user data is never mixed with generated rows. */
+public object SyntheticDataSeeder {
+    public suspend fun seedIfEmpty(
+        database: StudyFlowDatabase,
+        profile: SyntheticDataProfile,
+    ): Boolean = seedIfEmpty(database, SyntheticDataFactory.create(profile))
+
+    public suspend fun seedIfEmpty(
+        database: StudyFlowDatabase,
+        data: SyntheticDataSet,
+    ): Boolean =
+        database.withTransaction {
+            if (!database.isEmpty()) {
+                false
+            } else {
+                database.subjectDao().upsertAll(data.subjects)
+                database.folderDao().upsertAll(data.folders)
+                database.materialDao().upsertAll(data.materials)
+                database.studyTaskDao().upsertTasks(data.tasks)
+                database.studyTaskDao().insertReminders(data.reminders)
+                database.sessionDao().upsertSessions(data.sessions)
+                database.sessionDao().insertEvents(data.sessionEvents)
+                true
+            }
+        }
+
+    private suspend fun StudyFlowDatabase.isEmpty(): Boolean =
+        subjectDao().count() == 0 &&
+            folderDao().count() == 0 &&
+            materialDao().count() == 0 &&
+            studyTaskDao().count() == 0 &&
+            sessionDao().count() == 0
+}
