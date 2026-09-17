@@ -45,12 +45,17 @@ style:
       - 'android.os.SystemClock.elapsedRealtime'
       - 'android.os.SystemClock.elapsedRealtimeNanos'
       - 'android.os.SystemClock.uptimeMillis'
-    excludes: ['**/core/common/**']
+    excludes:
+      - '**/core/common/**'
+      # The one Android-aware ElapsedRealtimeSource implementation (issue #47) — see its KDoc.
+      - '**/core/scheduling/**/AndroidElapsedRealtimeSource.kt'
   ForbiddenImport:
     active: true
     imports:
       - 'android.os.SystemClock'
-    excludes: ['**/core/common/**']
+    excludes:
+      - '**/core/common/**'
+      - '**/core/scheduling/**/AndroidElapsedRealtimeSource.kt'
   MaxLineLength:
     maxLineLength: 120
   ReturnCount:

@@ -45,12 +45,12 @@ class DatabaseQueryPlanTest {
                 explain(
                     """
                     SELECT * FROM materials
-                    WHERE folder_id = 'folder-1'
-                    ORDER BY created_at DESC, id ASC
+                    WHERE deleted = 0 AND folder_id = 'folder-1'
+                    ORDER BY updated_at DESC, id ASC
                     """.trimIndent(),
                 )
 
-            assertTrue(plan.any { it.contains("index_materials_folder_id_created_at") })
+            assertTrue(plan.any { it.contains("index_materials_folder_id_updated_at") })
             assertFalse(plan.any { it.contains("TEMP B-TREE") })
         }
 
@@ -107,6 +107,47 @@ class DatabaseQueryPlanTest {
 
             assertTrue("plan was $plan", plan.any { it.contains("index_task_tags_tag") })
             assertFalse("plan was $plan", plan.any { it.contains("SCAN study_tasks") })
+        }
+
+    @Test
+    fun `material tag filter resolves through the tag index rather than scanning materials`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(8, 24, 5_000, 100, 20, 4)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT materials.* FROM materials
+                    JOIN material_tags ON material_tags.material_id = materials.id
+                    WHERE material_tags.tag = 'exam' AND materials.deleted = 0
+                    """.trimIndent(),
+                )
+
+            assertTrue("plan was $plan", plan.any { it.contains("index_material_tags_tag") })
+            assertFalse("plan was $plan", plan.any { it.contains("SCAN materials") })
+        }
+
+    @Test
+    fun `material full text search uses the virtual table index`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(8, 24, 5_000, 100, 20, 4)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT materials.* FROM materials
+                    JOIN material_fts ON material_fts.material_id = materials.id
+                    WHERE material_fts MATCH 'Synthetic'
+                    """.trimIndent(),
+                )
+
+            assertTrue("plan was $plan", plan.any { it.contains("material_fts VIRTUAL TABLE INDEX") })
         }
 
     @Test

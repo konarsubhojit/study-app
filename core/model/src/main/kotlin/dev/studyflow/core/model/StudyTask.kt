@@ -234,14 +234,28 @@ public data class SnoozeState(
  *
  * @property interval every N periods; `2` with [RecurrenceFrequency.WEEKLY] means fortnightly.
  * @property daysOfWeek for [RecurrenceFrequency.WEEKLY]; empty means "same weekday as the start".
- * @property dayOfMonth for [RecurrenceFrequency.MONTHLY]; `null` means "same day as the start".
- *   Values past the end of a short month clamp to that month's last day rather than skipping it.
+ *   For a monthly or yearly rule it names the single weekday [weekOfMonth] counts.
+ * @property dayOfMonth for [RecurrenceFrequency.MONTHLY] and [RecurrenceFrequency.YEARLY]; `null`
+ *   means "same day as the start". Values past the end of a short month clamp to that month's last
+ *   day rather than skipping it.
+ * @property weekOfMonth which occurrence of [daysOfWeek] within the month — `2` with Tuesday is
+ *   "every 2nd Tuesday", [LAST_WEEK_OF_MONTH] is "the last Tuesday". Counting a weekday and naming
+ *   a date are mutually exclusive ways of picking a day, so this and [dayOfMonth] cannot both be
+ *   set.
+ * @property monthOfYear for [RecurrenceFrequency.YEARLY]; `null` means "same month as the start".
+ * @property exceptions occurrence dates the user has removed from the series. Kept on the rule
+ *   because they are part of what the series *is*: without them a re-computed next occurrence would
+ *   resurrect an occurrence the user has already dismissed.
  */
+@Suppress("LongParameterList")
 public data class RecurrenceRule(
     val frequency: RecurrenceFrequency,
     val interval: Int = 1,
     val daysOfWeek: Set<DayOfWeek> = emptySet(),
     val dayOfMonth: Int? = null,
+    val weekOfMonth: Int? = null,
+    val monthOfYear: Int? = null,
+    val exceptions: Set<LocalDate> = emptySet(),
     val end: RecurrenceEnd = RecurrenceEnd.Never,
 ) {
     init {
@@ -249,21 +263,44 @@ public data class RecurrenceRule(
         require(dayOfMonth == null || dayOfMonth in 1..MAX_DAY_OF_MONTH) {
             "RecurrenceRule.dayOfMonth must be in 1..$MAX_DAY_OF_MONTH, was $dayOfMonth"
         }
-        require(frequency == RecurrenceFrequency.WEEKLY || daysOfWeek.isEmpty()) {
-            "daysOfWeek only applies to a WEEKLY recurrence"
+        require(weekOfMonth == null || weekOfMonth == LAST_WEEK_OF_MONTH || weekOfMonth in 1..WEEKS_PER_MONTH) {
+            "RecurrenceRule.weekOfMonth must be in 1..$WEEKS_PER_MONTH or $LAST_WEEK_OF_MONTH, was $weekOfMonth"
         }
-        require(frequency == RecurrenceFrequency.MONTHLY || dayOfMonth == null) {
-            "dayOfMonth only applies to a MONTHLY recurrence"
+        require(monthOfYear == null || monthOfYear in 1..MONTHS_PER_YEAR) {
+            "RecurrenceRule.monthOfYear must be in 1..$MONTHS_PER_YEAR, was $monthOfYear"
+        }
+        require(frequency == RecurrenceFrequency.WEEKLY || daysOfWeek.isEmpty() || weekOfMonth != null) {
+            "daysOfWeek applies to a WEEKLY recurrence, or to a MONTHLY/YEARLY one with a weekOfMonth"
+        }
+        require(frequency != RecurrenceFrequency.DAILY || (dayOfMonth == null && weekOfMonth == null)) {
+            "a DAILY recurrence cannot pick a day of the month"
+        }
+        require(frequency == RecurrenceFrequency.YEARLY || monthOfYear == null) {
+            "monthOfYear only applies to a YEARLY recurrence"
+        }
+        require(frequency != RecurrenceFrequency.WEEKLY || (dayOfMonth == null && weekOfMonth == null)) {
+            "a WEEKLY recurrence repeats by weekday, not by day of the month"
+        }
+        require(weekOfMonth == null || daysOfWeek.size == 1) {
+            "weekOfMonth counts exactly one weekday, but daysOfWeek held ${daysOfWeek.size}"
+        }
+        require(weekOfMonth == null || dayOfMonth == null) {
+            "a rule picks its day either by number or by counted weekday, not both"
         }
     }
 
-    private companion object {
-        const val MAX_DAY_OF_MONTH = 31
+    public companion object {
+        /** [weekOfMonth] value meaning "the last such weekday of the month". */
+        public const val LAST_WEEK_OF_MONTH: Int = -1
+
+        private const val MAX_DAY_OF_MONTH = 31
+        private const val WEEKS_PER_MONTH = 5
+        private const val MONTHS_PER_YEAR = 12
     }
 }
 
 /** The repeat period of a [RecurrenceRule]. */
-public enum class RecurrenceFrequency { DAILY, WEEKLY, MONTHLY }
+public enum class RecurrenceFrequency { DAILY, WEEKLY, MONTHLY, YEARLY }
 
 /** When a [RecurrenceRule] stops producing occurrences. */
 public sealed interface RecurrenceEnd {

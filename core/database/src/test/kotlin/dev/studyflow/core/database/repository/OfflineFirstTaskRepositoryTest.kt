@@ -103,6 +103,16 @@ class OfflineFirstTaskRepositoryTest {
         }
 
     @Test
+    fun `a split series is written as one unit`() =
+        runBlocking {
+            val due = LocalDateTime(2026, 3, 2, 18, 0)
+
+            repository.saveAll(listOf(task("detached", due), task("series", due)))
+
+            assertEquals(listOf("detached", "series"), repository.observeToday().first().map(StudyTask::id))
+        }
+
+    @Test
     fun `reminder state updates without rewriting the task`() =
         runBlocking {
             val reminder = testReminder(id = "r-1", trigger = ReminderTrigger.BeforeDue(10.minutes))

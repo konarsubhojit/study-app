@@ -31,6 +31,7 @@ dependencies {
     implementation(projects.core.designsystem)
     implementation(projects.core.network)
     implementation(projects.core.notifications)
+    implementation(projects.core.scheduling)
     implementation(projects.core.storage)
     implementation(projects.feature.auth)
     implementation(projects.feature.insights)

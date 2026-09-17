@@ -11,16 +11,24 @@ import android.os.Build
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationManagerCompat
+import androidx.hilt.work.HiltWorker
+import androidx.work.CoroutineWorker
 import androidx.work.Data
 import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
-import androidx.work.Worker
 import androidx.work.WorkerParameters
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
+import dagger.hilt.android.EntryPointAccessors
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.common.time.WallClock
 import dev.studyflow.core.domain.reminder.ReminderPlan
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
+import dev.studyflow.core.scheduling.di.SchedulingEntryPoint
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 
@@ -88,12 +96,12 @@ public class AndroidReminderPlatformScheduler(
             alarmManager.setExactAndAllowWhileIdle(
                 AlarmManager.RTC_WAKEUP,
                 plan.triggerAt.toEpochMilliseconds(),
-                operation(plan.reminderId),
+                operation(plan.reminderId, plan.taskId),
             )
             PlatformScheduleOutcome.SCHEDULED
         } catch (exception: SecurityException) {
             onExactAlarmDenied(exception)
-            alarmManager.cancel(operation(plan.reminderId))
+            alarmManager.cancel(operation(plan.reminderId, plan.taskId))
             scheduleInexact(plan)
             PlatformScheduleOutcome.EXACT_ALARM_DENIED_FALLBACK_TO_INEXACT
         }
@@ -104,7 +112,7 @@ public class AndroidReminderPlatformScheduler(
                 plan.triggerAt.toEpochMilliseconds(),
                 showIntent(plan.taskId),
             ),
-            operation(plan.reminderId),
+            operation(plan.reminderId, plan.taskId),
         )
         return PlatformScheduleOutcome.SCHEDULED
     }
@@ -117,11 +125,21 @@ public class AndroidReminderPlatformScheduler(
     private fun delayMillis(plan: ReminderPlan): Long =
         max(0L, plan.triggerAt.toEpochMilliseconds() - wallClock.now().toEpochMilliseconds())
 
-    private fun operation(reminderId: String): PendingIntent =
+    /**
+     * The alarm's own broadcast, matched by [PendingIntentSlot.DELIVERY] plus [reminderUri].
+     *
+     * [taskId] defaults to blank for [cancel], which never delivers this intent — `PendingIntent`
+     * equality (and therefore cancellation) is decided by action, data and component, never by
+     * extras, so a placeholder task id here does not risk cancelling the wrong alarm.
+     */
+    private fun operation(
+        reminderId: String,
+        taskId: String = "",
+    ): PendingIntent =
         PendingIntent.getBroadcast(
             context,
             PendingIntentSlot.DELIVERY.requestCode,
-            reminderIntent(reminderId),
+            reminderIntent(reminderId, taskId),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
@@ -133,11 +151,15 @@ public class AndroidReminderPlatformScheduler(
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
-    private fun reminderIntent(reminderId: String): Intent =
+    private fun reminderIntent(
+        reminderId: String,
+        taskId: String,
+    ): Intent =
         Intent(context, ReminderAlarmReceiver::class.java).apply {
             action = ACTION_DELIVER_REMINDER
             data = reminderUri(reminderId)
             putExtra(EXTRA_REMINDER_ID, reminderId)
+            putExtra(EXTRA_TASK_ID, taskId)
         }
 
     private companion object {
@@ -146,34 +168,64 @@ public class AndroidReminderPlatformScheduler(
 }
 
 /**
- * Placeholder worker for WorkManager-triggered reminders.
+ * WorkManager-triggered reminder delivery (issue #47).
  *
- * Notification rendering is intentionally left to the notification feature; this worker is the
- * stable scheduling hand-off point and carries the reminder metadata that delivery will consume.
+ * `@HiltWorker` rather than a plain `Worker`: [HiltWorkerFactory][androidx.hilt.work.HiltWorkerFactory]
+ * is already wired into `StudyFlowApplication`'s `Configuration.Provider`, so this constructor is
+ * satisfied from the same singleton graph a foreground screen would use — including with the app
+ * process dead, which is exactly how WorkManager restarts this worker.
  */
-public class ReminderDeliveryWorker(
-    context: Context,
-    parameters: WorkerParameters,
-) : Worker(context, parameters) {
-    override fun doWork(): Result {
-        Log.w(TAG, "TODO: deliver WorkManager reminder notification")
-        return Result.success()
+@HiltWorker
+public class ReminderDeliveryWorker
+    @AssistedInject
+    constructor(
+        @Assisted context: Context,
+        @Assisted parameters: WorkerParameters,
+        private val coordinator: ReminderDeliveryCoordinator,
+    ) : CoroutineWorker(context, parameters) {
+        override suspend fun doWork(): Result {
+            val reminderId = inputData.getString(EXTRA_REMINDER_ID)
+            val taskId = inputData.getString(EXTRA_TASK_ID)
+            if (reminderId == null || taskId == null) {
+                Log.w(TAG, "Reminder work is missing its reminder or task id; dropping it")
+                return Result.failure()
+            }
+            coordinator.deliver(reminderId, taskId)
+            return Result.success()
+        }
     }
-}
 
 /**
- * Placeholder receiver for AlarmManager-triggered reminders.
+ * AlarmManager-triggered reminder delivery (issue #47).
  *
- * Notification rendering is intentionally left to the notification feature; this receiver is the
- * stable scheduling hand-off point and receives [EXTRA_REMINDER_ID].
+ * A plain [BroadcastReceiver] cannot be `@AndroidEntryPoint`-injected the way an activity can, so
+ * dependencies are read once, on demand, through [SchedulingEntryPoint] — the pattern Hilt
+ * recommends for components it does not generate a base class for. [goAsync] is what keeps the
+ * process alive for the suspend repository calls [ReminderDeliveryCoordinator] makes: without it,
+ * Android is free to kill the process the instant [onReceive] returns, mid-write.
  */
 public class ReminderAlarmReceiver : BroadcastReceiver() {
     override fun onReceive(
         context: Context,
         intent: Intent,
     ) {
-        val reminderId = intent.getStringExtra(EXTRA_REMINDER_ID) ?: "missing-reminder-id"
-        Log.w(TAG, "TODO: deliver AlarmManager reminder notification for $reminderId")
+        val reminderId = intent.getStringExtra(EXTRA_REMINDER_ID)
+        val taskId = intent.getStringExtra(EXTRA_TASK_ID)
+        if (reminderId == null || taskId == null) {
+            Log.w(TAG, "Reminder broadcast is missing its reminder or task id; dropping it")
+            return
+        }
+
+        val entryPoint =
+            EntryPointAccessors.fromApplication(context.applicationContext, SchedulingEntryPoint::class.java)
+        val pendingResult = goAsync()
+        CoroutineScope(SupervisorJob() + entryPoint.dispatcherProvider().default).launch {
+            try {
+                entryPoint.reminderDeliveryCoordinator().deliver(reminderId, taskId)
+            } finally {
+                pendingResult.finish()
+            }
+        }
     }
 }
 
@@ -208,7 +260,8 @@ private fun Intent.withTaskId(taskId: String): Intent =
         putExtra(EXTRA_TASK_ID, taskId)
     }
 
-private fun taskUri(taskId: String): Uri =
+/** The deep link a reminder's content intent and its worker/receiver hand-off both resolve to. */
+internal fun taskUri(taskId: String): Uri =
     Uri
         .Builder()
         .scheme("studyflow")

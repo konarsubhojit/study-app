@@ -57,7 +57,7 @@ class DatabaseConvertersTest {
                     contentHash = ContentHash(index.toString(16).padStart(64, '0')),
                     createdAt = Instant.parse("2026-09-16T23:24:29.317Z"),
                     sync = state,
-                    localUri = "content://notes",
+                    localPath = "content://notes",
                     pinnedForOffline = true,
                     encrypted = true,
                 )
@@ -115,6 +115,28 @@ class DatabaseConvertersTest {
                         ),
                     ),
                 updatedAt = Instant.parse("2026-10-01T12:00:00Z"),
+            )
+
+        assertEquals(task, task.asEntity().asExternalModel())
+    }
+
+    @Test
+    fun `task mapping preserves a counted weekday, a named month and removed occurrences`() {
+        val task =
+            StudyTask(
+                id = "task-1",
+                title = "Society meeting",
+                dueAt = LocalDateTime.parse("2026-06-09T18:00"),
+                timeZone = TimeZone.of("Europe/London"),
+                recurrence =
+                    RecurrenceRule(
+                        frequency = RecurrenceFrequency.YEARLY,
+                        daysOfWeek = setOf(DayOfWeek.TUESDAY),
+                        weekOfMonth = 2,
+                        monthOfYear = 6,
+                        exceptions = setOf(LocalDate.parse("2027-06-08"), LocalDate.parse("2028-06-13")),
+                    ),
+                updatedAt = Instant.parse("2026-06-01T12:00:00Z"),
             )
 
         assertEquals(task, task.asEntity().asExternalModel())

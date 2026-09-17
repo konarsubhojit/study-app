@@ -94,8 +94,33 @@ public object DatabaseMigrations {
             }
         }
 
+    /**
+     * Version 5 widens the recurrence rule to the rest of the grammar the engine understands: a
+     * counted weekday ("every 2nd Tuesday"), a named month for a yearly rule, and the occurrence
+     * dates the user has removed from a series.
+     *
+     * Plain column additions: every one is nullable, and a row without them is the same rule it
+     * always was, so existing tasks need no rewriting.
+     */
+    public val MIGRATION_4_5: Migration =
+        object : Migration(4, 5) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE study_tasks ADD COLUMN recurrence_week_of_month INTEGER")
+                connection.execSQL("ALTER TABLE study_tasks ADD COLUMN recurrence_month_of_year INTEGER")
+                connection.execSQL("ALTER TABLE study_tasks ADD COLUMN recurrence_exceptions TEXT")
+            }
+        }
+
+    /** Version 6 completes the offline material catalog metadata, tag join table and FTS index. */
+    public val MIGRATION_5_6: Migration =
+        object : Migration(5, 6) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.rebuildMaterialTables()
+            }
+        }
+
     public val ALL: Array<Migration>
-        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null
     // columns that SQLite cannot add in place, and Room validates the resulting DDL exactly.
@@ -214,6 +239,114 @@ public object DatabaseMigrations {
         )
     }
 
+    private fun SQLiteConnection.rebuildMaterialTables() {
+        // Dropping the old materials table can clear study_tasks.material_id through its SET NULL
+        // foreign key, so keep the references and restore them after the replacement table exists.
+        execSQL(
+            """
+            CREATE TEMP TABLE material_task_refs AS
+            SELECT id, material_id FROM study_tasks WHERE material_id IS NOT NULL
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `materials_new` (
+            `id` TEXT NOT NULL, `folder_id` TEXT, `subject_id` TEXT, `display_name` TEXT NOT NULL,
+            `mime_type` TEXT NOT NULL, `size_bytes` INTEGER NOT NULL, `content_hash` TEXT NOT NULL,
+            `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `notes` TEXT,
+            `remote_key` TEXT, `sync_state` TEXT NOT NULL, `uploaded_bytes` INTEGER,
+            `upload_total_bytes` INTEGER, `failure_reason` TEXT, `failure_retryable` INTEGER,
+            `local_path` TEXT, `pinned_for_offline` INTEGER NOT NULL, `encrypted` INTEGER NOT NULL,
+            `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`),
+            FOREIGN KEY(`folder_id`) REFERENCES `folders`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL ,
+            FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO materials_new (
+            id, folder_id, subject_id, display_name, mime_type, size_bytes, content_hash, created_at,
+            updated_at, notes, remote_key, sync_state, uploaded_bytes, upload_total_bytes,
+            failure_reason, failure_retryable, local_path, pinned_for_offline, encrypted, deleted)
+            SELECT id, folder_id, NULL, display_name, mime_type, size_bytes, content_hash, created_at,
+            created_at, NULL, NULL, sync_state, uploaded_bytes, upload_total_bytes, failure_reason,
+            failure_retryable, local_uri, pinned_for_offline, encrypted, 0
+            FROM materials
+            """.trimIndent(),
+        )
+        execSQL("DROP TABLE materials")
+        execSQL("ALTER TABLE materials_new RENAME TO materials")
+        execSQL(
+            """
+            UPDATE study_tasks
+            SET material_id = (SELECT material_id FROM material_task_refs WHERE material_task_refs.id = study_tasks.id)
+            WHERE id IN (SELECT id FROM material_task_refs)
+            """.trimIndent(),
+        )
+        execSQL("DROP TABLE material_task_refs")
+        createMaterialCatalogIndices()
+        execSQL("CREATE TABLE IF NOT EXISTS `tags` (`name` TEXT NOT NULL, PRIMARY KEY(`name`))")
+        execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `material_tags` (
+            `material_id` TEXT NOT NULL, `tag` TEXT NOT NULL, PRIMARY KEY(`material_id`, `tag`),
+            FOREIGN KEY(`material_id`) REFERENCES `materials`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE ,
+            FOREIGN KEY(`tag`) REFERENCES `tags`(`name`) ON UPDATE NO ACTION ON DELETE CASCADE )
+            """.trimIndent(),
+        )
+        execSQL("CREATE INDEX IF NOT EXISTS index_material_tags_tag ON material_tags (tag, material_id)")
+        execSQL(
+            """
+            CREATE VIRTUAL TABLE IF NOT EXISTS `material_fts`
+            USING FTS4(`material_id` TEXT NOT NULL, `display_name` TEXT NOT NULL, `notes` TEXT)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO material_fts(material_id, display_name, notes)
+            SELECT id, display_name, notes FROM materials WHERE deleted = 0
+            """.trimIndent(),
+        )
+    }
+
+    private fun SQLiteConnection.createMaterialCatalogIndices() {
+        execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS index_materials_folder_id_updated_at
+            ON materials (deleted ASC, folder_id ASC, updated_at DESC, id ASC)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS index_materials_subject_id_updated_at
+            ON materials (deleted, subject_id, updated_at, id)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS index_materials_mime_type_updated_at
+            ON materials (deleted, mime_type, updated_at, id)
+            """.trimIndent(),
+        )
+        execSQL("CREATE INDEX IF NOT EXISTS index_materials_folder_id ON materials (folder_id)")
+        execSQL("CREATE INDEX IF NOT EXISTS index_materials_subject_id ON materials (subject_id)")
+        execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS index_materials_sync_state_updated_at
+            ON materials (deleted, sync_state, updated_at, id)
+            """.trimIndent(),
+        )
+        execSQL("CREATE INDEX IF NOT EXISTS index_materials_content_hash ON materials (content_hash)")
+        execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS index_materials_updated_at
+            ON materials (deleted ASC, updated_at DESC, id ASC)
+            """.trimIndent(),
+        )
+        execSQL("CREATE INDEX IF NOT EXISTS index_materials_size_bytes ON materials (deleted, size_bytes, id)")
+        execSQL("CREATE INDEX IF NOT EXISTS index_materials_display_name ON materials (deleted, display_name, id)")
+    }
+
     /** Resolves each preserved local due time against its own zone, which only Kotlin can do. */
     private fun SQLiteConnection.backfillDueInstants() {
         val dueInstants = mutableListOf<Pair<String, Long>>()
@@ -241,37 +374,37 @@ public object DatabaseMigrations {
             (SELECT study_tasks.due_at_utc FROM study_tasks WHERE study_tasks.id = reminders.task_id)
             - COALESCE(lead_time, 0)
             """.trimIndent(),
-       )
+        )
     }
 
     private val CREATE_SESSION_PROJECTION =
-       """
-       CREATE TABLE study_sessions_new (
-           `id` TEXT NOT NULL, `subject_id` TEXT, `note` TEXT, `status` TEXT NOT NULL,
-           `started_at` INTEGER NOT NULL, `ended_at` INTEGER, `device_id` TEXT NOT NULL,
-           `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`),
-           FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
-       )
-       """.trimIndent()
+        """
+        CREATE TABLE study_sessions_new (
+            `id` TEXT NOT NULL, `subject_id` TEXT, `note` TEXT, `status` TEXT NOT NULL,
+            `started_at` INTEGER NOT NULL, `ended_at` INTEGER, `device_id` TEXT NOT NULL,
+            `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`),
+            FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+        )
+        """.trimIndent()
 
     private val PROJECT_SESSIONS_FROM_EVENTS =
-       """
-       INSERT INTO study_sessions_new (
-           id, subject_id, note, status, started_at, ended_at, device_id, updated_at, deleted
-       )
-       SELECT s.id, s.subject_id, s.note,
-           CASE WHEN EXISTS (
-               SELECT 1 FROM session_events e WHERE e.session_id = s.id AND e.type = 'STOPPED'
-           ) THEN 'STOPPED'
-           WHEN (SELECT e.type FROM session_events e WHERE e.session_id = s.id
-               ORDER BY e.sequence DESC LIMIT 1) IN ('STARTED', 'RESUMED') THEN 'RUNNING'
-           ELSE 'PAUSED' END,
-           COALESCE((SELECT MIN(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0),
-           (SELECT MAX(e.wall_clock) FROM session_events e
-               WHERE e.session_id = s.id AND e.type = 'STOPPED'),
-           '$MIGRATED_DEVICE_ID',
-           COALESCE((SELECT MAX(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0), 0
-       FROM study_sessions s
-       WHERE EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = s.id)
-       """.trimIndent()
+        """
+        INSERT INTO study_sessions_new (
+            id, subject_id, note, status, started_at, ended_at, device_id, updated_at, deleted
+        )
+        SELECT s.id, s.subject_id, s.note,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM session_events e WHERE e.session_id = s.id AND e.type = 'STOPPED'
+            ) THEN 'STOPPED'
+            WHEN (SELECT e.type FROM session_events e WHERE e.session_id = s.id
+                ORDER BY e.sequence DESC LIMIT 1) IN ('STARTED', 'RESUMED') THEN 'RUNNING'
+            ELSE 'PAUSED' END,
+            COALESCE((SELECT MIN(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0),
+            (SELECT MAX(e.wall_clock) FROM session_events e
+                WHERE e.session_id = s.id AND e.type = 'STOPPED'),
+            '$MIGRATED_DEVICE_ID',
+            COALESCE((SELECT MAX(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0), 0
+        FROM study_sessions s
+        WHERE EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = s.id)
+        """.trimIndent()
 }

@@ -90,6 +90,12 @@ public data class StudyTaskEntity(
     val recurrenceDaysOfWeek: Set<DayOfWeek>?,
     @ColumnInfo(name = "recurrence_day_of_month")
     val recurrenceDayOfMonth: Int?,
+    @ColumnInfo(name = "recurrence_week_of_month")
+    val recurrenceWeekOfMonth: Int?,
+    @ColumnInfo(name = "recurrence_month_of_year")
+    val recurrenceMonthOfYear: Int?,
+    @ColumnInfo(name = "recurrence_exceptions")
+    val recurrenceExceptions: Set<LocalDate>?,
     @ColumnInfo(name = "recurrence_end_type")
     val recurrenceEndType: RecurrenceEndType?,
     @ColumnInfo(name = "recurrence_end_count")

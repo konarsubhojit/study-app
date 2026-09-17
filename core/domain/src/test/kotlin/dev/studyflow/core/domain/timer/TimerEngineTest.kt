@@ -35,6 +35,18 @@ class TimerEngineTest {
         }
 
         @Test
+        fun `elapsed is exact after ten minutes without refresh ticks`() {
+            val device = FakeDevice()
+            val log = Log(device)
+
+            log.start()
+            device.advance(10.minutes)
+
+            assertEquals(1, log.events.size, "no tick events are required to keep elapsed time current")
+            assertEquals(10.minutes, TimerEngine.elapsedAt(log.state(), device.anchor()).counted)
+        }
+
+        @Test
         fun `paused time is not counted`() {
             val device = FakeDevice()
             val log = Log(device)
@@ -47,6 +59,22 @@ class TimerEngineTest {
             device.advance(5.minutes)
 
             assertEquals(15.minutes, log.elapsed().counted)
+        }
+
+        @Test
+        fun `pause resume cycles stay exact through doze and backwards wall clock jumps`() {
+            val device = FakeDevice()
+            val log = Log(device)
+
+            log.start()
+            device.advance(4.minutes)
+            log.pause()
+            device.advance(10.minutes)
+            device.adjustWallClock(-2.hours)
+            log.resume()
+            device.advance(6.minutes)
+
+            assertEquals(10.minutes, log.elapsed().counted)
         }
 
         @Test

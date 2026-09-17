@@ -13,6 +13,31 @@ public data class NotificationAction(
     val intent: PendingIntent,
 )
 
+/**
+ * The optional, rarely-set parts of [StudyFlowNotificationFactory.alert], grouped so the function
+ * itself does not grow one parameter per feature (issue #47 added color/publicVersion/group at
+ * once, on top of the pre-existing [whenEpochMillis]).
+ *
+ * @param whenEpochMillis shown as the notification's timestamp when set; read from a clock at the
+ *   call site, never here — see the class-level note on why.
+ * @param color tints the small icon and, on some launchers, the notification header — the
+ *   subject's colour when the task has one. Left `null` falls back to the system default.
+ * @param publicVersion shown instead of the full content on a locked screen when the *system*
+ *   is configured to hide sensitive notifications there. Every notification this factory builds
+ *   already carries [NotificationCompat.VISIBILITY_PRIVATE], which only hides content when that
+ *   system setting is on; supplying this is what gives a lock screen something to show ("You have
+ *   a reminder") rather than nothing at all.
+ * @param group ties this notification to others posted with the same key so the system can
+ *   collapse them under one summary instead of one heads-up alert each — see
+ *   [StudyFlowNotificationFactory.groupedReminderSummary].
+ */
+public data class AlertPresentation(
+    val whenEpochMillis: Long? = null,
+    val color: Int? = null,
+    val publicVersion: Notification? = null,
+    val group: String? = null,
+)
+
 /** How much of a background job is done, in the three shapes a progress bar can take. */
 public sealed interface NotificationProgress {
     /** Work has started but its size is not known yet — a hashing pass, a handshake. */
@@ -116,6 +141,9 @@ public class StudyFlowNotificationFactory(
      * [fullScreenIntent] is only accepted on [StudyFlowNotificationChannel.ALARMS]. Android 14
      * restricts full-screen intents to alarm and calling apps, and a notification that asks for the
      * whole screen on any other channel is both a policy risk and a rude surprise.
+     *
+     * @param presentation the optional colour/lock-screen/grouping treatment — see
+     *   [AlertPresentation] for what each part does and why they are bundled together.
      */
     public fun alert(
         channel: StudyFlowNotificationChannel,
@@ -124,7 +152,7 @@ public class StudyFlowNotificationFactory(
         contentIntent: PendingIntent?,
         actions: List<NotificationAction> = emptyList(),
         fullScreenIntent: PendingIntent? = null,
-        whenEpochMillis: Long? = null,
+        presentation: AlertPresentation = AlertPresentation(),
     ): Notification {
         require(fullScreenIntent == null || channel.usesFullScreenIntent) {
             "Full-screen intents are only allowed on ${StudyFlowNotificationChannel.ALARMS.id}"
@@ -135,6 +163,7 @@ public class StudyFlowNotificationFactory(
             .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setContentIntent(contentIntent)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
             .setCategory(
                 if (channel.usesFullScreenIntent) {
                     NotificationCompat.CATEGORY_ALARM
@@ -142,14 +171,57 @@ public class StudyFlowNotificationFactory(
                     NotificationCompat.CATEGORY_REMINDER
                 },
             ).apply {
-                whenEpochMillis?.let {
+                presentation.whenEpochMillis?.let {
                     setWhen(it)
                     setShowWhen(true)
                 }
                 fullScreenIntent?.let { setFullScreenIntent(it, true) }
+                presentation.color?.let {
+                    setColor(it)
+                    setColorized(false)
+                }
+                presentation.publicVersion?.let(::setPublicVersion)
+                presentation.group?.let(::setGroup)
             }.withActions(actions)
             .build()
     }
+
+    /**
+     * The one notification that stands in for several grouped reminders in the shade.
+     *
+     * Posting ten individual reminders with the same [group] is not enough on its own: Android only
+     * collapses a group once a summary exists, so without this ten due tasks still show as ten
+     * heads-up alerts on API levels (or launchers) that do not auto-group. [lines] renders as an
+     * [NotificationCompat.InboxStyle] list of task titles, capped by the style itself at five lines.
+     *
+     * @param publicVersion see [AlertPresentation.publicVersion] — a summary listing task titles
+     *   is exactly the sensitive content a locked screen must not leak on its own.
+     */
+    public fun groupedReminderSummary(
+        title: String,
+        text: String,
+        lines: List<String>,
+        contentIntent: PendingIntent?,
+        group: String,
+        publicVersion: Notification? = null,
+        channel: StudyFlowNotificationChannel = StudyFlowNotificationChannel.TASK_REMINDERS,
+    ): Notification =
+        builder(channel)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(
+                lines
+                    .fold(NotificationCompat.InboxStyle().setBigContentTitle(title)) { style, line ->
+                        style.addLine(line)
+                    },
+            ).setContentIntent(contentIntent)
+            .setGroup(group)
+            .setGroupSummary(true)
+            .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .apply { publicVersion?.let(::setPublicVersion) }
+            .build()
 
     private fun builder(channel: StudyFlowNotificationChannel): NotificationCompat.Builder =
         NotificationCompat

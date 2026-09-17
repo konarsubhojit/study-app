@@ -15,6 +15,7 @@ import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subject
 import dev.studyflow.core.model.Subtask
 import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.model.Tag
 import dev.studyflow.core.model.TimeAnchor
 import kotlinx.datetime.TimeZone
 import kotlin.time.Duration
@@ -34,19 +35,24 @@ public fun Material.asEntity(): MaterialEntity {
     return MaterialEntity(
         id = id,
         folderId = folderId,
+        subjectId = subjectId,
         displayName = displayName,
         mimeType = mimeType,
         sizeBytes = sizeBytes,
         contentHash = contentHash,
         createdAt = createdAt,
+        updatedAt = updatedAt,
+        notes = notes,
+        remoteKey = remoteKey,
         syncState = sync.asEntity(),
         uploadedBytes = upload?.uploadedBytes,
         uploadTotalBytes = upload?.totalBytes,
         failureReason = failure?.reason,
         failureRetryable = failure?.retryable,
-        localUri = localUri,
+        localPath = localPath,
         pinnedForOffline = pinnedForOffline,
         encrypted = encrypted,
+        deleted = deleted,
     )
 }
 
@@ -54,16 +60,25 @@ public fun MaterialEntity.asExternalModel(): Material =
     Material(
         id = id,
         folderId = folderId,
+        subjectId = subjectId,
         displayName = displayName,
         mimeType = mimeType,
         sizeBytes = sizeBytes,
         contentHash = contentHash,
         createdAt = createdAt,
+        updatedAt = updatedAt,
+        notes = notes,
+        remoteKey = remoteKey,
         sync = asExternalSyncState(),
-        localUri = localUri,
+        localPath = localPath,
         pinnedForOffline = pinnedForOffline,
         encrypted = encrypted,
+        deleted = deleted,
     )
+
+public fun Tag.asEntity(): TagEntity = TagEntity(name)
+
+public fun TagEntity.asExternalModel(): Tag = Tag(name)
 
 private fun SyncState.asEntity(): MaterialSyncState =
     when (this) {
@@ -123,6 +138,9 @@ public fun StudyTask.asEntity(): TaskWithReminders =
                 recurrenceInterval = recurrence?.interval,
                 recurrenceDaysOfWeek = recurrence?.daysOfWeek,
                 recurrenceDayOfMonth = recurrence?.dayOfMonth,
+                recurrenceWeekOfMonth = recurrence?.weekOfMonth,
+                recurrenceMonthOfYear = recurrence?.monthOfYear,
+                recurrenceExceptions = recurrence?.exceptions,
                 recurrenceEndType = recurrence?.end?.asEntity(),
                 recurrenceEndCount = (recurrence?.end as? RecurrenceEnd.AfterOccurrences)?.count,
                 recurrenceEndDate = (recurrence?.end as? RecurrenceEnd.OnDate)?.date,
@@ -223,6 +241,9 @@ private fun StudyTaskEntity.asExternalRecurrence(): RecurrenceRule? =
             interval = requireNotNull(recurrenceInterval) { "recurring task $id has no interval" },
             daysOfWeek = recurrenceDaysOfWeek.orEmpty(),
             dayOfMonth = recurrenceDayOfMonth,
+            weekOfMonth = recurrenceWeekOfMonth,
+            monthOfYear = recurrenceMonthOfYear,
+            exceptions = recurrenceExceptions.orEmpty(),
             end = asExternalRecurrenceEnd(),
         )
     }

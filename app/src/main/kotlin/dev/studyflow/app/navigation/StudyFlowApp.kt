@@ -30,8 +30,10 @@ import dev.studyflow.core.designsystem.layout.StudyFlowScaffold
 import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
 import dev.studyflow.core.designsystem.theme.spacing
-import dev.studyflow.feature.settings.NotificationSettingsRoute
 import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
+import dev.studyflow.feature.settings.NotificationSettingsRoute
+import dev.studyflow.feature.tasks.TaskDetailRoute
+import dev.studyflow.feature.tasks.TasksListRoute
 
 @Composable
 internal fun StudyFlowApp(
@@ -96,7 +98,20 @@ private fun AppNavDisplay(
                         MaterialsScreenRoute()
                     }
                     entry<TasksRoute> { route ->
-                        DestinationScreen(route.taskId?.let { "Task: $it" } ?: "Tasks")
+                        if (route.taskId == null) {
+                            TasksListRoute(
+                                onTaskSelected = { taskId ->
+                                    if (backStack.lastOrNull() != TasksRoute(taskId)) {
+                                        backStack.add(TasksRoute(taskId))
+                                    }
+                                },
+                            )
+                        } else {
+                            TaskDetailRoute(
+                                taskId = route.taskId,
+                                onBack = { backStack.removeLastOrNull() },
+                            )
+                        }
                     }
                     entry<SettingsRoute> {
                         NotificationSettingsRoute()
