@@ -1,13 +1,17 @@
 package dev.studyflow.core.database.entity
 
+import dev.studyflow.core.domain.session.SessionCorrection
 import dev.studyflow.core.domain.session.SessionDescriptor
 import dev.studyflow.core.domain.session.SessionReducer
+import dev.studyflow.core.domain.session.SessionSnapshotChange
+import dev.studyflow.core.domain.session.StudySessionSnapshot
 import dev.studyflow.core.model.Folder
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.RecurrenceEnd
 import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.ReminderTrigger
+import dev.studyflow.core.model.SessionElapsed
 import dev.studyflow.core.model.SessionEvent
 import dev.studyflow.core.model.SnoozeState
 import dev.studyflow.core.model.StudySession
@@ -19,6 +23,7 @@ import dev.studyflow.core.model.Tag
 import dev.studyflow.core.model.TimeAnchor
 import kotlinx.datetime.TimeZone
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 public fun Subject.asEntity(): SubjectEntity = SubjectEntity(id, name, colorArgb, archived)
@@ -316,6 +321,9 @@ public fun StudySession.asEntity(): StudySessionEntity =
         deviceId = deviceId,
         updatedAt = updatedAt,
         deleted = deleted,
+        manualOverride = manualOverride,
+        overrideCountedMillis = if (manualOverride) elapsed.counted.inWholeMilliseconds else null,
+        overrideUnverifiedMillis = if (manualOverride) elapsed.unverified.inWholeMilliseconds else null,
     )
 
 /**
@@ -328,9 +336,40 @@ public fun StudySession.asEntity(): StudySessionEntity =
 public fun StudySessionEntity.asDescriptor(): SessionDescriptor =
     SessionDescriptor(id = id, deviceId = deviceId, subjectId = subjectId, note = note, deleted = deleted)
 
-/** Re-derives the projection by replaying the session's events. */
+/**
+ * Re-derives the projection, from a correction's override fields when present, otherwise by
+ * replaying the session's events.
+ *
+ * This branch is the one place [StudySession.manualOverride] is read back: everywhere else in the
+ * app it is just another field on the projection, exactly like [StudySession.deleted].
+ */
 public fun SessionWithEvents.asExternalModel(): StudySession? =
-    SessionReducer.reduce(session.asDescriptor(), events.map(SessionEventEntity::asExternalModel))
+    if (session.manualOverride) {
+        session.asOverriddenExternalModel()
+    } else {
+        SessionReducer.reduce(session.asDescriptor(), events.map(SessionEventEntity::asExternalModel))
+    }
+
+private fun StudySessionEntity.asOverriddenExternalModel(): StudySession =
+    StudySession(
+        id = id,
+        subjectId = subjectId,
+        note = note,
+        startedAt = startedAt,
+        endedAt = endedAt,
+        status = status,
+        elapsed =
+            SessionElapsed(
+                counted =
+                    requireNotNull(overrideCountedMillis) { "manually overridden session $id has no counted time" }
+                        .milliseconds,
+                unverified = (overrideUnverifiedMillis ?: 0L).milliseconds,
+            ),
+        deviceId = deviceId,
+        updatedAt = updatedAt,
+        deleted = deleted,
+        manualOverride = true,
+    )
 
 public fun SessionEvent.asEntity(): SessionEventEntity =
     SessionEventEntity(id, sessionId, type, anchor.uptime, anchor.wallClock, anchor.bootId, sequence)
@@ -343,3 +382,110 @@ public fun SessionEventEntity.asExternalModel(): SessionEvent =
         anchor = TimeAnchor(uptime, wallClock, bootId),
         sequence = sequence,
     )
+
+/**
+ * Flattens one correction into its per-session audit rows, sharing [correctionGroupId] so they can
+ * be regrouped by [List of SessionCorrectionEntity.asExternalModel].
+ */
+public fun SessionCorrection.asEntities(idFor: (String) -> String): List<SessionCorrectionEntity> =
+    changes.map { change ->
+        SessionCorrectionEntity(
+            id = idFor(change.sessionId),
+            correctionGroupId = id,
+            sessionId = change.sessionId,
+            type = type,
+            at = at,
+            restoresCorrectionGroupId = restoresCorrectionId,
+            beforeSubjectId = change.before?.subjectId,
+            beforeNote = change.before?.note,
+            beforeStartedAt = change.before?.startedAt,
+            beforeEndedAt = change.before?.endedAt,
+            beforeStatus = change.before?.status,
+            beforeCountedMillis =
+                change.before
+                    ?.elapsed
+                    ?.counted
+                    ?.inWholeMilliseconds,
+            beforeUnverifiedMillis =
+                change.before
+                    ?.elapsed
+                    ?.unverified
+                    ?.inWholeMilliseconds,
+            beforeDeleted = change.before?.deleted,
+            beforeManualOverride = change.before?.manualOverride,
+            beforeUpdatedAt = change.before?.updatedAt,
+            afterSubjectId = change.after.subjectId,
+            afterNote = change.after.note,
+            afterStartedAt = change.after.startedAt,
+            afterEndedAt = change.after.endedAt,
+            afterStatus = change.after.status,
+            afterCountedMillis = change.after.elapsed.counted.inWholeMilliseconds,
+            afterUnverifiedMillis = change.after.elapsed.unverified.inWholeMilliseconds,
+            afterDeleted = change.after.deleted,
+            afterManualOverride = change.after.manualOverride,
+            afterUpdatedAt = change.after.updatedAt,
+        )
+    }
+
+/**
+ * Regroups the rows one correction produced back into a [SessionCorrection].
+ *
+ * @throws IllegalArgumentException if the rows do not all share one [SessionCorrectionEntity.correctionGroupId].
+ */
+public fun List<SessionCorrectionEntity>.asExternalModel(): SessionCorrection {
+    require(isNotEmpty()) { "a correction group cannot be built from zero rows" }
+    val groupId = first().correctionGroupId
+    require(all { it.correctionGroupId == groupId }) {
+        "rows belong to ${map { it.correctionGroupId }.distinct()}, expected one group"
+    }
+    return SessionCorrection(
+        id = groupId,
+        type = first().type,
+        at = first().at,
+        changes = map(SessionCorrectionEntity::asExternalModel),
+        restoresCorrectionId = first().restoresCorrectionGroupId,
+    )
+}
+
+private fun SessionCorrectionEntity.asExternalModel(): SessionSnapshotChange =
+    SessionSnapshotChange(
+        sessionId = sessionId,
+        before = beforeSnapshotOrNull(),
+        after =
+            StudySessionSnapshot(
+                subjectId = afterSubjectId,
+                note = afterNote,
+                startedAt = afterStartedAt,
+                endedAt = afterEndedAt,
+                status = afterStatus,
+                elapsed =
+                    SessionElapsed(
+                        counted = afterCountedMillis.milliseconds,
+                        unverified = afterUnverifiedMillis.milliseconds,
+                    ),
+                deleted = afterDeleted,
+                manualOverride = afterManualOverride,
+                updatedAt = afterUpdatedAt,
+            ),
+    )
+
+private fun SessionCorrectionEntity.beforeSnapshotOrNull(): StudySessionSnapshot? {
+    val startedAt = beforeStartedAt ?: return null
+    return StudySessionSnapshot(
+        subjectId = beforeSubjectId,
+        note = beforeNote,
+        startedAt = startedAt,
+        endedAt = beforeEndedAt,
+        status = requireNotNull(beforeStatus) { "correction $id has a before-start but no before-status" },
+        elapsed =
+            SessionElapsed(
+                counted =
+                    requireNotNull(beforeCountedMillis) { "correction $id has no before-counted time" }.milliseconds,
+                unverified = (beforeUnverifiedMillis ?: 0L).milliseconds,
+            ),
+        deleted = requireNotNull(beforeDeleted) { "correction $id has a before-start but no before-deleted flag" },
+        manualOverride =
+            requireNotNull(beforeManualOverride) { "correction $id has a before-start but no override flag" },
+        updatedAt = requireNotNull(beforeUpdatedAt) { "correction $id has a before-start but no before-updated-at" },
+    )
+}

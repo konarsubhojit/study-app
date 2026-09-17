@@ -8,6 +8,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.common.time.DeviceIdProvider
 import dev.studyflow.core.common.time.SystemTimeZoneProvider
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.common.time.TimeZoneProvider
@@ -19,8 +20,10 @@ import dev.studyflow.core.database.dao.StudyTaskDao
 import dev.studyflow.core.database.dao.SubjectDao
 import dev.studyflow.core.database.repository.OfflineFirstSubjectRepository
 import dev.studyflow.core.database.repository.OfflineFirstTaskRepository
+import dev.studyflow.core.database.session.OfflineFirstSessionHistoryRepository
 import dev.studyflow.core.database.session.OfflineFirstSessionRepository
 import dev.studyflow.core.domain.session.SessionCommandObserver
+import dev.studyflow.core.domain.session.SessionHistoryRepository
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
@@ -79,6 +82,17 @@ public object DatabaseModule {
         @ApplicationContext context: Context,
         observers: Set<@JvmSuppressWildcards SessionCommandObserver>,
     ): SessionRepository = OfflineFirstSessionRepository(dao, deviceId(context), observers)
+
+    @Provides
+    @Singleton
+    public fun sessionHistoryRepository(dao: SessionDao): SessionHistoryRepository =
+        OfflineFirstSessionHistoryRepository(dao)
+
+    @Provides
+    @Singleton
+    public fun deviceIdProvider(
+        @ApplicationContext context: Context,
+    ): DeviceIdProvider = DeviceIdProvider { deviceId(context) }
 
     /** A per-install, per-device identifier; stable without needing a persisted UUID of our own. */
     private fun deviceId(context: Context): String =

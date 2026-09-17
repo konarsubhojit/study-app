@@ -47,6 +47,18 @@ public fun interface BootIdProvider {
 }
 
 /**
+ * Supplies a stable, per-install identifier for this device.
+ *
+ * Sessions are scoped to a device (see `SessionRepository`'s "one active session per device"
+ * invariant) and manual history entries need the same scoping id at creation time; this interface
+ * lets both the timer's DI wiring and a feature module's manual-entry flow share one source rather
+ * than each reading `Settings.Secure.ANDROID_ID` independently.
+ */
+public fun interface DeviceIdProvider {
+    public fun current(): String
+}
+
+/**
  * Supplies the device's current time zone.
  *
  * Injected rather than read statically so that DST and travel scenarios can be exercised in plain
