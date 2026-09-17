@@ -39,6 +39,7 @@ graph TD
     app --> feature_tasks
     app --> feature_timer
     core_common --> core_model
+    core_database --> core_domain
     core_database --> core_model
     core_datastore --> core_model
     core_domain --> core_common
@@ -76,6 +77,7 @@ graph TD
 | Module | Test dependency |
 |---|---|
 | `:app` | `:core:testing` |
+| `:core:database` | `:core:testing` |
 | `:core:domain` | `:core:testing` |
 | `:core:scheduling` | `:core:testing` |
 | `:feature:auth` | `:core:testing` |
