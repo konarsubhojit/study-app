@@ -110,6 +110,47 @@ class DatabaseQueryPlanTest {
         }
 
     @Test
+    fun `material tag filter resolves through the tag index rather than scanning materials`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(8, 24, 5_000, 100, 20, 4)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT materials.* FROM materials
+                    JOIN material_tags ON material_tags.material_id = materials.id
+                    WHERE material_tags.tag = 'exam' AND materials.deleted = 0
+                    """.trimIndent(),
+                )
+
+            assertTrue("plan was $plan", plan.any { it.contains("index_material_tags_tag") })
+            assertFalse("plan was $plan", plan.any { it.contains("SCAN materials") })
+        }
+
+    @Test
+    fun `material full text search uses the virtual table index`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(8, 24, 5_000, 100, 20, 4)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT materials.* FROM materials
+                    JOIN material_fts ON material_fts.material_id = materials.id
+                    WHERE material_fts MATCH 'Synthetic'
+                    """.trimIndent(),
+                )
+
+            assertTrue("plan was $plan", plan.any { it.contains("material_fts VIRTUAL TABLE INDEX") })
+        }
+
+    @Test
     fun `outstanding reminder scan uses the trigger index without temporary sort`() =
         runBlocking {
             SyntheticDataSeeder.seedIfEmpty(

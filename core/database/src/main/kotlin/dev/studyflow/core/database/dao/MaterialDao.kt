@@ -24,7 +24,7 @@ public abstract class MaterialDao {
     @Query(
         """
         SELECT * FROM materials
-        WHERE deleted = 0 AND ((:folderId IS NULL AND folder_id IS NULL) OR folder_id = :folderId)
+        WHERE deleted = 0 AND folder_id IS :folderId
         ORDER BY updated_at DESC, id ASC
         """,
     )
@@ -38,7 +38,7 @@ public abstract class MaterialDao {
         """
         SELECT * FROM materials
         WHERE deleted = 0
-            AND ((:folderId IS NULL AND folder_id IS NULL) OR folder_id = :folderId)
+            AND (:folderId IS NULL OR folder_id = :folderId)
             AND (:subjectId IS NULL OR subject_id = :subjectId)
             AND (:mimeTypePrefix IS NULL OR mime_type LIKE :mimeTypePrefix || '%')
             AND (:tag IS NULL OR id IN (SELECT material_id FROM material_tags WHERE tag = :tag))
@@ -66,7 +66,7 @@ public abstract class MaterialDao {
         JOIN material_fts ON material_fts.material_id = materials.id
         WHERE material_fts MATCH :query
             AND materials.deleted = 0
-            AND ((:folderId IS NULL AND materials.folder_id IS NULL) OR materials.folder_id = :folderId)
+            AND (:folderId IS NULL OR materials.folder_id = :folderId)
             AND (:subjectId IS NULL OR materials.subject_id = :subjectId)
             AND (:mimeTypePrefix IS NULL OR materials.mime_type LIKE :mimeTypePrefix || '%')
             AND (:tag IS NULL OR materials.id IN (SELECT material_id FROM material_tags WHERE tag = :tag))
