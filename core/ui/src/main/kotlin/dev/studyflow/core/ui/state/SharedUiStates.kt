@@ -29,11 +29,7 @@ public fun EmptyState(
     modifier: Modifier = Modifier,
 ) {
     StateContainer(modifier) {
-        Text(
-            text = message,
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.semantics { heading() },
-        )
+        HeadingText(text = message)
     }
 }
 
@@ -44,11 +40,7 @@ public fun ErrorState(
     modifier: Modifier = Modifier,
 ) {
     StateContainer(modifier) {
-        Text(
-            text = message.copy(),
-            style = MaterialTheme.typography.bodyLarge,
-            modifier = Modifier.semantics { heading() },
-        )
+        HeadingText(text = message.copy())
         Button(onClick = onRetry) {
             Text(text = "Try again")
         }
@@ -68,6 +60,15 @@ private fun StateContainer(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium, Alignment.CenterVertically),
         content = { content() },
+    )
+}
+
+@Composable
+private fun HeadingText(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodyLarge,
+        modifier = Modifier.semantics { heading() },
     )
 }
 
