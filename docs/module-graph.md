@@ -32,6 +32,7 @@ graph TD
     app --> core_common
     app --> core_designsystem
     app --> core_network
+    app --> core_storage
     app --> feature_auth
     app --> feature_insights
     app --> feature_materials
@@ -44,6 +45,7 @@ graph TD
     core_domain --> core_common
     core_domain --> core_model
     core_scheduling --> core_domain
+    core_storage --> core_domain
     core_testing --> core_common
     core_testing --> core_model
     core_testing --> core_network
@@ -78,6 +80,7 @@ graph TD
 | `:app` | `:core:testing` |
 | `:core:domain` | `:core:testing` |
 | `:core:scheduling` | `:core:testing` |
+| `:core:storage` | `:core:testing` |
 | `:feature:auth` | `:core:testing` |
 | `:feature:insights` | `:core:testing` |
 | `:feature:materials` | `:core:testing` |

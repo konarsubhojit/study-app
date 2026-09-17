@@ -78,6 +78,8 @@ androidx-work-runtime-ktx = { module = "androidx.work:work-runtime-ktx", version
 
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 hilt-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
+# Hilt's annotations and components without the Android runtime, for JVM-only modules.
+hilt-core = { module = "com.google.dagger:hilt-core", version.ref = "hilt" }
 
 room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
