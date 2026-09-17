@@ -27,6 +27,7 @@ import dev.studyflow.core.domain.timer.TimerState
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.TimeAnchor
+import dev.studyflow.core.notifications.ChronometerPresentation
 import dev.studyflow.core.notifications.NotificationAction
 import dev.studyflow.core.notifications.NotificationChannelRegistrar
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
@@ -132,7 +133,7 @@ internal class TimerForegroundService : Service() {
                 startedAtEpochMillis = chronometerWhenEpochMillis(state, now),
                 contentIntent = openIntent(),
                 actions = actionsFor(state),
-                usesChronometer = state is TimerState.Running,
+                chronometer = ChronometerPresentation(usesChronometer = state is TimerState.Running),
             )
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
     }

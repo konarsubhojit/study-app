@@ -52,7 +52,7 @@ class StudyFlowNotificationFactoryTest {
                 text = "5 minutes left",
                 startedAtEpochMillis = STARTED_AT,
                 contentIntent = openTimer,
-                countDown = true,
+                chronometer = ChronometerPresentation(countDown = true),
             )
 
         assertTrue(notification.extras.getBoolean(Notification.EXTRA_CHRONOMETER_COUNT_DOWN))
@@ -66,7 +66,7 @@ class StudyFlowNotificationFactoryTest {
                 text = "Timer paused",
                 startedAtEpochMillis = STARTED_AT,
                 contentIntent = openTimer,
-                usesChronometer = false,
+                chronometer = ChronometerPresentation(usesChronometer = false),
             )
 
         assertFalse(notification.extras.getBoolean(Notification.EXTRA_SHOW_CHRONOMETER))

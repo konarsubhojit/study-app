@@ -9,7 +9,6 @@ import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.database.StudyFlowDatabase
-import dev.studyflow.core.database.StudyFlowDatabaseFactory
 import dev.studyflow.core.database.dao.MaterialDao
 import dev.studyflow.core.database.repository.OfflineFirstMaterialRepository
 import dev.studyflow.core.domain.materials.DurationExtractor
@@ -24,20 +23,12 @@ import javax.inject.Singleton
 /**
  * The materials catalogue and file-import pipeline, assembled once for the whole app (issue #37).
  *
- * The database itself is provided here rather than inside `:core:database`: every other
- * Context-dependent binding in this app (see [NotificationsModule]) is wired at this level too, so
- * swapping an adapter — or, eventually, giving the tasks and sessions repositories their own
- * bindings alongside this one — always means editing the same place.
+ * The database itself is provided by `:core:database`; this module wires the material-specific
+ * repository and import pipeline that belong to the installable app.
  */
 @Module
 @InstallIn(SingletonComponent::class)
 public object MaterialsModule {
-    @Provides
-    @Singleton
-    public fun studyFlowDatabase(
-        @ApplicationContext context: Context,
-    ): StudyFlowDatabase = StudyFlowDatabaseFactory.create(context)
-
     @Provides
     @Singleton
     public fun materialDao(database: StudyFlowDatabase): MaterialDao = database.materialDao()

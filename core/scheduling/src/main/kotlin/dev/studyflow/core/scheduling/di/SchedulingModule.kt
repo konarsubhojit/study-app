@@ -31,8 +31,8 @@ import javax.inject.Singleton
  * `:core:storage`'s precedent of a core module owning its own Hilt module (docs/adr/0002).
  *
  * The repositories these services depend on ([TaskRepository], [SubjectRepository],
- * [SessionRepository]) are bound in [ProvisionalRepositoryModule] instead, so this module stays
- * about scheduling and delivery only.
+ * [SessionRepository]) are bound by `:core:database`, so this module stays about scheduling and
+ * delivery only.
  */
 @Module
 @InstallIn(SingletonComponent::class)
