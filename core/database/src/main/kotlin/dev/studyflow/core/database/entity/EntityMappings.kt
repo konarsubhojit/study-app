@@ -123,6 +123,9 @@ public fun StudyTask.asEntity(): TaskWithReminders =
                 recurrenceInterval = recurrence?.interval,
                 recurrenceDaysOfWeek = recurrence?.daysOfWeek,
                 recurrenceDayOfMonth = recurrence?.dayOfMonth,
+                recurrenceWeekOfMonth = recurrence?.weekOfMonth,
+                recurrenceMonthOfYear = recurrence?.monthOfYear,
+                recurrenceExceptions = recurrence?.exceptions,
                 recurrenceEndType = recurrence?.end?.asEntity(),
                 recurrenceEndCount = (recurrence?.end as? RecurrenceEnd.AfterOccurrences)?.count,
                 recurrenceEndDate = (recurrence?.end as? RecurrenceEnd.OnDate)?.date,
@@ -223,6 +226,9 @@ private fun StudyTaskEntity.asExternalRecurrence(): RecurrenceRule? =
             interval = requireNotNull(recurrenceInterval) { "recurring task $id has no interval" },
             daysOfWeek = recurrenceDaysOfWeek.orEmpty(),
             dayOfMonth = recurrenceDayOfMonth,
+            weekOfMonth = recurrenceWeekOfMonth,
+            monthOfYear = recurrenceMonthOfYear,
+            exceptions = recurrenceExceptions.orEmpty(),
             end = asExternalRecurrenceEnd(),
         )
     }

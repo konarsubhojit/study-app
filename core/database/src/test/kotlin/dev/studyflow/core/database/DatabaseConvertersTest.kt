@@ -121,6 +121,28 @@ class DatabaseConvertersTest {
     }
 
     @Test
+    fun `task mapping preserves a counted weekday, a named month and removed occurrences`() {
+        val task =
+            StudyTask(
+                id = "task-1",
+                title = "Society meeting",
+                dueAt = LocalDateTime.parse("2026-06-09T18:00"),
+                timeZone = TimeZone.of("Europe/London"),
+                recurrence =
+                    RecurrenceRule(
+                        frequency = RecurrenceFrequency.YEARLY,
+                        daysOfWeek = setOf(DayOfWeek.TUESDAY),
+                        weekOfMonth = 2,
+                        monthOfYear = 6,
+                        exceptions = setOf(LocalDate.parse("2027-06-08"), LocalDate.parse("2028-06-13")),
+                    ),
+                updatedAt = Instant.parse("2026-06-01T12:00:00Z"),
+            )
+
+        assertEquals(task, task.asEntity().asExternalModel())
+    }
+
+    @Test
     fun `task mapping derives the due and trigger instants the list queries are indexed on`() {
         val task =
             StudyTask(

@@ -126,6 +126,17 @@ public abstract class StudyTaskDao {
         insertSubtasks(value.subtasks)
     }
 
+    /**
+     * Replaces several aggregates in one transaction.
+     *
+     * Tasks that are split out of a recurring series only make sense as a pair, so either both
+     * halves land or neither does.
+     */
+    @Transaction
+    public open suspend fun saveAll(values: List<TaskWithReminders>) {
+        values.forEach { save(it) }
+    }
+
     /** Tombstones a task, keeping the row so the deletion can be synced. */
     @Query("UPDATE study_tasks SET deleted = 1, updated_at = :deletedAt WHERE id = :id")
     public abstract suspend fun softDelete(
