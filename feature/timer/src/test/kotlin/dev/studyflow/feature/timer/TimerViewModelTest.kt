@@ -2,12 +2,19 @@ package dev.studyflow.feature.timer
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import dev.studyflow.core.domain.timer.TimerCommand
+import dev.studyflow.core.domain.timer.TimerCommandResult
+import dev.studyflow.core.domain.timer.TimerEngine
+import dev.studyflow.core.domain.timer.TimerState
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
+import dev.studyflow.core.testing.time.FakeDevice
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
+import kotlin.time.Duration.Companion.minutes
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class TimerViewModelTest {
@@ -25,4 +32,32 @@ class TimerViewModelTest {
                 cancelAndIgnoreRemainingEvents()
             }
         }
+
+    @Test
+    fun `refresh derives elapsed from timer engine without ticking a counter`() =
+        runTest(mainDispatcher.dispatcher) {
+            val device = FakeDevice()
+            val running = startedState(device)
+            val timerStates = MutableStateFlow<TimerState>(running)
+            val viewModel =
+                TimerViewModel(
+                    savedStateHandle = SavedStateHandle(),
+                    initialTimerState = running,
+                    timerStates = timerStates,
+                    now = device::anchor,
+                )
+
+            viewModel.state.test {
+                assertEquals(TimerUiState(), awaitItem())
+                device.advance(10.minutes)
+                viewModel.onEvent(TimerUiEvent.Refresh)
+                assertEquals(TimerUiState(elapsedSeconds = 600), awaitItem())
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    private fun startedState(device: FakeDevice): TimerState.Running {
+        val result = TimerEngine.execute(TimerState.Idle, TimerCommand.Start("session-1"), "event-1", device.anchor())
+        return (result as TimerCommandResult.Accepted).state as TimerState.Running
+    }
 }

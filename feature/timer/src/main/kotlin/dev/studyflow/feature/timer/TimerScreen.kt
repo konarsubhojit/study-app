@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,6 +16,7 @@ import dev.studyflow.core.ui.state.EmptyState
 @Composable
 public fun TimerScreen(
     state: TimerUiState,
+    onEvent: (TimerUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (state.elapsedSeconds == 0) {
@@ -29,6 +31,9 @@ public fun TimerScreen(
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium, Alignment.CenterVertically),
         ) {
             Text(text = "${state.elapsedSeconds} seconds", style = MaterialTheme.typography.headlineMedium)
+            Button(onClick = { onEvent(TimerUiEvent.Refresh) }) {
+                Text(text = "Refresh")
+            }
         }
     }
 }
