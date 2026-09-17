@@ -6,8 +6,10 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.studyflow.core.domain.materials.ImportOutcome
 import dev.studyflow.core.domain.materials.MaterialImporter
 import dev.studyflow.core.domain.materials.MaterialRepository
+import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
 import dev.studyflow.core.domain.materials.ShareImportInbox
 import dev.studyflow.core.model.Material
+import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.ui.mvi.MviViewModel
 import dev.studyflow.core.ui.mvi.UiEffect
 import dev.studyflow.core.ui.mvi.UiEvent
@@ -70,6 +72,11 @@ public sealed interface MaterialsUiEvent : UiEvent {
     public data class ViewExisting(
         val materialId: String,
     ) : MaterialsUiEvent
+
+    /** The user asked to try a [SyncState.Failed] upload again. */
+    public data class RetryUpload(
+        val materialId: String,
+    ) : MaterialsUiEvent
 }
 
 public sealed interface MaterialsUiEffect : UiEffect {
@@ -90,6 +97,7 @@ public class MaterialsViewModel
         private val repository: MaterialRepository,
         private val importer: MaterialImporter,
         private val shareImportInbox: ShareImportInbox,
+        private val uploadCoordinator: MaterialUploadCoordinator,
     ) : MviViewModel<MaterialsUiEvent, MaterialsUiEffect>(savedStateHandle) {
         private val results = MutableStateFlow<List<MaterialImportResult>>(emptyList())
         private val importing = MutableStateFlow(false)
@@ -124,9 +132,21 @@ public class MaterialsViewModel
 
         override fun onEvent(event: MaterialsUiEvent) {
             when (event) {
-                is MaterialsUiEvent.ImportUris -> importAll(event.uris)
-                MaterialsUiEvent.DismissResults -> results.value = emptyList()
-                is MaterialsUiEvent.ViewExisting -> emitEffect(MaterialsUiEffect.NavigateToMaterial(event.materialId))
+                is MaterialsUiEvent.ImportUris -> {
+                    importAll(event.uris)
+                }
+
+                MaterialsUiEvent.DismissResults -> {
+                    results.value = emptyList()
+                }
+
+                is MaterialsUiEvent.ViewExisting -> {
+                    emitEffect(MaterialsUiEffect.NavigateToMaterial(event.materialId))
+                }
+
+                is MaterialsUiEvent.RetryUpload -> {
+                    viewModelScope.launch { uploadCoordinator.retryUpload(event.materialId) }
+                }
             }
         }
 
@@ -148,6 +168,7 @@ public class MaterialsViewModel
         private fun ImportOutcome.toResult(): MaterialImportResult =
             when (this) {
                 is ImportOutcome.Imported -> {
+                    viewModelScope.launch { uploadCoordinator.enqueueUpload(material.id) }
                     MaterialImportResult(
                         id = material.id,
                         displayName = displayName,
@@ -156,6 +177,10 @@ public class MaterialsViewModel
                 }
 
                 is ImportOutcome.DuplicateFound -> {
+                    // The existing material may itself still be uploading (e.g. a retry created a
+                    // second local copy before the first one finished); re-enqueuing is then a
+                    // no-op or a resume, never a second upload of the same bytes (issue #38).
+                    viewModelScope.launch { uploadCoordinator.enqueueUpload(existing.id) }
                     MaterialImportResult(
                         id = UUID.randomUUID().toString(),
                         displayName = displayName,

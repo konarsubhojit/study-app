@@ -25,6 +25,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.model.Material
+import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.ui.components.DurationText
 import dev.studyflow.core.ui.components.StudyFlowListItem
 import dev.studyflow.core.ui.state.EmptyState
@@ -108,6 +109,7 @@ public fun MaterialsScreen(
             MaterialsList(
                 catalog = state.catalog,
                 onMaterialClick = { id -> onEvent(MaterialsUiEvent.ViewExisting(id)) },
+                onRetryUpload = { id -> onEvent(MaterialsUiEvent.RetryUpload(id)) },
             )
         }
     }
@@ -201,16 +203,27 @@ private fun ImportResultRow(
 private fun MaterialsList(
     catalog: List<Material>,
     onMaterialClick: (String) -> Unit,
+    onRetryUpload: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
     ) {
         items(catalog, key = Material::id) { material ->
+            // A failed upload is the one sync state a tap on the row cannot resolve — the user
+            // needs an explicit way to ask for another attempt, not just to reopen the file
+            // (issue #38). Every other sync state renders with no trailing content.
+            val retryButton: (@Composable () -> Unit)? =
+                if (material.sync is SyncState.Failed) {
+                    { TextButton(onClick = { onRetryUpload(material.id) }) { Text(text = "Retry") } }
+                } else {
+                    null
+                }
             StudyFlowListItem(
                 headline = material.displayName,
                 supportingText = "${material.mimeType} · ${formatSize(material.sizeBytes)}",
                 onClick = { onMaterialClick(material.id) },
+                trailingContent = retryButton,
             )
         }
     }

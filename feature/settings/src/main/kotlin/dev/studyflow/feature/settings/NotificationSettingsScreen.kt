@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.media.RingtoneManager
 import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,6 +35,7 @@ import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.notifications.NotificationChannelStatus
+import dev.studyflow.core.notifications.StudyFlowNotificationChannel
 import dev.studyflow.core.ui.state.LoadingState
 
 /**
@@ -59,6 +61,14 @@ public fun NotificationSettingsRoute(
                 ),
             )
         }
+    val ringtonePickerLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            val uri =
+                result.data
+                    ?.getParcelableRingtoneUri()
+                    ?.toString()
+            viewModel.onEvent(NotificationSettingsUiEvent.AlarmRingtonePicked(uri))
+        }
 
     LifecycleResumeEffect(activity) {
         viewModel.onEvent(NotificationSettingsUiEvent.Refresh(activity.shouldExplainNotifications()))
@@ -74,6 +84,10 @@ public fun NotificationSettingsRoute(
 
                 is NotificationSettingsUiEffect.OpenSystemSettings -> {
                     context.startSettings(effect)
+                }
+
+                is NotificationSettingsUiEffect.LaunchRingtonePicker -> {
+                    ringtonePickerLauncher.launch(ringtonePickerIntent(effect.currentUri))
                 }
             }
         }
@@ -137,6 +151,7 @@ public fun NotificationSettingsScreen(
                 status = status,
                 blockedAppWide = state.notificationsBlocked,
                 onOpenSettings = { onEvent(NotificationSettingsUiEvent.OpenChannelSettings(status.channel)) },
+                onPickAlarmRingtone = { onEvent(NotificationSettingsUiEvent.PickAlarmRingtone) },
             )
         }
 
@@ -177,6 +192,7 @@ private fun ChannelCard(
     status: NotificationChannelStatus,
     blockedAppWide: Boolean,
     onOpenSettings: () -> Unit,
+    onPickAlarmRingtone: () -> Unit,
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
         Column(
@@ -188,6 +204,12 @@ private fun ChannelCard(
                 text = NotificationCopy.channelPurpose(status.channel),
                 style = MaterialTheme.typography.bodyMedium,
             )
+            if (status.channel == StudyFlowNotificationChannel.ALARMS) {
+                Text(
+                    text = NotificationCopy.ALARM_DND_EXPLANATION,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             Text(
                 text =
                     if (blockedAppWide) {
@@ -206,9 +228,33 @@ private fun ChannelCard(
             ) {
                 Text(text = "Change in system settings")
             }
+            if (status.channel == StudyFlowNotificationChannel.ALARMS) {
+                TextButton(onClick = onPickAlarmRingtone) {
+                    Text(text = "Choose alarm sound")
+                }
+            }
         }
     }
 }
+
+/** The picker's own `EXTRA_RINGTONE_PICKED_URI`, wherever `RingtoneManager` put it in [this]. */
+private fun Intent.getParcelableRingtoneUri(): android.net.Uri? =
+    @Suppress("DEPRECATION")
+    getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+
+private fun ringtonePickerIntent(currentUri: String): Intent =
+    Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
+        putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
+        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+        putExtra(
+            RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI,
+            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
+        )
+        if (currentUri.isNotBlank()) {
+            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, android.net.Uri.parse(currentUri))
+        }
+    }
 
 /**
  * Asks the platform whether a refusal can still be explained.
