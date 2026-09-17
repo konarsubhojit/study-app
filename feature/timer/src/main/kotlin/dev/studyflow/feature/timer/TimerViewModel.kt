@@ -3,7 +3,6 @@ package dev.studyflow.feature.timer
 import androidx.lifecycle.SavedStateHandle
 import dev.studyflow.core.domain.timer.TimerEngine
 import dev.studyflow.core.domain.timer.TimerState
-import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.TimeAnchor
 import dev.studyflow.core.ui.mvi.MviViewModel
 import dev.studyflow.core.ui.mvi.UiEffect
@@ -14,10 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.onStart
-import kotlin.time.Duration
-import kotlin.time.Instant
 
 public data class TimerUiState(
     val elapsedSeconds: Int = 0,
@@ -31,9 +27,9 @@ public sealed interface TimerUiEffect : UiEffect
 
 public class TimerViewModel(
     savedStateHandle: SavedStateHandle,
-    initialTimerState: TimerState = TimerState.Idle,
-    timerStates: Flow<TimerState> = flowOf(initialTimerState),
-    private val now: () -> TimeAnchor = { ZERO_ANCHOR },
+    initialTimerState: TimerState,
+    timerStates: Flow<TimerState>,
+    private val now: () -> TimeAnchor,
 ) : MviViewModel<TimerUiEvent, TimerUiEffect>(savedStateHandle) {
     private val refreshes =
         MutableSharedFlow<Unit>(
@@ -53,8 +49,6 @@ public class TimerViewModel(
     }
 
     private companion object {
-        val ZERO_ANCHOR = TimeAnchor(Duration.ZERO, Instant.fromEpochMilliseconds(0), BootId("timer-view-model"))
-
         fun TimerState.toUiState(now: TimeAnchor): TimerUiState =
             TimerUiState(
                 elapsedSeconds =

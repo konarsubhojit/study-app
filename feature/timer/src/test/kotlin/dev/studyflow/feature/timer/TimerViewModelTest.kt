@@ -10,6 +10,7 @@ import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.time.FakeDevice
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
@@ -24,8 +25,15 @@ class TimerViewModelTest {
     @Test
     fun `stale saved elapsed counter is ignored`() =
         runTest(mainDispatcher.dispatcher) {
+            val device = FakeDevice()
             val savedState = SavedStateHandle(mapOf("timer.elapsedSeconds" to 600))
-            val viewModel = TimerViewModel(savedState)
+            val viewModel =
+                TimerViewModel(
+                    savedStateHandle = savedState,
+                    initialTimerState = TimerState.Idle,
+                    timerStates = flowOf(TimerState.Idle),
+                    now = device::anchor,
+                )
 
             viewModel.state.test {
                 assertEquals(TimerUiState(), awaitItem())
