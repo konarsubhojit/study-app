@@ -12,7 +12,6 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -89,7 +88,15 @@ class MaterialDaoTest {
         runBlocking {
             database.folderDao().upsert(FolderEntity("folder-a", null, "Folder A", BASE_TIME))
             database.folderDao().upsert(FolderEntity("folder-b", null, "Folder B", BASE_TIME))
-            dao.save(material("material", folderId = "folder-a", displayName = "Draft.pdf"), setOf("draft"))
+            dao.save(
+                material(
+                    "material",
+                    folderId = "folder-a",
+                    displayName = "Draft.pdf",
+                    syncState = MaterialSyncState.PENDING,
+                ),
+                setOf("draft"),
+            )
 
             dao.rename("material", "Final.pdf", "exam solution", BASE_TIME + 1.minutes)
             dao.move("material", "folder-b", BASE_TIME + 2.minutes)
@@ -105,14 +112,16 @@ class MaterialDaoTest {
                     ?.map { it.name },
             )
             assertEquals(listOf("material"), dao.searchPaged("solution", null, null, null, "exam").loadIds())
+            assertEquals(listOf("material"), dao.uploadCandidates(limit = 10).map(MaterialEntity::id))
 
             dao.softDelete("material", BASE_TIME + 3.minutes)
             assertEquals(emptyList<String>(), dao.observeAll().first().map(MaterialEntity::id))
             assertEquals(emptyList<String>(), dao.searchPaged("solution", null, null, null, null).loadIds())
+            assertEquals(emptyList<String>(), dao.uploadCandidates(limit = 10).map(MaterialEntity::id))
 
             dao.undoDelete("material", BASE_TIME + 4.minutes)
             assertEquals(listOf("material"), dao.searchPaged("solution", null, null, null, null).loadIds())
-            assertNull(dao.uploadCandidates(limit = 10).singleOrNull { it.id == "material" })
+            assertEquals(listOf("material"), dao.uploadCandidates(limit = 10).map(MaterialEntity::id))
         }
 
     private suspend fun PagingSource<Int, MaterialEntity>.loadIds(): List<String> =

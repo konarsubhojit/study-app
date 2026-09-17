@@ -312,7 +312,10 @@ public object DatabaseMigrations {
         execSQL("CREATE INDEX IF NOT EXISTS index_materials_folder_id ON materials (folder_id)")
         execSQL("CREATE INDEX IF NOT EXISTS index_materials_subject_id ON materials (subject_id)")
         execSQL(
-            "CREATE INDEX IF NOT EXISTS index_materials_sync_state_updated_at ON materials (sync_state, updated_at, id)",
+            """
+            CREATE INDEX IF NOT EXISTS index_materials_sync_state_updated_at
+            ON materials (deleted, sync_state, updated_at, id)
+            """.trimIndent(),
         )
         execSQL("CREATE INDEX IF NOT EXISTS index_materials_content_hash ON materials (content_hash)")
         execSQL(

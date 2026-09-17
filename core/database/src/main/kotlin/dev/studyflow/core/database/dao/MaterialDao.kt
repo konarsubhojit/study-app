@@ -5,9 +5,13 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.RawQuery
 import androidx.room.Transaction
 import androidx.room.Upsert
+import androidx.sqlite.db.SimpleSQLiteQuery
+import androidx.sqlite.db.SupportSQLiteQuery
 import dev.studyflow.core.database.entity.MaterialEntity
+import dev.studyflow.core.database.entity.MaterialFtsEntity
 import dev.studyflow.core.database.entity.MaterialSyncState
 import dev.studyflow.core.database.entity.MaterialTagEntity
 import dev.studyflow.core.database.entity.MaterialWithTags
@@ -27,7 +31,8 @@ public abstract class MaterialDao {
         mimeTypePrefix: String?,
         tag: String?,
         sort: MaterialSort = MaterialSort.UPDATED_AT_DESC,
-    ): PagingSource<Int, MaterialEntity> = browsePagedQuery(folderId, subjectId, mimeTypePrefix, tag, sort.name)
+    ): PagingSource<Int, MaterialEntity> =
+        browsePagedQuery(materialCatalogQuery(folderId, subjectId, mimeTypePrefix, tag, sort))
 
     public fun searchPaged(
         query: String,
@@ -36,7 +41,8 @@ public abstract class MaterialDao {
         mimeTypePrefix: String?,
         tag: String?,
         sort: MaterialSort = MaterialSort.UPDATED_AT_DESC,
-    ): PagingSource<Int, MaterialEntity> = searchPagedQuery(query, folderId, subjectId, mimeTypePrefix, tag, sort.name)
+    ): PagingSource<Int, MaterialEntity> =
+        searchPagedQuery(materialCatalogQuery(folderId, subjectId, mimeTypePrefix, tag, sort, query))
 
     @Query(
         """
@@ -51,60 +57,11 @@ public abstract class MaterialDao {
     @Query("SELECT * FROM materials WHERE id = :id")
     public abstract fun observeById(id: String): Flow<MaterialWithTags?>
 
-    @Query(
-        """
-        SELECT * FROM materials
-        WHERE deleted = 0
-            AND (:folderId IS NULL OR folder_id = :folderId)
-            AND (:subjectId IS NULL OR subject_id = :subjectId)
-            AND (:mimeTypePrefix IS NULL OR mime_type LIKE :mimeTypePrefix || '%')
-            AND (:tag IS NULL OR id IN (SELECT material_id FROM material_tags WHERE tag = :tag))
-        ORDER BY
-            CASE WHEN :sort = 'UPDATED_AT_DESC' THEN updated_at END DESC,
-            CASE WHEN :sort = 'UPDATED_AT_ASC' THEN updated_at END ASC,
-            CASE WHEN :sort = 'SIZE_DESC' THEN size_bytes END DESC,
-            CASE WHEN :sort = 'SIZE_ASC' THEN size_bytes END ASC,
-            CASE WHEN :sort = 'NAME_DESC' THEN display_name END COLLATE NOCASE DESC,
-            CASE WHEN :sort = 'NAME_ASC' THEN display_name END COLLATE NOCASE ASC,
-            id ASC
-        """,
-    )
-    protected abstract fun browsePagedQuery(
-        folderId: String?,
-        subjectId: String?,
-        mimeTypePrefix: String?,
-        tag: String?,
-        sort: String,
-    ): PagingSource<Int, MaterialEntity>
+    @RawQuery(observedEntities = [MaterialEntity::class, MaterialTagEntity::class])
+    protected abstract fun browsePagedQuery(query: SupportSQLiteQuery): PagingSource<Int, MaterialEntity>
 
-    @Query(
-        """
-        SELECT materials.* FROM materials
-        JOIN material_fts ON material_fts.material_id = materials.id
-        WHERE material_fts MATCH :query
-            AND materials.deleted = 0
-            AND (:folderId IS NULL OR materials.folder_id = :folderId)
-            AND (:subjectId IS NULL OR materials.subject_id = :subjectId)
-            AND (:mimeTypePrefix IS NULL OR materials.mime_type LIKE :mimeTypePrefix || '%')
-            AND (:tag IS NULL OR materials.id IN (SELECT material_id FROM material_tags WHERE tag = :tag))
-        ORDER BY
-            CASE WHEN :sort = 'UPDATED_AT_DESC' THEN materials.updated_at END DESC,
-            CASE WHEN :sort = 'UPDATED_AT_ASC' THEN materials.updated_at END ASC,
-            CASE WHEN :sort = 'SIZE_DESC' THEN materials.size_bytes END DESC,
-            CASE WHEN :sort = 'SIZE_ASC' THEN materials.size_bytes END ASC,
-            CASE WHEN :sort = 'NAME_DESC' THEN materials.display_name END COLLATE NOCASE DESC,
-            CASE WHEN :sort = 'NAME_ASC' THEN materials.display_name END COLLATE NOCASE ASC,
-            materials.id ASC
-        """,
-    )
-    protected abstract fun searchPagedQuery(
-        query: String,
-        folderId: String?,
-        subjectId: String?,
-        mimeTypePrefix: String?,
-        tag: String?,
-        sort: String,
-    ): PagingSource<Int, MaterialEntity>
+    @RawQuery(observedEntities = [MaterialEntity::class, MaterialTagEntity::class, MaterialFtsEntity::class])
+    protected abstract fun searchPagedQuery(query: SupportSQLiteQuery): PagingSource<Int, MaterialEntity>
 
     @Query(
         """
@@ -182,8 +139,11 @@ public abstract class MaterialDao {
         reindexMaterial(id)
     }
 
-    @Query("SELECT COUNT(*) FROM materials")
+    @Query("SELECT COUNT(*) FROM materials WHERE deleted = 0")
     public abstract suspend fun count(): Int
+
+    @Query("SELECT COUNT(*) FROM materials")
+    public abstract suspend fun countIncludingDeleted(): Int
 
     @Upsert
     protected abstract suspend fun upsertMaterial(material: MaterialEntity)
@@ -241,6 +201,48 @@ public abstract class MaterialDao {
         deleteFtsForMaterial(id)
         insertFtsForMaterial(id)
     }
+
+    private fun materialCatalogQuery(
+        folderId: String?,
+        subjectId: String?,
+        mimeTypePrefix: String?,
+        tag: String?,
+        sort: MaterialSort,
+        searchQuery: String? = null,
+    ): SupportSQLiteQuery {
+        val args = mutableListOf<Any>()
+        val sql =
+            buildString {
+                append("SELECT materials.* FROM materials")
+                if (searchQuery != null) {
+                    append(" JOIN material_fts ON material_fts.material_id = materials.id")
+                }
+                append(" WHERE materials.deleted = 0")
+                if (searchQuery != null) {
+                    append(" AND material_fts MATCH ?")
+                    args += searchQuery
+                }
+                if (folderId != null) {
+                    append(" AND materials.folder_id = ?")
+                    args += folderId
+                }
+                if (subjectId != null) {
+                    append(" AND materials.subject_id = ?")
+                    args += subjectId
+                }
+                if (mimeTypePrefix != null) {
+                    append(" AND materials.mime_type LIKE ?")
+                    args += "$mimeTypePrefix%"
+                }
+                if (tag != null) {
+                    append(" AND materials.id IN (SELECT material_id FROM material_tags WHERE tag = ?)")
+                    args += tag
+                }
+                append(" ORDER BY ")
+                append(sort.orderBy)
+            }
+        return SimpleSQLiteQuery(sql, args.toTypedArray())
+    }
 }
 
 public enum class MaterialSort {
@@ -251,3 +253,14 @@ public enum class MaterialSort {
     NAME_DESC,
     NAME_ASC,
 }
+
+private val MaterialSort.orderBy: String
+    get() =
+        when (this) {
+            MaterialSort.UPDATED_AT_DESC -> "materials.updated_at DESC, materials.id ASC"
+            MaterialSort.UPDATED_AT_ASC -> "materials.updated_at ASC, materials.id ASC"
+            MaterialSort.SIZE_DESC -> "materials.size_bytes DESC, materials.id ASC"
+            MaterialSort.SIZE_ASC -> "materials.size_bytes ASC, materials.id ASC"
+            MaterialSort.NAME_DESC -> "materials.display_name COLLATE NOCASE DESC, materials.id ASC"
+            MaterialSort.NAME_ASC -> "materials.display_name COLLATE NOCASE ASC, materials.id ASC"
+        }

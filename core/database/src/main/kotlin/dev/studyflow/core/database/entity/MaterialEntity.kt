@@ -38,7 +38,7 @@ import kotlin.time.Instant
         Index(value = ["deleted", "mime_type", "updated_at", "id"], name = "index_materials_mime_type_updated_at"),
         Index(value = ["folder_id"], name = "index_materials_folder_id"),
         Index(value = ["subject_id"], name = "index_materials_subject_id"),
-        Index(value = ["sync_state", "updated_at", "id"], name = "index_materials_sync_state_updated_at"),
+        Index(value = ["deleted", "sync_state", "updated_at", "id"], name = "index_materials_sync_state_updated_at"),
         Index(value = ["content_hash"], name = "index_materials_content_hash"),
         Index(
             value = ["deleted", "updated_at", "id"],

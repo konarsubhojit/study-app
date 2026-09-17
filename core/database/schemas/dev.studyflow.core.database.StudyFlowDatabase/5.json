@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 5,
-    "identityHash": "873e57622fe8f612cb58b1bebb13f04e",
+    "identityHash": "1f24796b25f2ce2109b1e710bfa0928b",
     "entities": [
       {
         "tableName": "subjects",
@@ -300,12 +300,13 @@
             "name": "index_materials_sync_state_updated_at",
             "unique": false,
             "columnNames": [
+              "deleted",
               "sync_state",
               "updated_at",
               "id"
             ],
             "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_sync_state_updated_at` ON `${TABLE_NAME}` (`sync_state`, `updated_at`, `id`)"
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_materials_sync_state_updated_at` ON `${TABLE_NAME}` (`deleted`, `sync_state`, `updated_at`, `id`)"
           },
           {
             "name": "index_materials_content_hash",
@@ -1124,7 +1125,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '873e57622fe8f612cb58b1bebb13f04e')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1f24796b25f2ce2109b1e710bfa0928b')"
     ]
   }
 }

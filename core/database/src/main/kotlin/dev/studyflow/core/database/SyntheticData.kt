@@ -119,7 +119,7 @@ public object SyntheticDataFactory {
             MaterialEntity(
                 id = "material-$index",
                 folderId = folders.getOrNull(index % folders.size.coerceAtLeast(1))?.id,
-                subjectId = subjects[index % subjects.size].id,
+                subjectId = subjects.getOrNull(index % subjects.size.coerceAtLeast(1))?.id,
                 displayName = "Lecture ${index.toString().padStart(6, '0')}.pdf",
                 mimeType = "application/pdf",
                 sizeBytes = 1_024L + index,
@@ -336,7 +336,7 @@ public object SyntheticDataSeeder {
     private suspend fun StudyFlowDatabase.isEmpty(): Boolean =
         subjectDao().count() == 0 &&
             folderDao().count() == 0 &&
-            materialDao().count() == 0 &&
+            materialDao().countIncludingDeleted() == 0 &&
             studyTaskDao().count() == 0 &&
             sessionDao().count() == 0
 }
