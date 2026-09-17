@@ -106,8 +106,12 @@ public class MaterialUploadEngine(
             val orderedParts = plan.parts.map { part -> completed.getValue(part.number).asUploadedPart() }
             val stored = objectStore.completeUpload(session, orderedParts)
 
-            uploadProgressStore.clear(materialId)
+            // Synced first, cleared second: a crash between the two leaves stale-but-harmless part
+            // rows behind a material already marked Synced, rather than a Synced object whose part
+            // receipts are gone — which would force a full re-upload of a file the server already
+            // has, the exact redundant work this engine exists to avoid.
             materialRepository.save(current.copy(sync = SyncState.Synced, remoteKey = stored.key.value))
+            uploadProgressStore.clear(materialId)
             UploadOutcome.Synced
         } catch (exception: ObjectStoreException) {
             val reason = exception.message ?: exception::class.simpleName.orEmpty()
