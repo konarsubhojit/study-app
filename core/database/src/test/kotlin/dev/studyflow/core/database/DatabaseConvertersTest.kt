@@ -57,7 +57,7 @@ class DatabaseConvertersTest {
                     contentHash = ContentHash(index.toString(16).padStart(64, '0')),
                     createdAt = Instant.parse("2026-09-16T23:24:29.317Z"),
                     sync = state,
-                    localUri = "content://notes",
+                    localPath = "content://notes",
                     pinnedForOffline = true,
                     encrypted = true,
                 )

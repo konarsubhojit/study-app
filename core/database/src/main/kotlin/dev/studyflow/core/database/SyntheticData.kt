@@ -79,7 +79,7 @@ public object SyntheticDataFactory {
         return SyntheticDataSet(
             subjects = subjects,
             folders = folders,
-            materials = createMaterials(size.materialCount, folders),
+            materials = createMaterials(size.materialCount, folders, subjects),
             tasks = tasks,
             reminders = createReminders(tasks),
             taskTags = createTaskTags(tasks),
@@ -112,25 +112,31 @@ public object SyntheticDataFactory {
     private fun createMaterials(
         count: Int,
         folders: List<FolderEntity>,
+        subjects: List<SubjectEntity>,
     ): List<MaterialEntity> =
         List(count) { index ->
             val syncState = MaterialSyncState.entries[index % MaterialSyncState.entries.size]
             MaterialEntity(
                 id = "material-$index",
                 folderId = folders.getOrNull(index % folders.size.coerceAtLeast(1))?.id,
+                subjectId = subjects.getOrNull(index % subjects.size.coerceAtLeast(1))?.id,
                 displayName = "Lecture ${index.toString().padStart(6, '0')}.pdf",
                 mimeType = "application/pdf",
                 sizeBytes = 1_024L + index,
                 contentHash = ContentHash(index.toString(16).padStart(HASH_LENGTH, '0')),
                 createdAt = BASE_INSTANT + index.minutes,
+                updatedAt = BASE_INSTANT + index.minutes,
+                notes = if (index % 4 == 0) "Synthetic material notes" else null,
+                remoteKey = "materials/${index.toString(16).padStart(HASH_LENGTH, '0')}",
                 syncState = syncState,
                 uploadedBytes = if (syncState == MaterialSyncState.UPLOADING) 512L else null,
                 uploadTotalBytes = if (syncState == MaterialSyncState.UPLOADING) 1_024L + index else null,
                 failureReason = if (syncState == MaterialSyncState.FAILED) "synthetic transient failure" else null,
                 failureRetryable = if (syncState == MaterialSyncState.FAILED) true else null,
-                localUri = "content://studyflow.synthetic/material-$index",
+                localPath = "/studyflow/material-$index",
                 pinnedForOffline = index % 10 == 0,
                 encrypted = index % 7 == 0,
+                deleted = index % DELETED_MATERIAL_MODULUS == 0,
             )
         }
 
@@ -294,6 +300,7 @@ public object SyntheticDataFactory {
     private val TAGS: List<String> = listOf("exam", "homework", "revision")
     private const val SUBTASKS_PER_TASK: Int = 3
     private const val ROOT_FOLDER_COUNT: Int = 4
+    private const val DELETED_MATERIAL_MODULUS: Int = 37
     private const val HASH_LENGTH: Int = 64
     private val BASE_INSTANT: Instant = Instant.parse("2026-01-01T00:00:00Z")
     private val BASE_DUE_INSTANT: Instant = Instant.parse("2026-01-01T09:00:00Z")

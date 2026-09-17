@@ -166,13 +166,15 @@ public fun testMaterial(
     Material(
         id = id,
         folderId = folderId,
+        subjectId = null,
         displayName = displayName,
         mimeType = mimeType,
         sizeBytes = sizeBytes,
         contentHash = contentHash,
         createdAt = createdAt,
+        updatedAt = createdAt,
         sync = sync,
-        localUri = localUri,
+        localPath = localUri,
         pinnedForOffline = pinnedForOffline,
         encrypted = encrypted,
     )

@@ -15,6 +15,7 @@ import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subject
 import dev.studyflow.core.model.Subtask
 import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.model.Tag
 import dev.studyflow.core.model.TimeAnchor
 import kotlinx.datetime.TimeZone
 import kotlin.time.Duration
@@ -34,19 +35,24 @@ public fun Material.asEntity(): MaterialEntity {
     return MaterialEntity(
         id = id,
         folderId = folderId,
+        subjectId = subjectId,
         displayName = displayName,
         mimeType = mimeType,
         sizeBytes = sizeBytes,
         contentHash = contentHash,
         createdAt = createdAt,
+        updatedAt = updatedAt,
+        notes = notes,
+        remoteKey = remoteKey,
         syncState = sync.asEntity(),
         uploadedBytes = upload?.uploadedBytes,
         uploadTotalBytes = upload?.totalBytes,
         failureReason = failure?.reason,
         failureRetryable = failure?.retryable,
-        localUri = localUri,
+        localPath = localPath,
         pinnedForOffline = pinnedForOffline,
         encrypted = encrypted,
+        deleted = deleted,
     )
 }
 
@@ -54,16 +60,25 @@ public fun MaterialEntity.asExternalModel(): Material =
     Material(
         id = id,
         folderId = folderId,
+        subjectId = subjectId,
         displayName = displayName,
         mimeType = mimeType,
         sizeBytes = sizeBytes,
         contentHash = contentHash,
         createdAt = createdAt,
+        updatedAt = updatedAt,
+        notes = notes,
+        remoteKey = remoteKey,
         sync = asExternalSyncState(),
-        localUri = localUri,
+        localPath = localPath,
         pinnedForOffline = pinnedForOffline,
         encrypted = encrypted,
+        deleted = deleted,
     )
+
+public fun Tag.asEntity(): TagEntity = TagEntity(name)
+
+public fun TagEntity.asExternalModel(): Tag = Tag(name)
 
 private fun SyncState.asEntity(): MaterialSyncState =
     when (this) {

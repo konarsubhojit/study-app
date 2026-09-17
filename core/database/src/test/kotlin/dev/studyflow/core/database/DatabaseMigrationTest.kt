@@ -87,6 +87,51 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 5 to 6 preserves materials and builds the catalog index`() {
+        helper.createDatabase(DATABASE_NAME, 5).use { database ->
+            database.insertVersionFourMaterial()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database
+                    .query(
+                        """
+                        SELECT id, local_path, updated_at, remote_key, notes, deleted
+                        FROM materials
+                        """.trimIndent(),
+                    ).use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("legacy-material", cursor.getString(0))
+                        assertEquals("/legacy/material.pdf", cursor.getString(1))
+                        assertEquals(1_789_601_069_317L, cursor.getLong(2))
+                        assertEquals(true, cursor.isNull(3))
+                        assertEquals(true, cursor.isNull(4))
+                        assertEquals(0, cursor.getInt(5))
+                        assertFalse(cursor.moveToNext())
+                    }
+
+                database.query("SELECT material_id, display_name FROM material_fts").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals("legacy-material", cursor.getString(0))
+                    assertEquals("Legacy.pdf", cursor.getString(1))
+                    assertFalse(cursor.moveToNext())
+                }
+
+                database.query("SELECT material_id FROM study_tasks WHERE id = 'linked-task'").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals("legacy-material", cursor.getString(0))
+                    assertFalse(cursor.moveToNext())
+                }
+            }
+    }
+
+    @Test
     fun `migration 2 to 3 derives the session projection from the event log`() {
         helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
@@ -172,6 +217,36 @@ class DatabaseMigrationTest {
             ) VALUES (
                 'legacy-material', NULL, 'Legacy.pdf', 'application/pdf', 1024,
                 '${"0".repeat(64)}', 1789601069317, 'PENDING', NULL, NULL, NULL, NULL, NULL, 0
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionFourMaterial() {
+        execSQL(
+            """
+            INSERT INTO materials (
+                id, folder_id, display_name, mime_type, size_bytes, content_hash, created_at,
+                sync_state, uploaded_bytes, upload_total_bytes, failure_reason, failure_retryable,
+                local_uri, pinned_for_offline, encrypted
+            ) VALUES (
+                'legacy-material', NULL, 'Legacy.pdf', 'application/pdf', 1024,
+                '${"1".repeat(64)}', 1789601069317, 'SYNCED', NULL, NULL, NULL, NULL,
+                '/legacy/material.pdf', 1, 1
+            )
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO study_tasks (
+                id, title, notes, subject_id, material_id, session_id, due_at, due_at_utc,
+                time_zone, is_all_day, priority, recurrence_frequency, recurrence_interval,
+                recurrence_days_of_week, recurrence_day_of_month, recurrence_end_type,
+                recurrence_end_count, recurrence_end_date, completed_at, updated_at, deleted
+            ) VALUES (
+                'linked-task', 'Linked task', NULL, NULL, 'legacy-material', NULL, NULL, NULL,
+                'UTC', 0, 'NORMAL', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                1789601069317, 0
             )
             """.trimIndent(),
         )
