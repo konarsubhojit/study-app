@@ -1,12 +1,15 @@
 package dev.studyflow.core.scheduling
 
 import androidx.core.app.NotificationManagerCompat
+import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import dev.studyflow.core.model.Reminder
+import dev.studyflow.core.model.ReminderPrecision
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subject
 import dev.studyflow.core.notifications.NotificationChannelRegistrar
 import dev.studyflow.core.notifications.NotificationPermissionState
 import dev.studyflow.core.notifications.NotificationPermissionStatus
+import dev.studyflow.core.notifications.StudyFlowNotificationChannel
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.testing.data.FakeSubjectRepository
@@ -15,6 +18,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -44,6 +48,7 @@ class ReminderDeliveryCoordinatorTest {
     private val taskRepository = FakeTaskRepository(now = NOW)
     private val subjectRepository = FakeSubjectRepository()
     private var digestEnabled = false
+    private var fullScreenIntentAllowed = true
     private val coordinator =
         ReminderDeliveryCoordinator(
             context = context,
@@ -52,6 +57,7 @@ class ReminderDeliveryCoordinatorTest {
             notifier = notifier,
             notificationFactory = notificationFactory,
             digestEnabled = { digestEnabled },
+            capabilitiesProvider = { SchedulingCapabilities(canUseFullScreenIntent = fullScreenIntentAllowed) },
         )
 
     @Test
@@ -116,6 +122,46 @@ class ReminderDeliveryCoordinatorTest {
         }
 
     @Test
+    fun `an alarm-style reminder is exempt from the digest`() =
+        runBlocking {
+            digestEnabled = true
+            taskRepository.save(task(precision = ReminderPrecision.ALARM))
+
+            coordinator.deliver("reminder-1", "task-1")
+
+            assertEquals(1, shadowOf(context.getSystemService(android.app.NotificationManager::class.java)).size())
+        }
+
+    @Test
+    fun `an alarm-style reminder posts to the ALARMS channel with a full-screen intent`() =
+        runBlocking {
+            taskRepository.save(task(precision = ReminderPrecision.ALARM))
+
+            coordinator.deliver("reminder-1", "task-1")
+
+            val notification =
+                shadowOf(context.getSystemService(android.app.NotificationManager::class.java))
+                    .getNotification(reminderNotificationId("reminder-1"))
+            assertEquals(StudyFlowNotificationChannel.ALARMS.id, notification.channelId)
+            assertTrue(notification.fullScreenIntent != null)
+        }
+
+    @Test
+    fun `an alarm-style reminder falls back to a heads-up notification without full-screen capability`() =
+        runBlocking {
+            fullScreenIntentAllowed = false
+            taskRepository.save(task(precision = ReminderPrecision.ALARM))
+
+            coordinator.deliver("reminder-1", "task-1")
+
+            val notification =
+                shadowOf(context.getSystemService(android.app.NotificationManager::class.java))
+                    .getNotification(reminderNotificationId("reminder-1"))
+            assertEquals(StudyFlowNotificationChannel.ALARMS.id, notification.channelId)
+            assertNull(notification.fullScreenIntent)
+        }
+
+    @Test
     fun `ten simultaneous reminders collapse into one grouped summary`() =
         runBlocking {
             repeat(10) { index ->
@@ -134,6 +180,7 @@ class ReminderDeliveryCoordinatorTest {
     private fun task(
         id: String = "task-1",
         reminderId: String = "reminder-1",
+        precision: ReminderPrecision = ReminderPrecision.GENTLE,
     ): StudyTask =
         StudyTask(
             id = id,
@@ -141,7 +188,7 @@ class ReminderDeliveryCoordinatorTest {
             subjectId = "subject-1",
             dueAt = LocalDateTime(2026, 3, 2, 18, 0),
             timeZone = TimeZone.UTC,
-            reminders = listOf(Reminder(id = reminderId, taskId = id)),
+            reminders = listOf(Reminder(id = reminderId, taskId = id, precision = precision)),
             updatedAt = NOW,
         )
 

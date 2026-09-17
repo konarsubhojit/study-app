@@ -2,7 +2,9 @@ package dev.studyflow.feature.settings
 
 import android.content.Intent
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.studyflow.core.datastore.AlarmRingtoneSettings
 import dev.studyflow.core.notifications.NotificationChannelStatus
 import dev.studyflow.core.notifications.NotificationMessageKey
 import dev.studyflow.core.notifications.NotificationMoment
@@ -19,6 +21,9 @@ import dev.studyflow.core.ui.mvi.UiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -36,6 +41,8 @@ public data class NotificationSettingsUiState(
     val rationale: NotificationMessageKey? = null,
     val degradation: NotificationMessageKey? = null,
     val loaded: Boolean = false,
+    /** Empty means "the device's default alarm sound" — see `settings.proto`'s field doc. */
+    val alarmRingtoneUri: String = "",
 ) : UiState {
     val notificationsBlocked: Boolean
         get() = !permission.canPost
@@ -73,6 +80,14 @@ public sealed interface NotificationSettingsUiEvent : UiEvent {
     ) : NotificationSettingsUiEvent
 
     public data object OpenAppSettings : NotificationSettingsUiEvent
+
+    /** The user tapped "Choose alarm sound"; only [StudyFlowNotificationChannel.ALARMS] offers this. */
+    public data object PickAlarmRingtone : NotificationSettingsUiEvent
+
+    /** The system ringtone picker returned. `null` means the user picked "Default" or cancelled. */
+    public data class AlarmRingtonePicked(
+        val uri: String?,
+    ) : NotificationSettingsUiEvent
 }
 
 public sealed interface NotificationSettingsUiEffect : UiEffect {
@@ -83,6 +98,11 @@ public sealed interface NotificationSettingsUiEffect : UiEffect {
         val intent: Intent,
         val fallbackIntent: Intent? = null,
     ) : NotificationSettingsUiEffect
+
+    /** Launches `RingtoneManager.ACTION_RINGTONE_PICKER`, pre-selecting [currentUri] if any. */
+    public data class LaunchRingtonePicker(
+        val currentUri: String,
+    ) : NotificationSettingsUiEffect
 }
 
 @HiltViewModel
@@ -91,6 +111,7 @@ public class NotificationSettingsViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val source: NotificationSettingsSource,
+        private val settingsStore: AlarmRingtoneSettings,
     ) : MviViewModel<NotificationSettingsUiEvent, NotificationSettingsUiEffect>(savedStateHandle) {
         private val systemState = MutableStateFlow(NotificationSettingsUiState())
 
@@ -98,6 +119,13 @@ public class NotificationSettingsViewModel
         // whereas everything else must be re-read from the system rather than restored stale.
         private val rationaleChanges = MutableStateFlow<String?>(savedStateHandle[RATIONALE_KEY])
         private val rationale = rationaleChanges.stateInSavedState(RATIONALE_KEY, null)
+
+        init {
+            settingsStore.uri
+                .onEach { alarmRingtoneUri ->
+                    systemState.value = systemState.value.copy(alarmRingtoneUri = alarmRingtoneUri)
+                }.launchIn(viewModelScope)
+        }
 
         public val state: StateFlow<NotificationSettingsUiState> =
             combine(systemState, rationale) { system, rationaleKey ->
@@ -141,6 +169,16 @@ public class NotificationSettingsViewModel
 
                 NotificationSettingsUiEvent.OpenAppSettings -> {
                     emitEffect(NotificationSettingsUiEffect.OpenSystemSettings(source.appSettingsIntent()))
+                }
+
+                NotificationSettingsUiEvent.PickAlarmRingtone -> {
+                    emitEffect(NotificationSettingsUiEffect.LaunchRingtonePicker(systemState.value.alarmRingtoneUri))
+                }
+
+                is NotificationSettingsUiEvent.AlarmRingtonePicked -> {
+                    viewModelScope.launch {
+                        settingsStore.setUri(event.uri.orEmpty())
+                    }
                 }
             }
         }
