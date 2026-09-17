@@ -2,6 +2,7 @@ package dev.studyflow.core.domain.reminder
 
 import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.ReminderPrecision
+import dev.studyflow.core.model.ReminderTrigger
 import dev.studyflow.core.model.StudyTask
 import kotlin.time.Instant
 
@@ -28,41 +29,94 @@ import kotlin.time.Instant
  */
 public object ReminderScheduler {
     /**
-     * Plans the next delivery for [task].
+     * Plans the next delivery for every reminder on [task].
      *
-     * @param now used both to skip past occurrences and to decide whether the reminder is overdue.
-     * @return the plan, or `null` when there is nothing left to schedule (no reminder, task already
-     *   completed, or the recurrence has run out).
+     * @param now used both to skip past occurrences and to decide whether a reminder is overdue.
+     * @return one plan per reminder that still has something to fire; empty when the task is
+     *   completed, deleted, carries no reminders, or every recurrence has run out.
      */
     public fun plan(
         task: StudyTask,
         capabilities: SchedulingCapabilities,
         now: Instant,
-    ): ReminderPlan? {
-        if (task.isCompleted) return null
-        val reminder = task.reminder ?: return null
-        val dueAt = task.dueAt ?: return null
+    ): List<ReminderPlan> = task.reminders.mapNotNull { plan(task, it, capabilities, now) }
 
-        val occurrence =
-            RecurrenceCalculator.nextOccurrence(
-                rule = reminder.recurrence,
-                start = dueAt,
-                zone = task.timeZone,
-                // Search by *occurrence*, not by trigger time. A reminder whose lead time has
-                // already elapsed is late, not irrelevant — the user still needs telling that the
-                // thing is due shortly — so it keeps a trigger in the past and fires immediately.
-                after = now,
-            ) ?: return null
+    /**
+     * Plans the next delivery for one reminder of [task].
+     *
+     * @return the plan, or `null` when there is nothing left to schedule (task completed or
+     *   deleted, recurrence exhausted, or a one-shot absolute reminder that has already fired).
+     */
+    public fun plan(
+        task: StudyTask,
+        reminder: Reminder,
+        capabilities: SchedulingCapabilities,
+        now: Instant,
+    ): ReminderPlan? {
+        if (task.isCompleted || task.deleted) return null
+        val anchor = anchorFor(task, reminder, now) ?: return null
+
+        // A snooze postpones this delivery without rewriting what the reminder is anchored to, so
+        // the next occurrence of a repeating task is unaffected by the user hitting snooze once.
+        val snoozedUntil = reminder.snooze?.until?.takeIf { it > now }
 
         return ReminderPlan(
             reminderId = reminder.id,
             taskId = task.id,
-            occurrenceAt = occurrence,
-            triggerAt = occurrence - reminder.leadTime,
+            occurrenceAt = anchor.occurrenceAt,
+            triggerAt = snoozedUntil ?: anchor.triggerAt,
             delivery = deliveryFor(reminder, capabilities),
             degradations = degradationsFor(reminder, capabilities),
         )
     }
+
+    /**
+     * Resolves what the reminder fires against.
+     *
+     * The two triggers are different anchors rather than one anchor with an exception: a lead time
+     * follows the task through every recurrence, while an absolute time is a one-shot the task's
+     * due date cannot move.
+     */
+    private fun anchorFor(
+        task: StudyTask,
+        reminder: Reminder,
+        now: Instant,
+    ): ReminderAnchor? =
+        when (val trigger = reminder.trigger) {
+            is ReminderTrigger.BeforeDue -> {
+                val dueAt = task.dueAt ?: return null
+                val occurrence =
+                    RecurrenceCalculator.nextOccurrence(
+                        rule = task.recurrence,
+                        start = dueAt,
+                        zone = task.timeZone,
+                        // Search by *occurrence*, not by trigger time. A reminder whose lead time
+                        // has already elapsed is late, not irrelevant — the user still needs
+                        // telling that the thing is due shortly — so it keeps a trigger in the past
+                        // and fires immediately.
+                        after = now,
+                    ) ?: return null
+                ReminderAnchor(occurrenceAt = occurrence, triggerAt = occurrence - trigger.leadTime)
+            }
+
+            is ReminderTrigger.AtInstant -> {
+                // Already delivered means delivered: re-planning after a reboot or a permission
+                // change must not ring an absolute alarm a second time.
+                if (reminder.lastFiredAt?.let { it >= trigger.instant } == true) {
+                    null
+                } else {
+                    ReminderAnchor(
+                        occurrenceAt = task.dueAtUtc ?: trigger.instant,
+                        triggerAt = trigger.instant,
+                    )
+                }
+            }
+        }
+
+    private data class ReminderAnchor(
+        val occurrenceAt: Instant,
+        val triggerAt: Instant,
+    )
 
     /**
      * Plans every outstanding reminder — the operation run on boot, on app update, and after a time
@@ -72,7 +126,7 @@ public object ReminderScheduler {
         tasks: List<StudyTask>,
         capabilities: SchedulingCapabilities,
         now: Instant,
-    ): List<ReminderPlan> = tasks.mapNotNull { plan(it, capabilities, now) }
+    ): List<ReminderPlan> = tasks.flatMap { plan(it, capabilities, now) }
 
     private fun deliveryFor(
         reminder: Reminder,

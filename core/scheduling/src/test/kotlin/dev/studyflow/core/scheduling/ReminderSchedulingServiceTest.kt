@@ -5,6 +5,7 @@ import dev.studyflow.core.domain.reminder.ReminderPlan
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.ReminderPrecision
+import dev.studyflow.core.model.ReminderTrigger
 import dev.studyflow.core.model.StudyTask
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -25,7 +26,7 @@ class ReminderSchedulingServiceTest {
 
     @Test
     fun `exact reminders use exact alarms when permission is granted`() {
-        val result = service.schedule(task(ReminderPrecision.EXACT))
+        val result = service.schedule(task(ReminderPrecision.EXACT)).single()
 
         assertEquals(listOf("cancel:reminder-task-1", "exact:reminder-task-1"), platform.calls)
         assertEquals(ReminderDelivery.EXACT, result.scheduledPlan().delivery)
@@ -36,7 +37,7 @@ class ReminderSchedulingServiceTest {
     fun `exact reminders downgrade to inexact with rationale and banner when permission is denied`() {
         capabilities = SchedulingCapabilities(canScheduleExactAlarms = false)
 
-        val result = service.schedule(task(ReminderPrecision.EXACT))
+        val result = service.schedule(task(ReminderPrecision.EXACT)).single()
 
         assertEquals(listOf("cancel:reminder-task-1", "inexact:reminder-task-1"), platform.calls)
         assertEquals(ReminderDelivery.INEXACT, result.scheduledPlan().delivery)
@@ -46,7 +47,7 @@ class ReminderSchedulingServiceTest {
 
     @Test
     fun `alarm reminders use the alarm-clock platform primitive`() {
-        val result = service.schedule(task(ReminderPrecision.ALARM))
+        val result = service.schedule(task(ReminderPrecision.ALARM)).single()
 
         assertEquals(listOf("cancel:reminder-task-1", "alarm:reminder-task-1"), platform.calls)
         assertEquals(ReminderDelivery.ALARM_CLOCK, result.scheduledPlan().delivery)
@@ -57,7 +58,7 @@ class ReminderSchedulingServiceTest {
         service.schedule(task(ReminderPrecision.EXACT))
         capabilities = SchedulingCapabilities(canScheduleExactAlarms = false)
 
-        val result = service.schedule(task(ReminderPrecision.EXACT))
+        val result = service.schedule(task(ReminderPrecision.EXACT)).single()
 
         assertEquals(
             listOf(
@@ -75,7 +76,7 @@ class ReminderSchedulingServiceTest {
     fun `exact alarm race fallback is surfaced in the scheduling result`() {
         platform.nextExactOutcome = PlatformScheduleOutcome.EXACT_ALARM_DENIED_FALLBACK_TO_INEXACT
 
-        val result = service.schedule(task(ReminderPrecision.EXACT))
+        val result = service.schedule(task(ReminderPrecision.EXACT)).single()
 
         assertEquals(ReminderDelivery.INEXACT, result.scheduledPlan().delivery)
         assertNotNull(result.scheduled().permissionRationale)
@@ -118,15 +119,15 @@ class ReminderSchedulingServiceTest {
 
     @Test
     fun `completed tasks cancel any existing reminder instead of scheduling`() {
-        val result = service.schedule(task(ReminderPrecision.GENTLE).copy(completedAt = now))
+        val result = service.schedule(task(ReminderPrecision.GENTLE).copy(completedAt = now)).single()
 
         assertEquals(listOf("cancel:reminder-task-1"), platform.calls)
         assertTrue(result is ReminderScheduleResult.NotScheduled)
     }
 
     @Test
-    fun `replace cancels a changed reminder id before scheduling the new one`() {
-        service.replace("reminder-old", task(ReminderPrecision.GENTLE))
+    fun `replace cancels a removed reminder id before scheduling the remaining ones`() {
+        service.replace(listOf("reminder-old", "reminder-task-1"), task(ReminderPrecision.GENTLE))
 
         assertEquals(
             listOf(
@@ -135,6 +136,41 @@ class ReminderSchedulingServiceTest {
                 "inexact:reminder-task-1",
             ),
             platform.calls,
+        )
+    }
+
+    @Test
+    fun `each reminder on a task gets its own registration`() {
+        val task =
+            task(
+                ReminderPrecision.GENTLE,
+                reminders =
+                    listOf(
+                        Reminder(id = "reminder-lead", taskId = "task-1"),
+                        Reminder(
+                            id = "reminder-alarm",
+                            taskId = "task-1",
+                            trigger = ReminderTrigger.AtInstant(Instant.parse("2026-03-02T07:00:00Z")),
+                            precision = ReminderPrecision.ALARM,
+                        ),
+                    ),
+            )
+
+        val results = service.schedule(task)
+
+        assertEquals(
+            listOf(
+                "cancel:reminder-lead",
+                "inexact:reminder-lead",
+                "cancel:reminder-alarm",
+                "alarm:reminder-alarm",
+            ),
+            platform.calls,
+        )
+        assertEquals(setOf("reminder-lead", "reminder-alarm"), platform.activeReminderIds)
+        assertEquals(
+            listOf(ReminderDelivery.INEXACT, ReminderDelivery.ALARM_CLOCK),
+            results.map { it.scheduledPlan().delivery },
         )
     }
 
@@ -154,13 +190,16 @@ class ReminderSchedulingServiceTest {
     private fun task(
         precision: ReminderPrecision,
         id: String = "task-1",
+        reminders: List<Reminder> =
+            listOf(Reminder(id = "reminder-$id", taskId = id, precision = precision)),
     ): StudyTask =
         StudyTask(
             id = id,
             title = "Revise chapter 4",
             dueAt = LocalDateTime(2026, 3, 2, 8, 0),
             timeZone = TimeZone.of("Europe/London"),
-            reminder = Reminder(id = "reminder-$id", precision = precision),
+            reminders = reminders,
+            updatedAt = now,
         )
 
     private class RecordingPlatformScheduler : ReminderPlatformScheduler {

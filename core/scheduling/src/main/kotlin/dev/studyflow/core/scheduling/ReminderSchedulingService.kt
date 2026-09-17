@@ -5,6 +5,7 @@ import dev.studyflow.core.domain.reminder.ReminderDelivery
 import dev.studyflow.core.domain.reminder.ReminderPlan
 import dev.studyflow.core.domain.reminder.ReminderScheduler
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
+import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.StudyTask
 import kotlin.time.Instant
 
@@ -20,19 +21,41 @@ public class ReminderSchedulingService(
     private val platformScheduler: ReminderPlatformScheduler,
     private val now: () -> Instant,
 ) {
-    public fun schedule(task: StudyTask): ReminderScheduleResult {
-        val reminderId = task.reminder?.id
+    /** Registers every reminder on [task], replacing any registration those reminders already had. */
+    public fun schedule(task: StudyTask): List<ReminderScheduleResult> {
         val capabilities = capabilitiesProvider.currentCapabilities()
-        val plan = ReminderScheduler.plan(task, capabilities, now())
+        val now = now()
+        return task.reminders.map { reminder -> schedule(task, reminder, capabilities, now) }
+    }
 
-        if (plan == null) {
-            if (reminderId != null) {
-                platformScheduler.cancel(reminderId)
-            }
-            return ReminderScheduleResult.NotScheduled(reminderId = reminderId)
-        }
+    public fun rescheduleAll(tasks: Collection<StudyTask>): List<ReminderScheduleResult> = tasks.flatMap(::schedule)
 
-        platformScheduler.cancel(plan.reminderId)
+    /**
+     * Schedules [task] after an edit, cancelling registrations for reminders it no longer has.
+     *
+     * Deleting a reminder is the one change the task itself cannot describe — nothing left in the
+     * aggregate names the alarm that must go away — so the caller passes the ids it replaced.
+     */
+    public fun replace(
+        previousReminderIds: Collection<String>,
+        task: StudyTask,
+    ): List<ReminderScheduleResult> {
+        val currentIds = task.reminders.mapTo(mutableSetOf()) { it.id }
+        previousReminderIds.filterNot(currentIds::contains).forEach(platformScheduler::cancel)
+        return schedule(task)
+    }
+
+    private fun schedule(
+        task: StudyTask,
+        reminder: Reminder,
+        capabilities: SchedulingCapabilities,
+        now: Instant,
+    ): ReminderScheduleResult {
+        platformScheduler.cancel(reminder.id)
+        val plan =
+            ReminderScheduler.plan(task, reminder, capabilities, now)
+                ?: return ReminderScheduleResult.NotScheduled(reminderId = reminder.id)
+
         val outcome =
             when (plan.delivery) {
                 ReminderDelivery.INEXACT -> platformScheduler.scheduleInexact(plan)
@@ -46,19 +69,6 @@ public class ReminderSchedulingService(
             permissionRationale = ExactAlarmPermissionRationale.takeIfNeeded(effectivePlan),
             banner = ReducedPrecisionBanner.takeIfNeeded(effectivePlan),
         )
-    }
-
-    public fun rescheduleAll(tasks: Collection<StudyTask>): List<ReminderScheduleResult> = tasks.map(::schedule)
-
-    public fun replace(
-        previousReminderId: String?,
-        task: StudyTask,
-    ): ReminderScheduleResult {
-        val nextReminderId = task.reminder?.id
-        if (previousReminderId != null && previousReminderId != nextReminderId) {
-            platformScheduler.cancel(previousReminderId)
-        }
-        return schedule(task)
     }
 
     public fun cancel(reminderId: String) {
@@ -95,7 +105,7 @@ public sealed interface ReminderScheduleResult {
     ) : ReminderScheduleResult
 
     public data class NotScheduled(
-        val reminderId: String?,
+        val reminderId: String,
     ) : ReminderScheduleResult
 }
 

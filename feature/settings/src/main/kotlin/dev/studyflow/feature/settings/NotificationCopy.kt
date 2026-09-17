@@ -67,6 +67,8 @@ internal object NotificationCopy {
             }
 
             NotificationMessageKey.DEGRADED_GENERIC,
+            // A rationale key has no business in unavailable-state copy, but it still receives a
+            // clear generic explanation rather than being treated as an impossible state.
             NotificationMessageKey.RATIONALE_GENERIC,
             NotificationMessageKey.RATIONALE_TIMER,
             NotificationMessageKey.RATIONALE_REMINDER,

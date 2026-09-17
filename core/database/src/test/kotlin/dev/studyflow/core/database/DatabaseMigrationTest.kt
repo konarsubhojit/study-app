@@ -44,10 +44,50 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration 2 to 3 derives the session projection from the event log`() {
-        helper.createDatabase(DATABASE_NAME, 2).use { database ->
-            database.insertVersionTwoSession()
+    fun `migration 3 to 4 resolves due instants, keeps reminders and moves the recurrence rule`() {
+        helper.createDatabase(DATABASE_NAME, 3).use { database ->
+            database.insertVersionThreeTaskWithReminder()
         }
+
+        helper
+           .runMigrationsAndValidate(
+               DATABASE_NAME,
+               StudyFlowDatabase.VERSION,
+               true,
+               *DatabaseMigrations.ALL,
+           ).use { database ->
+               database
+                   .query(
+                       """
+                       SELECT due_at, due_at_utc, is_all_day, priority, recurrence_frequency, deleted
+                       FROM study_tasks
+                       """.trimIndent(),
+                   ).use { cursor ->
+                       assertEquals(true, cursor.moveToFirst())
+                       assertEquals("2026-10-25T09:00", cursor.getString(0))
+                       assertEquals(1_792_918_800_000L, cursor.getLong(1))
+                       assertEquals(0, cursor.getInt(2))
+                       assertEquals("NORMAL", cursor.getString(3))
+                       assertEquals("WEEKLY", cursor.getString(4))
+                       assertEquals(0, cursor.getInt(5))
+                   }
+
+               database
+                   .query("SELECT id, trigger_type, lead_time, trigger_at_utc FROM reminders")
+                   .use { cursor ->
+                       assertEquals(true, cursor.moveToFirst())
+                       assertEquals("legacy-reminder", cursor.getString(0))
+                       assertEquals("BEFORE_DUE", cursor.getString(1))
+                       assertEquals(1_800_000L, cursor.getLong(2))
+                       assertEquals(1_792_917_000_000L, cursor.getLong(3))
+                       assertFalse(cursor.moveToNext())
+                   }
+           }
+    }
+
+    @Test
+    fun `migration 2 to 3 derives the session projection from the event log`() {
+        helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
         helper
             .runMigrationsAndValidate(
@@ -101,6 +141,28 @@ class DatabaseMigrationTest {
             ) VALUES (
                 'legacy-material', NULL, 'Legacy.pdf', 'application/pdf', 1024,
                 '${"0".repeat(64)}', 1789601069317, 'PENDING', NULL, NULL, NULL, NULL, NULL, 0
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionThreeTaskWithReminder() {
+        execSQL(
+            """
+            INSERT INTO study_tasks (id, title, notes, subject_id, due_at, time_zone, completed_at)
+            VALUES ('legacy-task', 'Revise databases', NULL, NULL, '2026-10-25T09:00',
+            'Europe/London', NULL)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO reminders (
+                id, task_id, lead_time, precision, recurrence_frequency, recurrence_interval,
+                recurrence_days_of_week, recurrence_day_of_month, recurrence_end_type,
+                recurrence_end_count, recurrence_end_date
+            ) VALUES (
+                'legacy-reminder', 'legacy-task', 1800000, 'EXACT', 'WEEKLY', 1, NULL, NULL,
+                'NEVER', NULL, NULL
             )
             """.trimIndent(),
         )

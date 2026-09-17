@@ -55,6 +55,82 @@ class DatabaseQueryPlanTest {
         }
 
     @Test
+    fun `open task list queries use the covering due-instant index without temporary sort`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(8, 24, 100, 20_000, 20, 4)),
+            )
+
+            val windows =
+                listOf(
+                    "due_at_utc < 1772086400000",
+                    "due_at_utc >= 1772000000000 AND due_at_utc < 1772086400000",
+                    "due_at_utc >= 1772086400000",
+                )
+
+            windows.forEach { window ->
+                val plan =
+                    explain(
+                        """
+                        SELECT * FROM study_tasks
+                        WHERE deleted = 0 AND completed_at IS NULL AND $window
+                        ORDER BY due_at_utc ASC, id ASC
+                        """.trimIndent(),
+                    )
+
+                assertTrue(
+                    "$window should use the open-task index, plan was $plan",
+                    plan.any { it.contains("index_study_tasks_open_due_at_utc") },
+                )
+                assertFalse("$window sorted in memory: $plan", plan.any { it.contains("TEMP B-TREE") })
+                assertFalse("$window scanned the table: $plan", plan.any { it.contains("SCAN study_tasks") })
+            }
+        }
+
+    @Test
+    fun `tag filter resolves through the tag index rather than scanning tasks`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(8, 24, 100, 20_000, 20, 4)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT study_tasks.* FROM study_tasks
+                    JOIN task_tags ON task_tags.task_id = study_tasks.id
+                    WHERE task_tags.tag = 'exam' AND study_tasks.deleted = 0
+                    """.trimIndent(),
+                )
+
+            assertTrue("plan was $plan", plan.any { it.contains("index_task_tags_tag") })
+            assertFalse("plan was $plan", plan.any { it.contains("SCAN study_tasks") })
+        }
+
+    @Test
+    fun `outstanding reminder scan uses the trigger index without temporary sort`() =
+        runBlocking {
+            SyntheticDataSeeder.seedIfEmpty(
+                database,
+                SyntheticDataFactory.create(SyntheticDataSize(8, 24, 100, 20_000, 20, 4)),
+            )
+
+            val plan =
+                explain(
+                    """
+                    SELECT * FROM reminders
+                    WHERE trigger_at_utc IS NOT NULL AND trigger_at_utc <= 1772086400000
+                    ORDER BY trigger_at_utc ASC, id ASC
+                    """.trimIndent(),
+                )
+
+            assertTrue("plan was $plan", plan.any { it.contains("index_reminders_trigger_at_utc") })
+            assertFalse("plan was $plan", plan.any { it.contains("TEMP B-TREE") })
+        }
+
+    @Test
     fun `session event fold query uses unique sequence index without temporary sort`() =
         runBlocking {
             SyntheticDataSeeder.seedIfEmpty(

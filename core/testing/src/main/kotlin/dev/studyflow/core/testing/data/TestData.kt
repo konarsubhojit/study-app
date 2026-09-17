@@ -3,15 +3,21 @@ package dev.studyflow.core.testing.data
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
+import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
+import dev.studyflow.core.model.ReminderPrecision
+import dev.studyflow.core.model.ReminderTrigger
 import dev.studyflow.core.model.SessionElapsed
 import dev.studyflow.core.model.SessionEvent
 import dev.studyflow.core.model.SessionEventType
 import dev.studyflow.core.model.SessionStatus
+import dev.studyflow.core.model.SnoozeState
 import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subject
+import dev.studyflow.core.model.Subtask
 import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.model.TaskPriority
 import dev.studyflow.core.model.TimeAnchor
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -46,25 +52,63 @@ public fun testSubject(
     archived: Boolean = false,
 ): Subject = Subject(id = id, name = name, colorArgb = colorArgb, archived = archived)
 
+@Suppress("LongParameterList")
 public fun testStudyTask(
     id: String = "task-1",
     title: String = "Revise integration by parts",
     notes: String? = null,
     subjectId: String? = null,
+    materialId: String? = null,
+    sessionId: String? = null,
     dueAt: LocalDateTime? = null,
     timeZone: TimeZone = TimeZone.UTC,
+    isAllDay: Boolean = false,
+    priority: TaskPriority = TaskPriority.NORMAL,
+    tags: Set<String> = emptySet(),
+    subtasks: List<Subtask> = emptyList(),
+    recurrence: RecurrenceRule? = null,
     completedAt: Instant? = null,
-    reminder: Reminder? = null,
+    reminders: List<Reminder> = emptyList(),
+    updatedAt: Instant = TEST_WALL_CLOCK,
+    deleted: Boolean = false,
 ): StudyTask =
     StudyTask(
         id = id,
         title = title,
         notes = notes,
         subjectId = subjectId,
+        materialId = materialId,
+        sessionId = sessionId,
         dueAt = dueAt,
         timeZone = timeZone,
+        isAllDay = isAllDay,
+        priority = priority,
+        tags = tags,
+        subtasks = subtasks,
+        recurrence = recurrence,
         completedAt = completedAt,
-        reminder = reminder,
+        reminders = reminders,
+        updatedAt = updatedAt,
+        deleted = deleted,
+    )
+
+public fun testReminder(
+    id: String = "reminder-1",
+    taskId: String = "task-1",
+    trigger: ReminderTrigger = ReminderTrigger.BeforeDue(),
+    precision: ReminderPrecision = ReminderPrecision.GENTLE,
+    snooze: SnoozeState? = null,
+    lastFiredAt: Instant? = null,
+    schedulingId: String? = null,
+): Reminder =
+    Reminder(
+        id = id,
+        taskId = taskId,
+        trigger = trigger,
+        precision = precision,
+        snooze = snooze,
+        lastFiredAt = lastFiredAt,
+        schedulingId = schedulingId,
     )
 
 public fun testStudySession(

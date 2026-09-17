@@ -35,7 +35,7 @@ class NotificationSettingsViewModelTest {
     fun `the screen reports what the system says, not what the app would like`() =
         runTest(mainDispatcher.dispatcher) {
             source.permission = granted(notificationsEnabled = true)
-            source.channels = channels(disabled = setOf(StudyFlowNotificationChannel.UPLOADS))
+            source.channels = channels(groupBlocked = setOf(StudyFlowNotificationChannel.UPLOADS))
             val viewModel = viewModel()
 
             viewModel.onEvent(NotificationSettingsUiEvent.Refresh())
@@ -150,7 +150,7 @@ class NotificationSettingsViewModelTest {
             assertTrue(viewModel.state.value.notificationsBlocked)
 
             source.permission = granted(notificationsEnabled = true)
-            viewModel.onEvent(NotificationSettingsUiEvent.PermissionResult(granted = true))
+            viewModel.onEvent(NotificationSettingsUiEvent.PermissionResult())
             advanceUntilIdle()
 
             assertFalse(viewModel.state.value.notificationsBlocked)
@@ -192,13 +192,13 @@ class NotificationSettingsViewModelTest {
     private fun granted(notificationsEnabled: Boolean) =
         NotificationPermissionState(NotificationPermissionStatus.GRANTED, notificationsEnabled)
 
-    private fun channels(disabled: Set<StudyFlowNotificationChannel>) =
+    private fun channels(groupBlocked: Set<StudyFlowNotificationChannel>) =
         StudyFlowNotificationChannel.entries.map { channel ->
             NotificationChannelStatus(
                 channel = channel,
                 registered = true,
                 importance = channel.importance,
-                groupBlocked = channel in disabled,
+                groupBlocked = channel in groupBlocked,
                 appNotificationsEnabled = true,
             )
         }

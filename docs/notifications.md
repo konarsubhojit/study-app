@@ -23,7 +23,7 @@ their choice.
 sent to a deleted channel is dropped by the system with no error at all. Renaming a channel means a
 new id plus a `legacyChannelIds` entry; that is the only sanctioned way for the app to delete one.
 
-Per-channel and app-level system settings are one tap away: `settingsIntent(channel)` and
+Per-channel and app-level system settings are one tap away: `channelSettingsIntent(channel)` and
 `appSettingsIntent()`.
 
 ## The `POST_NOTIFICATIONS` permission

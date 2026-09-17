@@ -66,10 +66,7 @@ public sealed interface NotificationSettingsUiEvent : UiEvent {
 
     /** The system dialog closed. [shouldShowRationale] is re-read afterwards: a refusal that can
      * still be explained is a very different state from a final one. */
-    public data class PermissionResult(
-        val granted: Boolean,
-        val shouldShowRationale: Boolean = false,
-    ) : NotificationSettingsUiEvent
+    public data class PermissionResult(val shouldShowRationale: Boolean = false) : NotificationSettingsUiEvent
 
     public data class OpenChannelSettings(
         val channel: StudyFlowNotificationChannel,
@@ -148,7 +145,7 @@ public class NotificationSettingsViewModel
             }
         }
 
-        private fun refresh(shouldShowRationale: Boolean = false) {
+        private fun refresh(shouldShowRationale: Boolean) {
             val snapshot = source.snapshot(shouldShowRationale)
             systemState.value =
                 systemState.value.copy(
@@ -177,13 +174,18 @@ public class NotificationSettingsViewModel
                                 action.channel
                                     ?.let(source::channelSettingsIntent)
                                     ?: source.appSettingsIntent(),
-                            fallbackIntent = source.appSettingsIntent(),
+                            fallbackIntent =
+                                if (action.channel != null) {
+                                    source.appSettingsIntent()
+                                } else {
+                                    null
+                                },
                         ),
                     )
                 }
 
                 NotificationPermissionAction.None -> {
-                    refresh()
+                    refresh(shouldShowRationale = false)
                 }
             }
         }
