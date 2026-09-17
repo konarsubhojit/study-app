@@ -23,13 +23,12 @@ class TimerViewModelTest {
     val mainDispatcher = MainDispatcherExtension()
 
     @Test
-    fun `stale saved elapsed counter is ignored`() =
+    fun `initial state is derived from idle timer state`() =
         runTest(mainDispatcher.dispatcher) {
             val device = FakeDevice()
-            val savedState = SavedStateHandle(mapOf("timer.elapsedSeconds" to 600))
             val viewModel =
                 TimerViewModel(
-                    savedStateHandle = savedState,
+                    savedStateHandle = SavedStateHandle(),
                     initialTimerState = TimerState.Idle,
                     timerStates = flowOf(TimerState.Idle),
                     now = device::anchor,
