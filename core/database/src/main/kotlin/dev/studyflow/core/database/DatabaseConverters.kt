@@ -8,6 +8,7 @@ import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.RecurrenceFrequency
 import dev.studyflow.core.model.ReminderPrecision
 import dev.studyflow.core.model.SessionEventType
+import dev.studyflow.core.model.SessionStatus
 import kotlinx.datetime.DayOfWeek
 import kotlinx.datetime.LocalDate
 import kotlinx.datetime.LocalDateTime
@@ -73,6 +74,12 @@ public class DatabaseConverters {
 
     @TypeConverter
     public fun stringToEventType(value: String?): SessionEventType? = value?.let(SessionEventType::valueOf)
+
+    @TypeConverter
+    public fun sessionStatusToString(value: SessionStatus?): String? = value?.name
+
+    @TypeConverter
+    public fun stringToSessionStatus(value: String?): SessionStatus? = value?.let(SessionStatus::valueOf)
 
     @TypeConverter
     public fun reminderPrecisionToString(value: ReminderPrecision?): String? = value?.name

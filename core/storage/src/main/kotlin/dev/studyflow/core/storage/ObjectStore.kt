@@ -9,7 +9,7 @@ import kotlin.time.Duration.Companion.minutes
  * Everything above this interface — the materials catalogue, the upload worker, the previewers —
  * is written against opaque [ObjectKey]s and short-lived [PresignedUrl]s, never against a bucket
  * name, a region, an SDK type or a credential. That is what makes the provider decision in
- * `docs/adr/0009-storage-provider.md` reversible: swapping Supabase Storage for an S3-compatible
+ * `docs/adr/0010-storage-provider.md` reversible: swapping Supabase Storage for an S3-compatible
  * bucket is a different implementation of these six functions and one line of DI wiring.
  *
  * **No implementation may hold a cloud provider credential.** The client authenticates to our own

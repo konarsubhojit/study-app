@@ -47,7 +47,7 @@ bytes, colliding paths), and entry count, size and compression ratio are capped 
 The offline cache is LRU with two hard exceptions — it will never evict a file the user pinned, and
 never a file that has not finished uploading, because that local copy is the only copy.
 
-→ [ADR 0005](docs/adr/0005-object-storage.md) · [ADR 0009](docs/adr/0009-storage-provider.md) ·
+→ [ADR 0005](docs/adr/0005-object-storage.md) · [ADR 0010](docs/adr/0010-storage-provider.md) ·
 [`ObjectStore`](core/storage/src/main/kotlin/dev/studyflow/core/storage/ObjectStore.kt) ·
 [`UploadPlanner`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/UploadPlanner.kt) ·
 [`ArchiveSafety`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/ArchiveSafety.kt) ·
@@ -65,7 +65,11 @@ Recurrence is an RRULE-lite subset evaluated in **local time**, so "every day at
 08:00 across DST (the real interval being 23 or 25 hours, which the tests assert), and "the 31st"
 clamps to the last day of February instead of being skipped.
 
+Delivery goes through one notification layer: four documented channels, a `POST_NOTIFICATIONS`
+prompt deferred to a moment of value, and denials that are reported rather than swallowed.
+
 → [ADR 0004](docs/adr/0004-reminder-scheduling.md) ·
+[Notifications guide](docs/notifications.md) ·
 [`ReminderScheduler`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/ReminderScheduler.kt) ·
 [`RecurrenceCalculator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/RecurrenceCalculator.kt)
 
@@ -246,4 +250,5 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 - [0007 — Backend platform: Supabase, environments and the row-owns-itself data model](docs/adr/0007-backend-platform.md)
 - [0007 — Tests are a pyramid with shared fakes, and coverage is a signal](docs/adr/0007-test-strategy.md)
 - [0008 — Room is the local source of truth with explicit migrations](docs/adr/0008-local-room-database.md)
-- [0009 — Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`](docs/adr/0009-storage-provider.md)
+- [0009 — Notifications: documented channels and a deferred permission](docs/adr/0009-notifications.md)
+- [0010 — Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`](docs/adr/0010-storage-provider.md)

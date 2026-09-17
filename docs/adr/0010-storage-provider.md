@@ -1,4 +1,4 @@
-# 9. Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`
+# 10. Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`
 
 - Status: accepted
 - Date: 2026-09-17

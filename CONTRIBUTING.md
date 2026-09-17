@@ -154,8 +154,8 @@ Run against a local mock backend without changing any code:
   modules that compile Compose code.
 - **Android Lint** with `warningsAsErrors`, so a new warning fails the build.
 - **Compose preview screenshot tests** on modules that apply `studyflow.screenshot`. Re-record them
-  with `./gradlew :core:designsystem:updateDebugScreenshotTest` only when the image change is the
-  change you meant to make, and say so in the pull request.
+  with `./gradlew :core:ui:updateDebugScreenshotTest` (or the affected module) only when the image
+  change is the change you meant to make, and say so in the pull request.
 - **Module boundary and module graph** checks.
 
 Enable the opt-in formatting hint before your first commit if you want it; CI remains the real

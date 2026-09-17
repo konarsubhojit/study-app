@@ -8,7 +8,15 @@ import kotlin.time.Instant
  *
  * This is a *projection* of the session's [SessionEvent] log, never the source of truth. It exists
  * so the UI and statistics have something flat to render, and it can be rebuilt from scratch at any
- * point by replaying the log.
+ * point by replaying the log. Note that [elapsed] is therefore derived, not stored: there is no
+ * accumulated-milliseconds field anywhere that a missed write could leave permanently wrong.
+ *
+ * @property deviceId the device whose event log produced this projection. Sessions are measured
+ *   per device — an `elapsedRealtime` anchor from another phone means nothing here — and it is the
+ *   scope the "at most one active session" invariant is enforced in.
+ * @property updatedAt when the projection was last rewritten, used for sync conflict resolution.
+ * @property deleted soft-delete marker; rows are tombstoned rather than removed so a deletion can
+ *   still be replicated to other devices.
  */
 public data class StudySession(
     val id: String,
@@ -18,10 +26,22 @@ public data class StudySession(
     val endedAt: Instant?,
     val status: SessionStatus,
     val elapsed: SessionElapsed,
+    val deviceId: String,
+    val updatedAt: Instant,
+    val deleted: Boolean = false,
 ) {
     init {
         require(id.isNotBlank()) { "StudySession.id must not be blank" }
+        require(deviceId.isNotBlank()) { "StudySession.deviceId must not be blank" }
     }
+
+    /**
+     * True while the session still accepts commands: running or paused, and not tombstoned.
+     *
+     * A [deleted] session is never active, whatever its [status] says, so a deletion that has not
+     * yet been replicated cannot keep occupying the device's single active slot.
+     */
+    public val isActive: Boolean get() = !deleted && status != SessionStatus.STOPPED
 }
 
 /** The state a session's event log folds down to. */

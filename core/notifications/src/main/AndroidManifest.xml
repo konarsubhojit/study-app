@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Declared by the module that owns the notification layer so that any app module which depends
+      on it gets the permission, and so the manifest sits next to the channels it protects.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+</manifest>

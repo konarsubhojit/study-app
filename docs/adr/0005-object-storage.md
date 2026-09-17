@@ -1,6 +1,6 @@
 # 5. Object storage: presigned URLs, content addressing, untrusted archives
 
-- Status: accepted for the client contract; provider chosen in [ADR 0009](0009-storage-provider.md)
+- Status: accepted for the client contract; provider chosen in [ADR 0010](0010-storage-provider.md)
 - Date: 2026-09-16
 
 ## Context
@@ -68,7 +68,7 @@ Proposed, to be confirmed before P3 (#7):
 
 **Recommendation: Supabase for the first cloud milestone**, behind the same repository interfaces
 the local-only implementation already satisfies. Confirmed, with Firebase Storage also considered
-and the exit path written down, in [ADR 0009](0009-storage-provider.md). The client contract above
+and the exit path written down, in [ADR 0010](0010-storage-provider.md). The client contract above
 is provider-agnostic, so switching later is a data-layer change rather than an architectural one.
 
 ## Consequences

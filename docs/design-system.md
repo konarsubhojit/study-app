@@ -80,13 +80,14 @@ than animating unconditionally, and never make an animation the only signal that
 
 ## Screenshot tests
 
-`:core:designsystem` applies the `studyflow.screenshot` convention plugin, which renders the
+`:core:designsystem` and `:core:ui` apply the `studyflow.screenshot` convention plugin, which renders the
 `@Preview` functions under `src/screenshotTest` with layoutlib and compares them against the images
 checked in under `src/screenshotTestDebug/reference`.
 
 ```bash
 ./gradlew :core:designsystem:validateDebugScreenshotTest   # compare; also runs as part of `check`
 ./gradlew :core:designsystem:updateDebugScreenshotTest     # re-record after an intended change
+./gradlew :core:ui:updateDebugScreenshotTest               # re-record shared component references
 ```
 
 Re-record only when the change to the images is the change you meant to make, and say so in the pull

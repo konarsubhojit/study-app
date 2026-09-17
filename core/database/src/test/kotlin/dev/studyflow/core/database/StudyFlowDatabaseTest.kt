@@ -6,6 +6,7 @@ import dev.studyflow.core.database.entity.StudySessionEntity
 import dev.studyflow.core.database.entity.SubjectEntity
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.SessionEventType
+import dev.studyflow.core.model.SessionStatus
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -59,18 +60,18 @@ class StudyFlowDatabaseTest {
         }
 
     @Test
-    fun `session creation rolls metadata back when event insert fails`() =
+    fun `appending rolls the projection back when the event insert fails`() =
         runBlocking {
-            val firstSession = StudySessionEntity("session-a", null, null)
+            val firstSession = session("session-a")
             val firstEvent = event(id = "duplicate-event", sessionId = firstSession.id)
-            database.sessionDao().create(firstSession, firstEvent)
+            database.sessionDao().appendAndProject(firstSession, firstEvent)
 
             val result =
                 runCatching {
                     database
                         .sessionDao()
-                        .create(
-                            StudySessionEntity("session-b", null, null),
+                        .appendAndProject(
+                            session("session-b"),
                             event(id = "duplicate-event", sessionId = "session-b"),
                         )
                 }
@@ -115,6 +116,18 @@ class StudyFlowDatabaseTest {
             )
         }
 
+    private fun session(id: String): StudySessionEntity =
+        StudySessionEntity(
+            id = id,
+            subjectId = null,
+            note = null,
+            status = SessionStatus.RUNNING,
+            startedAt = SESSION_WALL_CLOCK,
+            endedAt = null,
+            deviceId = "device-$id",
+            updatedAt = SESSION_WALL_CLOCK,
+        )
+
     private fun event(
         id: String,
         sessionId: String,
@@ -124,8 +137,12 @@ class StudyFlowDatabaseTest {
             sessionId = sessionId,
             type = SessionEventType.STARTED,
             uptime = 10.minutes,
-            wallClock = Instant.parse("2026-09-16T23:24:29.317Z"),
+            wallClock = SESSION_WALL_CLOCK,
             bootId = BootId("boot-a"),
             sequence = 0,
         )
+
+    private companion object {
+        val SESSION_WALL_CLOCK: Instant = Instant.parse("2026-09-16T23:24:29.317Z")
+    }
 }

@@ -17,13 +17,18 @@ the only offline copy after an upgrade, and storing local task times as instants
 domain module.
 
 - Subjects, folders, materials and task reminders are normalized tables with foreign keys.
-- A study session table stores metadata only. `session_events` is the source of truth and has a
-  unique `(session_id, sequence)` index; status and elapsed time remain projections of the ordered
-  event log as required by [ADR 0003](0003-timer-event-sourcing.md).
+- `session_events` is the source of truth and has a unique `(session_id, sequence)` index. The
+  `study_sessions` row is a projection of that log — status, start, end and device, but never an
+  accumulated-milliseconds column — derived by `SessionReducer` as required by
+  [ADR 0003](0003-timer-event-sourcing.md). `SessionDao.appendAndProject` commits the event and the
+  projection together, and re-checks inside the transaction that the event continues the log and
+  that the device has no other active session, so "at most one active session per device" cannot be
+  broken by a race.
 - DAO list reads return `Flow<List<...>>` with deterministic ordering. Indices cover folder material
   timelines, upload-state scans, task due-time scans and session-event folds.
-- Task/reminder replacement, session creation and synthetic seeding are transactions. A failed child
-  write cannot leave a partial aggregate.
+- Task/reminder replacement, session appends and synthetic seeding are transactions. A failed child
+  write cannot leave a partial aggregate, and because the projection is only ever derived, a process
+  killed after the commit replays to the same state.
 - Absolute `Instant` values are signed UTC epoch milliseconds. Local task due times remain ISO local
   date-times with a separate IANA time-zone id, so persistence does not silently change wall-clock
   semantics.
@@ -34,7 +39,8 @@ may request destructive fallback only for development, and the factory checks An
 
 Room compiler schema exports under `core/database/schemas` are source-controlled. Version 1 is the
 baseline; version 2 adds encrypted-material state and covering index refinements through
-`MIGRATION_1_2`. Every future version must add an adjacent migration and a semantic migration test.
+`MIGRATION_1_2`; version 3 grows the session projection through `MIGRATION_2_3`, which recomputes
+every new column from the event log rather than defaulting it. Every future version must add an adjacent migration and a semantic migration test.
 The registry continuity test fails if any shipped version is skipped.
 
 Two deterministic synthetic profiles are provided:

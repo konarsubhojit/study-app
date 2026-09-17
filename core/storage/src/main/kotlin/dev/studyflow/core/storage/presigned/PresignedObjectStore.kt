@@ -25,7 +25,7 @@ import kotlin.time.Duration
  * This adapter is provider-agnostic on purpose. It speaks plain HTTP `PUT` to whatever URL
  * [PresignedUrlSource] hands it, which is the one thing Supabase Storage, Cloudflare R2 and any
  * other S3-compatible bucket all do identically — so changing provider changes the BFF, not this
- * class and not a single line above it (ADR 0009).
+ * class and not a single line above it (ADR 0010).
  *
  * No credential is involved anywhere in this file, and none may ever be: an expired URL is a
  * `403`, which the caller recovers from by asking for a new one.
