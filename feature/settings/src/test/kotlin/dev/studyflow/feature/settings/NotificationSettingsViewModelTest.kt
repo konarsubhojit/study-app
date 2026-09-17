@@ -150,7 +150,7 @@ class NotificationSettingsViewModelTest {
             assertTrue(viewModel.state.value.notificationsBlocked)
 
             source.permission = granted(notificationsEnabled = true)
-            viewModel.onEvent(NotificationSettingsUiEvent.PermissionResult(granted = true))
+            viewModel.onEvent(NotificationSettingsUiEvent.PermissionResult())
             advanceUntilIdle()
 
             assertFalse(viewModel.state.value.notificationsBlocked)

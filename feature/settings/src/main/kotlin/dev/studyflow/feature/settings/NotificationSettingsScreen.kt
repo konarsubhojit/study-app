@@ -53,7 +53,6 @@ public fun NotificationSettingsRoute(
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             viewModel.onEvent(
                 NotificationSettingsUiEvent.PermissionResult(
-                    granted = granted,
                     shouldShowRationale = activity.shouldExplainNotifications(),
                 ),
             )
@@ -91,11 +90,6 @@ public fun NotificationSettingsScreen(
     onEvent: (NotificationSettingsUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (!state.loaded) {
-        LoadingState(modifier = modifier)
-        return
-    }
-
     state.rationale?.let { key ->
         AlertDialog(
             onDismissRequest = { onEvent(NotificationSettingsUiEvent.RationaleDismissed) },
@@ -112,6 +106,11 @@ public fun NotificationSettingsScreen(
                 }
             },
         )
+    }
+
+    if (!state.loaded) {
+        LoadingState(modifier = modifier)
+        return
     }
 
     LazyColumn(
