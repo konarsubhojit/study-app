@@ -32,10 +32,7 @@ public fun TimerScreen(
         ) {
             Text(text = "${state.elapsedSeconds} seconds", style = MaterialTheme.typography.headlineMedium)
             Button(onClick = { onEvent(TimerUiEvent.Tick) }) {
-                Text(text = "Add a second")
-            }
-            Button(onClick = { onEvent(TimerUiEvent.Reset) }) {
-                Text(text = "Reset")
+                Text(text = "Refresh")
             }
         }
     }
