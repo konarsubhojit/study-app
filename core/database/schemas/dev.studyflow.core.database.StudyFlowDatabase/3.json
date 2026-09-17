@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 3,
-    "identityHash": "b147c7f7fa061391bf4e31fede1083cf",
+    "identityHash": "e94caf5c68737e862f60647c9203c5a4",
     "entities": [
       {
         "tableName": "subjects",
@@ -275,7 +275,7 @@
       },
       {
         "tableName": "study_tasks",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `notes` TEXT, `subject_id` TEXT, `material_id` TEXT, `session_id` TEXT, `due_at` TEXT, `due_at_utc` INTEGER, `time_zone` TEXT NOT NULL, `is_all_day` INTEGER NOT NULL, `priority` TEXT NOT NULL, `recurrence_frequency` TEXT, `recurrence_interval` INTEGER, `recurrence_days_of_week` TEXT, `recurrence_day_of_month` INTEGER, `recurrence_end_type` TEXT, `recurrence_end_count` INTEGER, `recurrence_end_date` TEXT, `completed_at` INTEGER, `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`material_id`) REFERENCES `materials`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`session_id`) REFERENCES `study_sessions`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `notes` TEXT, `subject_id` TEXT, `due_at` TEXT, `time_zone` TEXT NOT NULL, `completed_at` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
         "fields": [
           {
             "fieldPath": "id",
@@ -300,24 +300,9 @@
             "affinity": "TEXT"
           },
           {
-            "fieldPath": "materialId",
-            "columnName": "material_id",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "sessionId",
-            "columnName": "session_id",
-            "affinity": "TEXT"
-          },
-          {
             "fieldPath": "dueAt",
             "columnName": "due_at",
             "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "dueAtUtc",
-            "columnName": "due_at_utc",
-            "affinity": "INTEGER"
           },
           {
             "fieldPath": "timeZone",
@@ -326,14 +311,80 @@
             "notNull": true
           },
           {
-            "fieldPath": "isAllDay",
-            "columnName": "is_all_day",
+            "fieldPath": "completedAt",
+            "columnName": "completed_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_study_tasks_subject_id_due_at",
+            "unique": false,
+            "columnNames": [
+              "subject_id",
+              "due_at",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_subject_id_due_at` ON `${TABLE_NAME}` (`subject_id`, `due_at`, `id`)"
+          },
+          {
+            "name": "index_study_tasks_completed_at_due_at",
+            "unique": false,
+            "columnNames": [
+              "completed_at",
+              "due_at",
+              "id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_completed_at_due_at` ON `${TABLE_NAME}` (`completed_at`, `due_at`, `id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "subjects",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "subject_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "reminders",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `task_id` TEXT NOT NULL, `lead_time` INTEGER NOT NULL, `precision` TEXT NOT NULL, `recurrence_frequency` TEXT, `recurrence_interval` INTEGER, `recurrence_days_of_week` TEXT, `recurrence_day_of_month` INTEGER, `recurrence_end_type` TEXT, `recurrence_end_count` INTEGER, `recurrence_end_date` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`task_id`) REFERENCES `study_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "taskId",
+            "columnName": "task_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "leadTime",
+            "columnName": "lead_time",
             "affinity": "INTEGER",
             "notNull": true
           },
           {
-            "fieldPath": "priority",
-            "columnName": "priority",
+            "fieldPath": "precision",
+            "columnName": "precision",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -371,11 +422,81 @@
             "fieldPath": "recurrenceEndDate",
             "columnName": "recurrence_end_date",
             "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_reminders_task_id",
+            "unique": true,
+            "columnNames": [
+              "task_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_reminders_task_id` ON `${TABLE_NAME}` (`task_id`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "study_tasks",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "task_id"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "study_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `subject_id` TEXT, `note` TEXT, `status` TEXT NOT NULL, `started_at` INTEGER NOT NULL, `ended_at` INTEGER, `device_id` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
           },
           {
-            "fieldPath": "completedAt",
-            "columnName": "completed_at",
+            "fieldPath": "subjectId",
+            "columnName": "subject_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAt",
+            "columnName": "started_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endedAt",
+            "columnName": "ended_at",
             "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "deviceId",
+            "columnName": "device_id",
+            "affinity": "TEXT",
+            "notNull": true
           },
           {
             "fieldPath": "updatedAt",
@@ -398,348 +519,6 @@
         },
         "indices": [
           {
-            "name": "index_study_tasks_open_due_at_utc",
-            "unique": false,
-            "columnNames": [
-              "deleted",
-              "completed_at",
-              "due_at_utc",
-              "id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_open_due_at_utc` ON `${TABLE_NAME}` (`deleted`, `completed_at`, `due_at_utc`, `id`)"
-          },
-          {
-            "name": "index_study_tasks_subject_id_due_at",
-            "unique": false,
-            "columnNames": [
-              "subject_id",
-              "due_at_utc",
-              "id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_subject_id_due_at` ON `${TABLE_NAME}` (`subject_id`, `due_at_utc`, `id`)"
-          },
-          {
-            "name": "index_study_tasks_material_id",
-            "unique": false,
-            "columnNames": [
-              "material_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_material_id` ON `${TABLE_NAME}` (`material_id`)"
-          },
-          {
-            "name": "index_study_tasks_session_id",
-            "unique": false,
-            "columnNames": [
-              "session_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_session_id` ON `${TABLE_NAME}` (`session_id`)"
-          },
-          {
-            "name": "index_study_tasks_updated_at",
-            "unique": false,
-            "columnNames": [
-              "updated_at",
-              "id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_tasks_updated_at` ON `${TABLE_NAME}` (`updated_at`, `id`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "subjects",
-            "onDelete": "SET NULL",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "subject_id"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          },
-          {
-            "table": "materials",
-            "onDelete": "SET NULL",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "material_id"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          },
-          {
-            "table": "study_sessions",
-            "onDelete": "SET NULL",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "session_id"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          }
-        ]
-      },
-      {
-        "tableName": "reminders",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `task_id` TEXT NOT NULL, `trigger_type` TEXT NOT NULL, `lead_time` INTEGER, `trigger_instant` INTEGER, `trigger_time_zone` TEXT, `trigger_at_utc` INTEGER, `precision` TEXT NOT NULL, `snooze_until` INTEGER, `snooze_count` INTEGER, `last_fired_at` INTEGER, `scheduling_id` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`task_id`) REFERENCES `study_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "taskId",
-            "columnName": "task_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "triggerType",
-            "columnName": "trigger_type",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "leadTime",
-            "columnName": "lead_time",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "triggerInstant",
-            "columnName": "trigger_instant",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "triggerTimeZone",
-            "columnName": "trigger_time_zone",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "triggerAtUtc",
-            "columnName": "trigger_at_utc",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "precision",
-            "columnName": "precision",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "snoozeUntil",
-            "columnName": "snooze_until",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "snoozeCount",
-            "columnName": "snooze_count",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "lastFiredAt",
-            "columnName": "last_fired_at",
-            "affinity": "INTEGER"
-          },
-          {
-            "fieldPath": "schedulingId",
-            "columnName": "scheduling_id",
-            "affinity": "TEXT"
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_reminders_task_id",
-            "unique": false,
-            "columnNames": [
-              "task_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_reminders_task_id` ON `${TABLE_NAME}` (`task_id`)"
-          },
-          {
-            "name": "index_reminders_trigger_at_utc",
-            "unique": false,
-            "columnNames": [
-              "trigger_at_utc",
-              "id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_reminders_trigger_at_utc` ON `${TABLE_NAME}` (`trigger_at_utc`, `id`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "study_tasks",
-            "onDelete": "CASCADE",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "task_id"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          }
-        ]
-      },
-      {
-        "tableName": "task_tags",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`task_id` TEXT NOT NULL, `tag` TEXT NOT NULL, PRIMARY KEY(`task_id`, `tag`), FOREIGN KEY(`task_id`) REFERENCES `study_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
-        "fields": [
-          {
-            "fieldPath": "taskId",
-            "columnName": "task_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "tag",
-            "columnName": "tag",
-            "affinity": "TEXT",
-            "notNull": true
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "task_id",
-            "tag"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_task_tags_tag",
-            "unique": false,
-            "columnNames": [
-              "tag",
-              "task_id"
-            ],
-            "orders": [],
-            "createSql": "CREATE INDEX IF NOT EXISTS `index_task_tags_tag` ON `${TABLE_NAME}` (`tag`, `task_id`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "study_tasks",
-            "onDelete": "CASCADE",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "task_id"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          }
-        ]
-      },
-      {
-        "tableName": "task_subtasks",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `task_id` TEXT NOT NULL, `position` INTEGER NOT NULL, `title` TEXT NOT NULL, `completed_at` INTEGER, PRIMARY KEY(`id`), FOREIGN KEY(`task_id`) REFERENCES `study_tasks`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "taskId",
-            "columnName": "task_id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "position",
-            "columnName": "position",
-            "affinity": "INTEGER",
-            "notNull": true
-          },
-          {
-            "fieldPath": "title",
-            "columnName": "title",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "completedAt",
-            "columnName": "completed_at",
-            "affinity": "INTEGER"
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [
-          {
-            "name": "index_task_subtasks_task_id_position",
-            "unique": true,
-            "columnNames": [
-              "task_id",
-              "position"
-            ],
-            "orders": [],
-            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_task_subtasks_task_id_position` ON `${TABLE_NAME}` (`task_id`, `position`)"
-          }
-        ],
-        "foreignKeys": [
-          {
-            "table": "study_tasks",
-            "onDelete": "CASCADE",
-            "onUpdate": "NO ACTION",
-            "columns": [
-              "task_id"
-            ],
-            "referencedColumns": [
-              "id"
-            ]
-          }
-        ]
-      },
-      {
-        "tableName": "study_sessions",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `subject_id` TEXT, `note` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
-        "fields": [
-          {
-            "fieldPath": "id",
-            "columnName": "id",
-            "affinity": "TEXT",
-            "notNull": true
-          },
-          {
-            "fieldPath": "subjectId",
-            "columnName": "subject_id",
-            "affinity": "TEXT"
-          },
-          {
-            "fieldPath": "note",
-            "columnName": "note",
-            "affinity": "TEXT"
-          }
-        ],
-        "primaryKey": {
-          "autoGenerate": false,
-          "columnNames": [
-            "id"
-          ]
-        },
-        "indices": [
-          {
             "name": "index_study_sessions_subject_id",
             "unique": false,
             "columnNames": [
@@ -747,6 +526,17 @@
             ],
             "orders": [],
             "createSql": "CREATE INDEX IF NOT EXISTS `index_study_sessions_subject_id` ON `${TABLE_NAME}` (`subject_id`)"
+          },
+          {
+            "name": "index_study_sessions_device_id_status_deleted",
+            "unique": false,
+            "columnNames": [
+              "device_id",
+              "status",
+              "deleted"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_study_sessions_device_id_status_deleted` ON `${TABLE_NAME}` (`device_id`, `status`, `deleted`)"
           }
         ],
         "foreignKeys": [
@@ -854,7 +644,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'b147c7f7fa061391bf4e31fede1083cf')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'e94caf5c68737e862f60647c9203c5a4')"
     ]
   }
 }

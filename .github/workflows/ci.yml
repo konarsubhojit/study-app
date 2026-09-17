@@ -150,11 +150,6 @@ jobs:
             ' "$report" > "build/ci-sarif/$safe_name"
           done
 
-      - name: Publish static analysis annotations
-        if: ${{ !cancelled() && hashFiles('build/ci-sarif/*.sarif') != '' }}
-        uses: github/codeql-action/upload-sarif@v4
-        with:
-          sarif_file: build/ci-sarif
 
       - name: Upload reports
         if: ${{ !cancelled() }}

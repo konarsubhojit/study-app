@@ -47,7 +47,33 @@ public object DatabaseMigrations {
         }
 
     /**
-     * Version 3 grows the task model: all-day and priority metadata, tags, a checklist, links to a
+     * Grows `study_sessions` from a bare id/subject/note row into the session projection.
+     *
+     * The new timing columns are derived from the append-only `session_events` log, the same
+     * reduction the app performs at runtime. Rows with no events are dropped because they were
+     * never started, and legacy rows use [MIGRATED_DEVICE_ID] rather than claiming the current
+     * device.
+     */
+    public val MIGRATION_2_3: Migration =
+        object : Migration(2, 3) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(CREATE_SESSION_PROJECTION)
+                connection.execSQL(PROJECT_SESSIONS_FROM_EVENTS)
+                connection.execSQL("DROP TABLE study_sessions")
+                connection.execSQL("ALTER TABLE study_sessions_new RENAME TO study_sessions")
+                connection.execSQL("CREATE INDEX index_study_sessions_subject_id ON study_sessions (subject_id)")
+                connection.execSQL(
+                    "CREATE INDEX index_study_sessions_device_id_status_deleted " +
+                        "ON study_sessions (device_id, status, deleted)",
+                )
+            }
+        }
+
+    /** Device attributed to sessions written before the projection recorded one. */
+    public const val MIGRATED_DEVICE_ID: String = "migrated-device"
+
+    /**
+     * Version 4 grows the task model: all-day and priority metadata, tags, a checklist, links to a
      * material and a study session, soft deletion, sync timestamps, and any number of reminders per
      * task with either a lead time or an absolute trigger.
      *
@@ -57,8 +83,8 @@ public object DatabaseMigrations {
      * needs the IANA time-zone rules for each row's own date, which SQLite has no access to, so the
      * existing local due times are resolved in Kotlin.
      */
-    public val MIGRATION_2_3: Migration =
-        object : Migration(2, 3) {
+    public val MIGRATION_3_4: Migration =
+        object : Migration(3, 4) {
             override fun migrate(connection: SQLiteConnection) {
                 connection.rebuildTaskTables()
                 connection.createTaskIndices()
@@ -69,9 +95,9 @@ public object DatabaseMigrations {
         }
 
     public val ALL: Array<Migration>
-        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        get() = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
-    // The task tables are rebuilt rather than altered: version 3 adds foreign keys and non-null
+    // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null
     // columns that SQLite cannot add in place, and Room validates the resulting DDL exactly.
     private fun SQLiteConnection.rebuildTaskTables() {
         execSQL(
@@ -215,6 +241,37 @@ public object DatabaseMigrations {
             (SELECT study_tasks.due_at_utc FROM study_tasks WHERE study_tasks.id = reminders.task_id)
             - COALESCE(lead_time, 0)
             """.trimIndent(),
-        )
+       )
     }
+
+    private val CREATE_SESSION_PROJECTION =
+       """
+       CREATE TABLE study_sessions_new (
+           `id` TEXT NOT NULL, `subject_id` TEXT, `note` TEXT, `status` TEXT NOT NULL,
+           `started_at` INTEGER NOT NULL, `ended_at` INTEGER, `device_id` TEXT NOT NULL,
+           `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`),
+           FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+       )
+       """.trimIndent()
+
+    private val PROJECT_SESSIONS_FROM_EVENTS =
+       """
+       INSERT INTO study_sessions_new (
+           id, subject_id, note, status, started_at, ended_at, device_id, updated_at, deleted
+       )
+       SELECT s.id, s.subject_id, s.note,
+           CASE WHEN EXISTS (
+               SELECT 1 FROM session_events e WHERE e.session_id = s.id AND e.type = 'STOPPED'
+           ) THEN 'STOPPED'
+           WHEN (SELECT e.type FROM session_events e WHERE e.session_id = s.id
+               ORDER BY e.sequence DESC LIMIT 1) IN ('STARTED', 'RESUMED') THEN 'RUNNING'
+           ELSE 'PAUSED' END,
+           COALESCE((SELECT MIN(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0),
+           (SELECT MAX(e.wall_clock) FROM session_events e
+               WHERE e.session_id = s.id AND e.type = 'STOPPED'),
+           '$MIGRATED_DEVICE_ID',
+           COALESCE((SELECT MAX(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0), 0
+       FROM study_sessions s
+       WHERE EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = s.id)
+       """.trimIndent()
 }

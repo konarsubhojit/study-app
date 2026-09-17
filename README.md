@@ -64,7 +64,11 @@ Recurrence is an RRULE-lite subset evaluated in **local time**, so "every day at
 08:00 across DST (the real interval being 23 or 25 hours, which the tests assert), and "the 31st"
 clamps to the last day of February instead of being skipped.
 
+Delivery goes through one notification layer: four documented channels, a `POST_NOTIFICATIONS`
+prompt deferred to a moment of value, and denials that are reported rather than swallowed.
+
 → [ADR 0004](docs/adr/0004-reminder-scheduling.md) ·
+[Notifications guide](docs/notifications.md) ·
 [`ReminderScheduler`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/ReminderScheduler.kt) ·
 [`RecurrenceCalculator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/RecurrenceCalculator.kt)
 
@@ -242,3 +246,4 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 - [0006 — Bootstrap scope: pure-Kotlin core first](docs/adr/0006-bootstrap-scope.md)
 - [0007 — One design system: tokens, dynamic colour, edge-to-edge, adaptive panes](docs/adr/0007-design-system.md)
 - [0007 — API contract and typed network client](docs/adr/0007-api-contract-and-network-client.md)
+- [0009 — Notifications: documented channels and a deferred permission](docs/adr/0009-notifications.md)

@@ -42,6 +42,9 @@ public val TEST_WALL_CLOCK: Instant = Instant.parse("2026-03-01T09:00:00Z")
 /** The boot epoch `FakeDevice` starts in. */
 public val TEST_BOOT_ID: BootId = BootId("boot-0")
 
+/** The device sessions are recorded on; the scope of the "one active session" invariant. */
+public const val TEST_DEVICE_ID: String = "device-0"
+
 public fun testSubject(
     id: String = "subject-1",
     name: String = "Mathematics",
@@ -116,6 +119,9 @@ public fun testStudySession(
     endedAt: Instant? = null,
     status: SessionStatus = SessionStatus.RUNNING,
     elapsed: SessionElapsed = SessionElapsed(counted = Duration.ZERO),
+    deviceId: String = TEST_DEVICE_ID,
+    updatedAt: Instant = startedAt,
+    deleted: Boolean = false,
 ): StudySession =
     StudySession(
         id = id,
@@ -125,6 +131,9 @@ public fun testStudySession(
         endedAt = endedAt,
         status = status,
         elapsed = elapsed,
+        deviceId = deviceId,
+        updatedAt = updatedAt,
+        deleted = deleted,
     )
 
 public fun testTimeAnchor(

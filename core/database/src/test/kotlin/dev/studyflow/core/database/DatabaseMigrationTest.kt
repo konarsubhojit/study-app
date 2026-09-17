@@ -44,10 +44,50 @@ class DatabaseMigrationTest {
     }
 
     @Test
-    fun `migration 2 to 3 resolves due instants, keeps reminders and moves the recurrence rule`() {
-        helper.createDatabase(DATABASE_NAME, 2).use { database ->
-            database.insertVersionTwoTaskWithReminder()
+    fun `migration 3 to 4 resolves due instants, keeps reminders and moves the recurrence rule`() {
+        helper.createDatabase(DATABASE_NAME, 3).use { database ->
+            database.insertVersionThreeTaskWithReminder()
         }
+
+        helper
+           .runMigrationsAndValidate(
+               DATABASE_NAME,
+               StudyFlowDatabase.VERSION,
+               true,
+               *DatabaseMigrations.ALL,
+           ).use { database ->
+               database
+                   .query(
+                       """
+                       SELECT due_at, due_at_utc, is_all_day, priority, recurrence_frequency, deleted
+                       FROM study_tasks
+                       """.trimIndent(),
+                   ).use { cursor ->
+                       assertEquals(true, cursor.moveToFirst())
+                       assertEquals("2026-10-25T09:00", cursor.getString(0))
+                       assertEquals(1_792_918_800_000L, cursor.getLong(1))
+                       assertEquals(0, cursor.getInt(2))
+                       assertEquals("NORMAL", cursor.getString(3))
+                       assertEquals("WEEKLY", cursor.getString(4))
+                       assertEquals(0, cursor.getInt(5))
+                   }
+
+               database
+                   .query("SELECT id, trigger_type, lead_time, trigger_at_utc FROM reminders")
+                   .use { cursor ->
+                       assertEquals(true, cursor.moveToFirst())
+                       assertEquals("legacy-reminder", cursor.getString(0))
+                       assertEquals("BEFORE_DUE", cursor.getString(1))
+                       assertEquals(1_800_000L, cursor.getLong(2))
+                       assertEquals(1_792_917_000_000L, cursor.getLong(3))
+                       assertFalse(cursor.moveToNext())
+                   }
+           }
+    }
+
+    @Test
+    fun `migration 2 to 3 derives the session projection from the event log`() {
+        helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
         helper
             .runMigrationsAndValidate(
@@ -58,32 +98,28 @@ class DatabaseMigrationTest {
             ).use { database ->
                 database
                     .query(
-                        """
-                        SELECT due_at, due_at_utc, is_all_day, priority, recurrence_frequency, deleted
-                        FROM study_tasks
-                        """.trimIndent(),
+                        "SELECT status, started_at, ended_at, device_id, updated_at, deleted " +
+                            "FROM study_sessions WHERE id = 'legacy-session'",
                     ).use { cursor ->
                         assertEquals(true, cursor.moveToFirst())
-                        assertEquals("2026-10-25T09:00", cursor.getString(0))
-                        // 09:00 in London on the day the clocks go back is 09:00 GMT, not 08:00 UTC:
-                        // only a zone-aware conversion gets this right.
-                        assertEquals(1_792_918_800_000L, cursor.getLong(1))
-                        assertEquals(0, cursor.getInt(2))
-                        assertEquals("NORMAL", cursor.getString(3))
-                        assertEquals("WEEKLY", cursor.getString(4))
+                        assertEquals("STOPPED", cursor.getString(0))
+                        assertEquals(1_000L, cursor.getLong(1))
+                        assertEquals(3_000L, cursor.getLong(2))
+                        assertEquals(DatabaseMigrations.MIGRATED_DEVICE_ID, cursor.getString(3))
+                        assertEquals(3_000L, cursor.getLong(4))
                         assertEquals(0, cursor.getInt(5))
                     }
-
-                database
-                    .query("SELECT id, trigger_type, lead_time, trigger_at_utc FROM reminders")
-                    .use { cursor ->
-                        assertEquals(true, cursor.moveToFirst())
-                        assertEquals("legacy-reminder", cursor.getString(0))
-                        assertEquals("BEFORE_DUE", cursor.getString(1))
-                        assertEquals(1_800_000L, cursor.getLong(2))
-                        assertEquals(1_792_917_000_000L, cursor.getLong(3))
-                        assertFalse(cursor.moveToNext())
-                    }
+                // Rebuilding the table must not take the log with it; the log is the only truth.
+                database.query("SELECT COUNT(*) FROM session_events").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals(2, cursor.getInt(0))
+                }
+                // A session with no events was never started, so it is dropped rather than given
+                // an epoch-dated projection that would read as active forever.
+                database.query("SELECT COUNT(*) FROM study_sessions").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals(1, cursor.getInt(0))
+                }
             }
     }
 
@@ -110,7 +146,7 @@ class DatabaseMigrationTest {
         )
     }
 
-    private fun SupportSQLiteDatabase.insertVersionTwoTaskWithReminder() {
+    private fun SupportSQLiteDatabase.insertVersionThreeTaskWithReminder() {
         execSQL(
             """
             INSERT INTO study_tasks (id, title, notes, subject_id, due_at, time_zone, completed_at)
@@ -128,6 +164,23 @@ class DatabaseMigrationTest {
                 'legacy-reminder', 'legacy-task', 1800000, 'EXACT', 'WEEKLY', 1, NULL, NULL,
                 'NEVER', NULL, NULL
             )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionTwoSession() {
+        execSQL("INSERT INTO study_sessions (id, subject_id, note) VALUES ('legacy-session', NULL, 'Algebra')")
+        execSQL("INSERT INTO study_sessions (id, subject_id, note) VALUES ('never-started', NULL, NULL)")
+        execSQL(
+            """
+            INSERT INTO session_events (id, session_id, type, uptime, wall_clock, boot_id, sequence)
+            VALUES ('legacy-start', 'legacy-session', 'STARTED', 0, 1000, 'boot-legacy', 0)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO session_events (id, session_id, type, uptime, wall_clock, boot_id, sequence)
+            VALUES ('legacy-stop', 'legacy-session', 'STOPPED', 2000, 3000, 'boot-legacy', 1)
             """.trimIndent(),
         )
     }

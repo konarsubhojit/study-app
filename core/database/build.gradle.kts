@@ -14,6 +14,8 @@ extensions.configure<LibraryExtension> {
 }
 
 dependencies {
+    // The projection is derived by the domain's pure reducer, never stored as a second truth.
+    api(projects.core.domain)
     implementation(projects.core.model)
     // The task repository implements the `:core:domain` contract and maps rows to domain models.
     implementation(projects.core.domain)
