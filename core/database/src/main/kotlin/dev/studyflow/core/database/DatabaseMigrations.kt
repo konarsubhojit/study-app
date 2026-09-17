@@ -223,6 +223,8 @@ public object DatabaseMigrations {
     }
 
     private fun SQLiteConnection.rebuildMaterialTables() {
+        // Dropping the old materials table can clear study_tasks.material_id through its SET NULL
+        // foreign key, so keep the references and restore them after the replacement table exists.
         execSQL(
             """
             CREATE TEMP TABLE material_task_refs AS

@@ -54,7 +54,7 @@ public abstract class MaterialDao {
     public abstract fun observeInFolder(folderId: String?): Flow<List<MaterialEntity>>
 
     @Transaction
-    @Query("SELECT * FROM materials WHERE id = :id")
+    @Query("SELECT * FROM materials WHERE id = :id AND deleted = 0")
     public abstract fun observeById(id: String): Flow<MaterialWithTags?>
 
     @RawQuery(observedEntities = [MaterialEntity::class, MaterialTagEntity::class])
@@ -139,11 +139,11 @@ public abstract class MaterialDao {
         reindexMaterial(id)
     }
 
-    @Query("SELECT COUNT(*) FROM materials WHERE deleted = 0")
+    @Query("SELECT COUNT(*) FROM materials")
     public abstract suspend fun count(): Int
 
-    @Query("SELECT COUNT(*) FROM materials")
-    public abstract suspend fun countIncludingDeleted(): Int
+    @Query("SELECT COUNT(*) FROM materials WHERE deleted = 0")
+    public abstract suspend fun countActive(): Int
 
     @Upsert
     protected abstract suspend fun upsertMaterial(material: MaterialEntity)
@@ -261,6 +261,6 @@ private val MaterialSort.orderBy: String
             MaterialSort.UPDATED_AT_ASC -> "materials.updated_at ASC, materials.id ASC"
             MaterialSort.SIZE_DESC -> "materials.size_bytes DESC, materials.id ASC"
             MaterialSort.SIZE_ASC -> "materials.size_bytes ASC, materials.id ASC"
-            MaterialSort.NAME_DESC -> "materials.display_name COLLATE NOCASE DESC, materials.id ASC"
-            MaterialSort.NAME_ASC -> "materials.display_name COLLATE NOCASE ASC, materials.id ASC"
+            MaterialSort.NAME_DESC -> "materials.display_name DESC, materials.id ASC"
+            MaterialSort.NAME_ASC -> "materials.display_name ASC, materials.id ASC"
         }

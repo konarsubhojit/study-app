@@ -80,7 +80,7 @@ class MaterialDaoTest {
                         sort = MaterialSort.NAME_ASC,
                     ).loadIds()
 
-            assertEquals(listOf("note-match", "name-match"), ids)
+            assertEquals(listOf("name-match", "note-match"), ids)
         }
 
     @Test
