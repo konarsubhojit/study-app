@@ -50,78 +50,84 @@ class DatabaseMigrationTest {
         }
 
         helper
-           .runMigrationsAndValidate(
-               DATABASE_NAME,
-               StudyFlowDatabase.VERSION,
-               true,
-               *DatabaseMigrations.ALL,
-           ).use { database ->
-               database
-                   .query(
-                       """
-                       SELECT due_at, due_at_utc, is_all_day, priority, recurrence_frequency, deleted
-                       FROM study_tasks
-                       """.trimIndent(),
-                   ).use { cursor ->
-                       assertEquals(true, cursor.moveToFirst())
-                       assertEquals("2026-10-25T09:00", cursor.getString(0))
-                       assertEquals(1_792_918_800_000L, cursor.getLong(1))
-                       assertEquals(0, cursor.getInt(2))
-                       assertEquals("NORMAL", cursor.getString(3))
-                       assertEquals("WEEKLY", cursor.getString(4))
-                       assertEquals(0, cursor.getInt(5))
-                   }
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database
+                    .query(
+                        """
+                        SELECT due_at, due_at_utc, is_all_day, priority, recurrence_frequency, deleted
+                        FROM study_tasks
+                        """.trimIndent(),
+                    ).use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("2026-10-25T09:00", cursor.getString(0))
+                        assertEquals(1_792_918_800_000L, cursor.getLong(1))
+                        assertEquals(0, cursor.getInt(2))
+                        assertEquals("NORMAL", cursor.getString(3))
+                        assertEquals("WEEKLY", cursor.getString(4))
+                        assertEquals(0, cursor.getInt(5))
+                    }
 
-               database
-                   .query("SELECT id, trigger_type, lead_time, trigger_at_utc FROM reminders")
-                   .use { cursor ->
-                       assertEquals(true, cursor.moveToFirst())
-                       assertEquals("legacy-reminder", cursor.getString(0))
-                       assertEquals("BEFORE_DUE", cursor.getString(1))
-                       assertEquals(1_800_000L, cursor.getLong(2))
-                       assertEquals(1_792_917_000_000L, cursor.getLong(3))
-                       assertFalse(cursor.moveToNext())
-                   }
-           }
+                database
+                    .query("SELECT id, trigger_type, lead_time, trigger_at_utc FROM reminders")
+                    .use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("legacy-reminder", cursor.getString(0))
+                        assertEquals("BEFORE_DUE", cursor.getString(1))
+                        assertEquals(1_800_000L, cursor.getLong(2))
+                        assertEquals(1_792_917_000_000L, cursor.getLong(3))
+                        assertFalse(cursor.moveToNext())
+                    }
+            }
     }
 
     @Test
     fun `migration 4 to 5 preserves materials and builds the catalog index`() {
         helper.createDatabase(DATABASE_NAME, 4).use { database ->
-           database.insertVersionFourMaterial()
+            database.insertVersionFourMaterial()
         }
 
         helper
-           .runMigrationsAndValidate(
-                   DATABASE_NAME,
-                   StudyFlowDatabase.VERSION,
-                   true,
-                   *DatabaseMigrations.ALL,
-           ).use { database ->
-                   database
-                   .query(
-                       """
-                       SELECT id, local_path, updated_at, remote_key, notes, deleted
-                       FROM materials
-                       """.trimIndent(),
-                   ).use { cursor ->
-                       assertEquals(true, cursor.moveToFirst())
-                       assertEquals("legacy-material", cursor.getString(0))
-                       assertEquals("/legacy/material.pdf", cursor.getString(1))
-                       assertEquals(1_789_601_069_317L, cursor.getLong(2))
-                       assertEquals(true, cursor.isNull(3))
-                       assertEquals(true, cursor.isNull(4))
-                       assertEquals(0, cursor.getInt(5))
-                       assertFalse(cursor.moveToNext())
-                   }
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database
+                    .query(
+                        """
+                        SELECT id, local_path, updated_at, remote_key, notes, deleted
+                        FROM materials
+                        """.trimIndent(),
+                    ).use { cursor ->
+                        assertEquals(true, cursor.moveToFirst())
+                        assertEquals("legacy-material", cursor.getString(0))
+                        assertEquals("/legacy/material.pdf", cursor.getString(1))
+                        assertEquals(1_789_601_069_317L, cursor.getLong(2))
+                        assertEquals(true, cursor.isNull(3))
+                        assertEquals(true, cursor.isNull(4))
+                        assertEquals(0, cursor.getInt(5))
+                        assertFalse(cursor.moveToNext())
+                    }
 
-                   database.query("SELECT material_id, display_name FROM material_fts").use { cursor ->
-                   assertEquals(true, cursor.moveToFirst())
-                   assertEquals("legacy-material", cursor.getString(0))
-                   assertEquals("Legacy.pdf", cursor.getString(1))
-                   assertFalse(cursor.moveToNext())
-                   }
-           }
+                database.query("SELECT material_id, display_name FROM material_fts").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals("legacy-material", cursor.getString(0))
+                    assertEquals("Legacy.pdf", cursor.getString(1))
+                    assertFalse(cursor.moveToNext())
+                }
+
+                database.query("SELECT material_id FROM study_tasks WHERE id = 'linked-task'").use { cursor ->
+                    assertEquals(true, cursor.moveToFirst())
+                    assertEquals("legacy-material", cursor.getString(0))
+                    assertFalse(cursor.moveToNext())
+                }
+            }
     }
 
     @Test
@@ -196,6 +202,20 @@ class DatabaseMigrationTest {
                 'legacy-material', NULL, 'Legacy.pdf', 'application/pdf', 1024,
                 '${"1".repeat(64)}', 1789601069317, 'SYNCED', NULL, NULL, NULL, NULL,
                 '/legacy/material.pdf', 1, 1
+            )
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO study_tasks (
+                id, title, notes, subject_id, material_id, session_id, due_at, due_at_utc,
+                time_zone, is_all_day, priority, recurrence_frequency, recurrence_interval,
+                recurrence_days_of_week, recurrence_day_of_month, recurrence_end_type,
+                recurrence_end_count, recurrence_end_date, completed_at, updated_at, deleted
+            ) VALUES (
+                'linked-task', 'Linked task', NULL, NULL, 'legacy-material', NULL, NULL, NULL,
+                'UTC', 0, 'NORMAL', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+                1789601069317, 0
             )
             """.trimIndent(),
         )

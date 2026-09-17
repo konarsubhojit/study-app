@@ -48,7 +48,7 @@ class MaterialDaoTest {
             database.folderDao().upsert(FolderEntity("folder-a", null, "Folder A", BASE_TIME))
             dao.save(material("pdf", folderId = "folder-a", mimeType = "application/pdf"), setOf("exam"))
             dao.save(material("image", folderId = "folder-a", mimeType = "image/png"), setOf("exam"))
-            dao.save(material("untagged", folderId = "folder-a", mimeType = "application/pdf"), setOf("reading"))
+            dao.save(material("other-tag", folderId = "folder-a", mimeType = "application/pdf"), setOf("reading"))
 
             val ids =
                 dao
@@ -78,7 +78,7 @@ class MaterialDaoTest {
                         subjectId = null,
                         mimeTypePrefix = null,
                         tag = null,
-                        sort = MaterialSort.NAME_ASC.name,
+                        sort = MaterialSort.NAME_ASC,
                     ).loadIds()
 
             assertEquals(listOf("note-match", "name-match"), ids)
@@ -96,7 +96,14 @@ class MaterialDaoTest {
             dao.replaceTags("material", setOf("exam"))
 
             assertEquals(listOf("material"), dao.observeInFolder("folder-b").first().map(MaterialEntity::id))
-            assertEquals(listOf("exam"), dao.observeById("material").first()?.tags?.map { it.name })
+            assertEquals(
+                listOf("exam"),
+                dao
+                    .observeById("material")
+                    .first()
+                    ?.tags
+                    ?.map { it.name },
+            )
             assertEquals(listOf("material"), dao.searchPaged("solution", null, null, null, "exam").loadIds())
 
             dao.softDelete("material", BASE_TIME + 3.minutes)
@@ -109,7 +116,12 @@ class MaterialDaoTest {
         }
 
     private suspend fun PagingSource<Int, MaterialEntity>.loadIds(): List<String> =
-        when (val result = load(PagingSource.LoadParams.Refresh(key = null, loadSize = 20, placeholdersEnabled = false))) {
+        when (
+            val result =
+                load(
+                    PagingSource.LoadParams.Refresh(key = null, loadSize = 20, placeholdersEnabled = false),
+                )
+        ) {
             is PagingSource.LoadResult.Page -> result.data.map(MaterialEntity::id)
             is PagingSource.LoadResult.Error -> throw result.throwable
             is PagingSource.LoadResult.Invalid -> error("PagingSource invalidated before loading")
@@ -130,7 +142,15 @@ class MaterialDaoTest {
             displayName = displayName,
             mimeType = mimeType,
             sizeBytes = 1_024,
-            contentHash = ContentHash(id.hashCode().toUInt().toString(16).padStart(64, '0').takeLast(64)),
+            contentHash =
+                ContentHash(
+                    id
+                        .hashCode()
+                        .toUInt()
+                        .toString(16)
+                        .padStart(64, '0')
+                        .takeLast(64),
+                ),
             createdAt = BASE_TIME,
             updatedAt = BASE_TIME,
             notes = notes,

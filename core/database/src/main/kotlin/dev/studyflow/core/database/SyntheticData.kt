@@ -136,7 +136,7 @@ public object SyntheticDataFactory {
                 localPath = "/studyflow/material-$index",
                 pinnedForOffline = index % 10 == 0,
                 encrypted = index % 7 == 0,
-                deleted = index % 37 == 0,
+                deleted = index % DELETED_MATERIAL_MODULUS == 0,
             )
         }
 
@@ -297,6 +297,7 @@ public object SyntheticDataFactory {
     private val TAGS: List<String> = listOf("exam", "homework", "revision")
     private const val SUBTASKS_PER_TASK: Int = 3
     private const val ROOT_FOLDER_COUNT: Int = 4
+    private const val DELETED_MATERIAL_MODULUS: Int = 37
     private const val HASH_LENGTH: Int = 64
     private val BASE_INSTANT: Instant = Instant.parse("2026-01-01T00:00:00Z")
     private val BASE_DUE_INSTANT: Instant = Instant.parse("2026-01-01T09:00:00Z")

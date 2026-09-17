@@ -12,9 +12,14 @@ import kotlin.time.Instant
  * @property contentHash SHA-256 of the file's bytes. Doubles as the storage key, which makes
  *   uploads idempotent and lets two identical files share one blob instead of paying twice for
  *   storage and egress.
+ * @property subjectId optional subject metadata used to filter the catalog without opening files.
+ * @property updatedAt last local metadata change, including rename, move, tag, and tombstone edits.
+ * @property notes user-authored searchable notes about the material.
+ * @property remoteKey opaque object-store key once the upload has a remote counterpart.
  * @property localPath where the staged or cached copy lives, if there is one. `null` means the file
  *   exists only in the cloud and must be fetched before it can be opened.
  * @property pinnedForOffline when true, the cache eviction policy must not reclaim this file.
+ * @property deleted tombstone flag; deleted rows stay local until sync can propagate the removal.
  */
 public data class Material(
     val id: String,

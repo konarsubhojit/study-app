@@ -225,6 +225,12 @@ public object DatabaseMigrations {
     private fun SQLiteConnection.rebuildMaterialTables() {
         execSQL(
             """
+            CREATE TEMP TABLE material_task_refs AS
+            SELECT id, material_id FROM study_tasks WHERE material_id IS NOT NULL
+            """.trimIndent(),
+        )
+        execSQL(
+            """
             CREATE TABLE IF NOT EXISTS `materials_new` (
             `id` TEXT NOT NULL, `folder_id` TEXT, `subject_id` TEXT, `display_name` TEXT NOT NULL,
             `mime_type` TEXT NOT NULL, `size_bytes` INTEGER NOT NULL, `content_hash` TEXT NOT NULL,
@@ -251,6 +257,14 @@ public object DatabaseMigrations {
         )
         execSQL("DROP TABLE materials")
         execSQL("ALTER TABLE materials_new RENAME TO materials")
+        execSQL(
+            """
+            UPDATE study_tasks
+            SET material_id = (SELECT material_id FROM material_task_refs WHERE material_task_refs.id = study_tasks.id)
+            WHERE id IN (SELECT id FROM material_task_refs)
+            """.trimIndent(),
+        )
+        execSQL("DROP TABLE material_task_refs")
         createMaterialCatalogIndices()
         execSQL("CREATE TABLE IF NOT EXISTS `tags` (`name` TEXT NOT NULL, PRIMARY KEY(`name`))")
         execSQL(
@@ -338,37 +352,37 @@ public object DatabaseMigrations {
             (SELECT study_tasks.due_at_utc FROM study_tasks WHERE study_tasks.id = reminders.task_id)
             - COALESCE(lead_time, 0)
             """.trimIndent(),
-       )
+        )
     }
 
     private val CREATE_SESSION_PROJECTION =
-       """
-       CREATE TABLE study_sessions_new (
-           `id` TEXT NOT NULL, `subject_id` TEXT, `note` TEXT, `status` TEXT NOT NULL,
-           `started_at` INTEGER NOT NULL, `ended_at` INTEGER, `device_id` TEXT NOT NULL,
-           `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`),
-           FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
-       )
-       """.trimIndent()
+        """
+        CREATE TABLE study_sessions_new (
+            `id` TEXT NOT NULL, `subject_id` TEXT, `note` TEXT, `status` TEXT NOT NULL,
+            `started_at` INTEGER NOT NULL, `ended_at` INTEGER, `device_id` TEXT NOT NULL,
+            `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, PRIMARY KEY(`id`),
+            FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL
+        )
+        """.trimIndent()
 
     private val PROJECT_SESSIONS_FROM_EVENTS =
-       """
-       INSERT INTO study_sessions_new (
-           id, subject_id, note, status, started_at, ended_at, device_id, updated_at, deleted
-       )
-       SELECT s.id, s.subject_id, s.note,
-           CASE WHEN EXISTS (
-               SELECT 1 FROM session_events e WHERE e.session_id = s.id AND e.type = 'STOPPED'
-           ) THEN 'STOPPED'
-           WHEN (SELECT e.type FROM session_events e WHERE e.session_id = s.id
-               ORDER BY e.sequence DESC LIMIT 1) IN ('STARTED', 'RESUMED') THEN 'RUNNING'
-           ELSE 'PAUSED' END,
-           COALESCE((SELECT MIN(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0),
-           (SELECT MAX(e.wall_clock) FROM session_events e
-               WHERE e.session_id = s.id AND e.type = 'STOPPED'),
-           '$MIGRATED_DEVICE_ID',
-           COALESCE((SELECT MAX(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0), 0
-       FROM study_sessions s
-       WHERE EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = s.id)
-       """.trimIndent()
+        """
+        INSERT INTO study_sessions_new (
+            id, subject_id, note, status, started_at, ended_at, device_id, updated_at, deleted
+        )
+        SELECT s.id, s.subject_id, s.note,
+            CASE WHEN EXISTS (
+                SELECT 1 FROM session_events e WHERE e.session_id = s.id AND e.type = 'STOPPED'
+            ) THEN 'STOPPED'
+            WHEN (SELECT e.type FROM session_events e WHERE e.session_id = s.id
+                ORDER BY e.sequence DESC LIMIT 1) IN ('STARTED', 'RESUMED') THEN 'RUNNING'
+            ELSE 'PAUSED' END,
+            COALESCE((SELECT MIN(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0),
+            (SELECT MAX(e.wall_clock) FROM session_events e
+                WHERE e.session_id = s.id AND e.type = 'STOPPED'),
+            '$MIGRATED_DEVICE_ID',
+            COALESCE((SELECT MAX(e.wall_clock) FROM session_events e WHERE e.session_id = s.id), 0), 0
+        FROM study_sessions s
+        WHERE EXISTS (SELECT 1 FROM session_events e WHERE e.session_id = s.id)
+        """.trimIndent()
 }

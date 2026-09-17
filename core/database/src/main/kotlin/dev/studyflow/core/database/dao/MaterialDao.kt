@@ -21,6 +21,23 @@ public abstract class MaterialDao {
     @Query("SELECT * FROM materials WHERE deleted = 0 ORDER BY updated_at DESC, id ASC")
     public abstract fun observeAll(): Flow<List<MaterialEntity>>
 
+    public fun browsePaged(
+        folderId: String?,
+        subjectId: String?,
+        mimeTypePrefix: String?,
+        tag: String?,
+        sort: MaterialSort = MaterialSort.UPDATED_AT_DESC,
+    ): PagingSource<Int, MaterialEntity> = browsePagedQuery(folderId, subjectId, mimeTypePrefix, tag, sort.name)
+
+    public fun searchPaged(
+        query: String,
+        folderId: String?,
+        subjectId: String?,
+        mimeTypePrefix: String?,
+        tag: String?,
+        sort: MaterialSort = MaterialSort.UPDATED_AT_DESC,
+    ): PagingSource<Int, MaterialEntity> = searchPagedQuery(query, folderId, subjectId, mimeTypePrefix, tag, sort.name)
+
     @Query(
         """
         SELECT * FROM materials
@@ -52,12 +69,12 @@ public abstract class MaterialDao {
             id ASC
         """,
     )
-    public abstract fun browsePaged(
+    protected abstract fun browsePagedQuery(
         folderId: String?,
         subjectId: String?,
         mimeTypePrefix: String?,
         tag: String?,
-        sort: String = MaterialSort.UPDATED_AT_DESC.name,
+        sort: String,
     ): PagingSource<Int, MaterialEntity>
 
     @Query(
@@ -80,13 +97,13 @@ public abstract class MaterialDao {
             materials.id ASC
         """,
     )
-    public abstract fun searchPaged(
+    protected abstract fun searchPagedQuery(
         query: String,
         folderId: String?,
         subjectId: String?,
         mimeTypePrefix: String?,
         tag: String?,
-        sort: String = MaterialSort.UPDATED_AT_DESC.name,
+        sort: String,
     ): PagingSource<Int, MaterialEntity>
 
     @Query(

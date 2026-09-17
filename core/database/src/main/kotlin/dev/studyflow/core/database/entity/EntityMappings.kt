@@ -4,7 +4,6 @@ import dev.studyflow.core.domain.session.SessionDescriptor
 import dev.studyflow.core.domain.session.SessionReducer
 import dev.studyflow.core.model.Folder
 import dev.studyflow.core.model.Material
-import dev.studyflow.core.model.Tag
 import dev.studyflow.core.model.RecurrenceEnd
 import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
@@ -16,6 +15,7 @@ import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subject
 import dev.studyflow.core.model.Subtask
 import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.model.Tag
 import dev.studyflow.core.model.TimeAnchor
 import kotlinx.datetime.TimeZone
 import kotlin.time.Duration
