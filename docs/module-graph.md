@@ -30,6 +30,7 @@ graph TD
     feature_tasks[":feature:tasks"]
     feature_timer[":feature:timer"]
     app --> core_common
+    app --> core_database
     app --> core_designsystem
     app --> core_network
     app --> core_notifications
@@ -62,8 +63,10 @@ graph TD
     feature_insights --> core_domain
     feature_insights --> core_model
     feature_materials --> core_common
+    feature_materials --> core_designsystem
     feature_materials --> core_domain
     feature_materials --> core_model
+    feature_materials --> core_ui
     feature_settings --> core_common
     feature_settings --> core_designsystem
     feature_settings --> core_domain

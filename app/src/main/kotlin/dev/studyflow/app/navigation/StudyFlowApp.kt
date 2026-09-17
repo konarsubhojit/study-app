@@ -31,6 +31,7 @@ import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.feature.settings.NotificationSettingsRoute
+import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
 
 @Composable
 internal fun StudyFlowApp(
@@ -91,10 +92,8 @@ private fun AppNavDisplay(
                             if (route.openRunningTimer) "Running timer" else "Timer",
                         )
                     }
-                    entry<MaterialsRoute> { route ->
-                        DestinationScreen(
-                            route.materialId?.let { "Material: $it" } ?: "Materials",
-                        )
+                    entry<MaterialsRoute> {
+                        MaterialsScreenRoute()
                     }
                     entry<TasksRoute> { route ->
                         DestinationScreen(route.taskId?.let { "Task: $it" } ?: "Tasks")

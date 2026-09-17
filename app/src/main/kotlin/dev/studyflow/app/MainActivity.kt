@@ -6,11 +6,18 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import dagger.hilt.android.AndroidEntryPoint
 import dev.studyflow.app.navigation.AppRoute
+import dev.studyflow.app.navigation.MaterialsRoute
 import dev.studyflow.app.navigation.StudyFlowApp
 import dev.studyflow.app.navigation.StudyFlowDeepLinks
+import dev.studyflow.app.share.ShareIntentUris
+import dev.studyflow.core.domain.materials.ShareImportInbox
+import javax.inject.Inject
 
 @AndroidEntryPoint
 internal class MainActivity : ComponentActivity() {
+    @Inject
+    lateinit var shareImportInbox: ShareImportInbox
+
     private var deepLinkHandler: (AppRoute) -> Unit = {}
     private var handledDeepLink: String? = null
 
@@ -18,12 +25,18 @@ internal class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         handledDeepLink = savedInstanceState?.getString(HANDLED_DEEP_LINK)
         val incomingDeepLink = intent.data
-        val initialRoute = StudyFlowDeepLinks.routeForNewIntent(incomingDeepLink, handledDeepLink)
-        if (initialRoute != null) handledDeepLink = incomingDeepLink.toString()
+        val deepLinkRoute = StudyFlowDeepLinks.routeForNewIntent(incomingDeepLink, handledDeepLink)
+        if (deepLinkRoute != null) handledDeepLink = incomingDeepLink.toString()
+
+        // A share intent has no `AppRoute` of its own to resolve; offering it to the inbox now
+        // means the materials screen sees it as soon as it exists, whether that is this launch or a
+        // navigation the user makes moments later.
+        val sharedUris = ShareIntentUris.extract(intent)
+        if (sharedUris.isNotEmpty()) shareImportInbox.offer(sharedUris.map { it.toString() })
 
         setContent {
             StudyFlowApp(
-                initialRoute = initialRoute,
+                initialRoute = deepLinkRoute ?: MaterialsRoute().takeIf { sharedUris.isNotEmpty() },
                 registerDeepLinkHandler = { deepLinkHandler = it },
             )
         }
@@ -35,6 +48,12 @@ internal class MainActivity : ComponentActivity() {
         StudyFlowDeepLinks.routeFor(intent.data)?.let { route ->
             handledDeepLink = intent.dataString
             deepLinkHandler(route)
+        }
+
+        val sharedUris = ShareIntentUris.extract(intent)
+        if (sharedUris.isNotEmpty()) {
+            shareImportInbox.offer(sharedUris.map { it.toString() })
+            deepLinkHandler(MaterialsRoute())
         }
     }
 
