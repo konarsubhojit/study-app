@@ -19,4 +19,7 @@ public interface SubjectDao {
 
     @Query("SELECT COUNT(*) FROM subjects")
     public suspend fun count(): Int
+
+    @Query("SELECT * FROM subjects WHERE id = :id")
+    public suspend fun getById(id: String): SubjectEntity?
 }

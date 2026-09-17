@@ -33,6 +33,7 @@ graph TD
     app --> core_designsystem
     app --> core_network
     app --> core_notifications
+    app --> core_scheduling
     app --> core_storage
     app --> feature_auth
     app --> feature_insights
@@ -47,7 +48,12 @@ graph TD
     core_domain --> core_common
     core_domain --> core_model
     core_notifications --> core_common
+    core_scheduling --> core_common
+    core_scheduling --> core_database
+    core_scheduling --> core_datastore
     core_scheduling --> core_domain
+    core_scheduling --> core_model
+    core_scheduling --> core_notifications
     core_storage --> core_domain
     core_testing --> core_common
     core_testing --> core_domain

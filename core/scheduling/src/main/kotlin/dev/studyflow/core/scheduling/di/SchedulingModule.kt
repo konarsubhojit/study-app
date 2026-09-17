@@ -1,0 +1,101 @@
+package dev.studyflow.core.scheduling.di
+
+import android.content.Context
+import dagger.Module
+import dagger.Provides
+import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
+import dagger.hilt.components.SingletonComponent
+import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.datastore.UserSettingsStore
+import dev.studyflow.core.datastore.userSettingsStore
+import dev.studyflow.core.domain.session.SessionRepository
+import dev.studyflow.core.domain.subjects.SubjectRepository
+import dev.studyflow.core.domain.tasks.TaskRepository
+import dev.studyflow.core.notifications.StudyFlowNotificationFactory
+import dev.studyflow.core.notifications.StudyFlowNotifier
+import dev.studyflow.core.scheduling.AndroidReminderPlatformScheduler
+import dev.studyflow.core.scheduling.AndroidSchedulingCapabilitiesProvider
+import dev.studyflow.core.scheduling.ReminderActionExecutor
+import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
+import dev.studyflow.core.scheduling.ReminderPlatformScheduler
+import dev.studyflow.core.scheduling.ReminderSchedulingService
+import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
+import kotlinx.coroutines.flow.first
+import javax.inject.Singleton
+
+/**
+ * Wires the services [ReminderDeliveryWorker][dev.studyflow.core.scheduling.ReminderDeliveryWorker],
+ * [ReminderAlarmReceiver][dev.studyflow.core.scheduling.ReminderAlarmReceiver] and
+ * [ReminderActionReceiver][dev.studyflow.core.scheduling.ReminderActionReceiver] need, following
+ * `:core:storage`'s precedent of a core module owning its own Hilt module (docs/adr/0002).
+ *
+ * The repositories these services depend on ([TaskRepository], [SubjectRepository],
+ * [SessionRepository]) are bound in [ProvisionalRepositoryModule] instead, so this module stays
+ * about scheduling and delivery only.
+ */
+@Module
+@InstallIn(SingletonComponent::class)
+public object SchedulingModule {
+    @Provides
+    @Singleton
+    public fun schedulingCapabilitiesProvider(
+        @ApplicationContext context: Context,
+    ): SchedulingCapabilitiesProvider = AndroidSchedulingCapabilitiesProvider(context)
+
+    @Provides
+    @Singleton
+    public fun reminderPlatformScheduler(
+        @ApplicationContext context: Context,
+    ): ReminderPlatformScheduler = AndroidReminderPlatformScheduler(context)
+
+    @Provides
+    @Singleton
+    public fun reminderSchedulingService(
+        capabilitiesProvider: SchedulingCapabilitiesProvider,
+        platformScheduler: ReminderPlatformScheduler,
+        clock: Clock,
+    ): ReminderSchedulingService = ReminderSchedulingService(capabilitiesProvider, platformScheduler) { clock.now() }
+
+    @Provides
+    @Singleton
+    public fun userSettingsStore(
+        @ApplicationContext context: Context,
+    ): UserSettingsStore = context.userSettingsStore()
+
+    @Provides
+    public fun reminderDeliveryCoordinator(
+        @ApplicationContext context: Context,
+        taskRepository: TaskRepository,
+        subjectRepository: SubjectRepository,
+        notifier: StudyFlowNotifier,
+        notificationFactory: StudyFlowNotificationFactory,
+        settingsStore: UserSettingsStore,
+    ): ReminderDeliveryCoordinator =
+        ReminderDeliveryCoordinator(
+            context = context,
+            taskRepository = taskRepository,
+            subjectRepository = subjectRepository,
+            notifier = notifier,
+            notificationFactory = notificationFactory,
+            digestEnabled = { settingsStore.data.first().digestEnabled },
+        )
+
+    @Provides
+    public fun reminderActionExecutor(
+        @ApplicationContext context: Context,
+        taskRepository: TaskRepository,
+        schedulingService: ReminderSchedulingService,
+        sessionRepository: SessionRepository,
+        notifier: StudyFlowNotifier,
+        clock: Clock,
+    ): ReminderActionExecutor =
+        ReminderActionExecutor(
+            context = context,
+            taskRepository = taskRepository,
+            schedulingService = schedulingService,
+            sessionRepository = sessionRepository,
+            notifier = notifier,
+            wallClock = clock,
+        )
+}
