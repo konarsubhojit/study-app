@@ -5,6 +5,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import dev.studyflow.core.database.dao.FolderDao
 import dev.studyflow.core.database.dao.MaterialDao
+import dev.studyflow.core.database.dao.MaterialUploadPartDao
 import dev.studyflow.core.database.dao.SessionDao
 import dev.studyflow.core.database.dao.StudyTaskDao
 import dev.studyflow.core.database.dao.SubjectDao
@@ -12,6 +13,7 @@ import dev.studyflow.core.database.entity.FolderEntity
 import dev.studyflow.core.database.entity.MaterialEntity
 import dev.studyflow.core.database.entity.MaterialFtsEntity
 import dev.studyflow.core.database.entity.MaterialTagEntity
+import dev.studyflow.core.database.entity.MaterialUploadPartEntity
 import dev.studyflow.core.database.entity.ReminderEntity
 import dev.studyflow.core.database.entity.SessionEventEntity
 import dev.studyflow.core.database.entity.StudySessionEntity
@@ -29,6 +31,7 @@ import dev.studyflow.core.database.entity.TaskTagEntity
         TagEntity::class,
         MaterialTagEntity::class,
         MaterialFtsEntity::class,
+        MaterialUploadPartEntity::class,
         StudyTaskEntity::class,
         ReminderEntity::class,
         TaskTagEntity::class,
@@ -36,7 +39,7 @@ import dev.studyflow.core.database.entity.TaskTagEntity
         StudySessionEntity::class,
         SessionEventEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -47,12 +50,14 @@ public abstract class StudyFlowDatabase : RoomDatabase() {
 
     public abstract fun materialDao(): MaterialDao
 
+    public abstract fun materialUploadPartDao(): MaterialUploadPartDao
+
     public abstract fun studyTaskDao(): StudyTaskDao
 
     public abstract fun sessionDao(): SessionDao
 
     public companion object {
         public const val NAME: String = "studyflow.db"
-        public const val VERSION: Int = 7
+        public const val VERSION: Int = 8
     }
 }

@@ -5,6 +5,11 @@
     <!-- The app talks to the StudyFlow backend over HTTPS (issue #63). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- The material upload worker runs as a foreground service while a transfer is in progress,
+         so a multi-hundred-megabyte lecture recording is not killed as soon as the app is
+         backgrounded (issue #38). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application
         android:name=".StudyFlowApplication"

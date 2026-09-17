@@ -7,8 +7,14 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.database.StudyFlowDatabase
+import dev.studyflow.core.database.dao.MaterialUploadPartDao
+import dev.studyflow.core.database.repository.RoomUploadProgressStore
 import dev.studyflow.core.datastore.UserSettingsStore
 import dev.studyflow.core.datastore.userSettingsStore
+import dev.studyflow.core.domain.materials.MaterialRepository
+import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
+import dev.studyflow.core.domain.materials.UploadProgressStore
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
@@ -21,6 +27,7 @@ import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
 import dev.studyflow.core.scheduling.ReminderPlatformScheduler
 import dev.studyflow.core.scheduling.ReminderSchedulingService
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
+import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
 import kotlinx.coroutines.flow.first
 import javax.inject.Singleton
 
@@ -102,4 +109,24 @@ public object SchedulingModule {
             deliveryCoordinator = deliveryCoordinator,
             wallClock = clock,
         )
+
+    @Provides
+    @Singleton
+    public fun materialUploadPartDao(database: StudyFlowDatabase): MaterialUploadPartDao =
+        database.materialUploadPartDao()
+
+    @Provides
+    @Singleton
+    public fun uploadProgressStore(
+        dao: MaterialUploadPartDao,
+        clock: Clock,
+    ): UploadProgressStore = RoomUploadProgressStore(dao, clock)
+
+    @Provides
+    @Singleton
+    public fun materialUploadCoordinator(
+        @ApplicationContext context: Context,
+        materialRepository: MaterialRepository,
+        settingsStore: UserSettingsStore,
+    ): MaterialUploadCoordinator = WorkManagerMaterialUploadCoordinator(context, materialRepository, settingsStore)
 }
