@@ -95,9 +95,13 @@ public class PresignedObjectStore(
 }
 
 /**
- * Maps a transport status onto the store's own failure vocabulary.
+ * Maps the status of a *part upload* onto the store's own failure vocabulary.
  *
- * [subject] names the part or key rather than the URL, which carries the signature.
+ * A `404` here is a URL the provider no longer recognises rather than a missing object — the object
+ * does not exist until `completeUpload` — so it maps to `AccessDenied`; `NotFound` belongs to the
+ * key-addressed operations, which the BFF answers.
+ *
+ * [subject] names the part rather than the URL, which carries the signature.
  */
 private fun HttpStatusCode.toFailure(subject: String): ObjectStoreException =
     when (this) {

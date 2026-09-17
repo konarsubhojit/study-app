@@ -243,4 +243,7 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 - [0006 — Bootstrap scope: pure-Kotlin core first](docs/adr/0006-bootstrap-scope.md)
 - [0007 — One design system: tokens, dynamic colour, edge-to-edge, adaptive panes](docs/adr/0007-design-system.md)
 - [0007 — API contract and typed network client](docs/adr/0007-api-contract-and-network-client.md)
+- [0007 — Backend platform: Supabase, environments and the row-owns-itself data model](docs/adr/0007-backend-platform.md)
+- [0007 — Tests are a pyramid with shared fakes, and coverage is a signal](docs/adr/0007-test-strategy.md)
+- [0008 — Room is the local source of truth with explicit migrations](docs/adr/0008-local-room-database.md)
 - [0009 — Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`](docs/adr/0009-storage-provider.md)
