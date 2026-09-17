@@ -101,7 +101,7 @@ private fun AppNavDisplay(
                     entry<TasksRoute> { route ->
                         if (route.taskId == null) {
                             TasksListRoute(
-                                onTaskSelected = { taskId ->
+                                onTaskSelect = { taskId ->
                                     if (backStack.lastOrNull() != TasksRoute(taskId)) {
                                         backStack.add(TasksRoute(taskId))
                                     }

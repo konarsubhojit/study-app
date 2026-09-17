@@ -7,6 +7,7 @@ import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
+import dev.studyflow.core.model.ReminderTrigger
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subtask
 import dev.studyflow.core.ui.mvi.MviViewModel
@@ -144,17 +145,15 @@ public class TaskDetailViewModel
                 }
 
                 is TaskDetailUiEvent.TitleChanged -> {
-                    val title = event.title
-                    mutate { it.copy(title = title) }
+                    changeTitle(event.title)
                 }
 
                 is TaskDetailUiEvent.NotesChanged -> {
-                    val notes = event.notes
-                    mutate { it.copy(notes = notes.ifBlank { null }) }
+                    changeNotes(event.notes)
                 }
 
                 TaskDetailUiEvent.CompletionToggled -> {
-                    mutate { task -> task.copy(completedAt = if (task.isCompleted) null else clock.now()) }
+                    toggleCompletion()
                 }
 
                 is TaskDetailUiEvent.NewSubtaskTitleChanged -> {
@@ -166,45 +165,23 @@ public class TaskDetailViewModel
                 }
 
                 is TaskDetailUiEvent.SubtaskToggled -> {
-                    val subtaskId = event.subtaskId
-                    mutate { task ->
-                        task.copy(
-                            subtasks =
-                                task.subtasks.map { subtask ->
-                                    if (subtask.id != subtaskId) {
-                                        subtask
-                                    } else {
-                                        subtask.copy(completedAt = if (subtask.isCompleted) null else clock.now())
-                                    }
-                                },
-                        )
-                    }
+                    toggleSubtask(event.subtaskId)
                 }
 
                 is TaskDetailUiEvent.SubtaskRemoved -> {
-                    val subtaskId = event.subtaskId
-                    mutate { task -> task.copy(subtasks = task.subtasks.filterNot { it.id == subtaskId }) }
+                    removeSubtask(event.subtaskId)
                 }
 
                 is TaskDetailUiEvent.ReminderAdded -> {
-                    val trigger = event.preset.trigger
-                    mutate { task ->
-                        task.copy(
-                            reminders =
-                                task.reminders +
-                                    Reminder(id = UUID.randomUUID().toString(), taskId = task.id, trigger = trigger),
-                        )
-                    }
+                    addReminder(event.preset.trigger)
                 }
 
                 is TaskDetailUiEvent.ReminderRemoved -> {
-                    val reminderId = event.reminderId
-                    mutate { task -> task.copy(reminders = task.reminders.filterNot { it.id == reminderId }) }
+                    removeReminder(event.reminderId)
                 }
 
                 is TaskDetailUiEvent.RecurrenceChanged -> {
-                    val recurrence = event.recurrence
-                    mutate { it.copy(recurrence = recurrence) }
+                    changeRecurrence(event.recurrence)
                 }
 
                 TaskDetailUiEvent.StartStudySessionRequested -> {
@@ -220,6 +197,22 @@ public class TaskDetailViewModel
             this.taskId.value = taskId
         }
 
+        private fun changeTitle(title: String) {
+            mutate { it.copy(title = title) }
+        }
+
+        private fun changeNotes(notes: String) {
+            mutate { it.copy(notes = notes.ifBlank { null }) }
+        }
+
+        private fun toggleCompletion() {
+            mutate { task -> task.copy(completedAt = if (task.isCompleted) null else clock.now()) }
+        }
+
+        private fun changeRecurrence(recurrence: RecurrenceRule?) {
+            mutate { it.copy(recurrence = recurrence) }
+        }
+
         private fun addSubtask() {
             val title = newSubtaskTitle.value.trim()
             if (title.isBlank()) return
@@ -230,6 +223,39 @@ public class TaskDetailViewModel
                 )
             }
             newSubtaskTitle.value = ""
+        }
+
+        private fun toggleSubtask(subtaskId: String) {
+            mutate { task ->
+                task.copy(
+                    subtasks =
+                        task.subtasks.map { subtask ->
+                            if (subtask.id != subtaskId) {
+                                subtask
+                            } else {
+                                subtask.copy(completedAt = if (subtask.isCompleted) null else clock.now())
+                            }
+                        },
+                )
+            }
+        }
+
+        private fun removeSubtask(subtaskId: String) {
+            mutate { task -> task.copy(subtasks = task.subtasks.filterNot { it.id == subtaskId }) }
+        }
+
+        private fun addReminder(trigger: ReminderTrigger) {
+            mutate { task ->
+                task.copy(
+                    reminders =
+                        task.reminders +
+                            Reminder(id = UUID.randomUUID().toString(), taskId = task.id, trigger = trigger),
+                )
+            }
+        }
+
+        private fun removeReminder(reminderId: String) {
+            mutate { task -> task.copy(reminders = task.reminders.filterNot { it.id == reminderId }) }
         }
 
         private fun currentTask(): StudyTask? = (loadResult.value as? TaskLoadResult.Loaded)?.task

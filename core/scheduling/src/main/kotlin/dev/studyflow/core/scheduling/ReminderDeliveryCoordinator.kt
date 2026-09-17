@@ -73,9 +73,10 @@ public class ReminderDeliveryCoordinator(
      * heads-up — it just cannot take over the screen, which is the degradation
      * `ReminderDegradation.FULL_SCREEN_INTENT_DENIED` already names.
      */
-    private val capabilitiesProvider: SchedulingCapabilitiesProvider = SchedulingCapabilitiesProvider {
-        SchedulingCapabilities()
-    },
+    private val capabilitiesProvider: SchedulingCapabilitiesProvider =
+        SchedulingCapabilitiesProvider {
+            SchedulingCapabilities()
+        },
     private val notificationManager: NotificationManagerCompat = NotificationManagerCompat.from(context),
 ) {
     public suspend fun deliver(

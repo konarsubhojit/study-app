@@ -9,7 +9,7 @@ import dev.studyflow.core.domain.session.SessionCommandObserver
 /** Declares the optional observer set used for post-commit timer side effects. */
 @Module
 @InstallIn(SingletonComponent::class)
-public abstract class SessionCommandObserverModule {
+public interface SessionCommandObserverModule {
     @Multibinds
-    public abstract fun sessionCommandObservers(): Set<@JvmSuppressWildcards SessionCommandObserver>
+    public fun sessionCommandObservers(): Set<@JvmSuppressWildcards SessionCommandObserver>
 }

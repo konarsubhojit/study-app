@@ -1,6 +1,7 @@
 package dev.studyflow.core.notifications
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.os.Build
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,6 +15,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
+@SuppressLint("InlinedApi") // Test is pinned to API 34 via @Config(sdk = [34]).
 class AndroidNotificationPermissionReaderTest {
     private val context = RuntimeEnvironment.getApplication()
     private val application = shadowOf(context)

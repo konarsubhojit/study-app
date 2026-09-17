@@ -20,6 +20,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,6 +55,7 @@ public fun TaskDetailRoute(
     viewModel: TaskDetailViewModel = hiltViewModel(key = taskId),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val currentOnStartStudySession by rememberUpdatedState(onStartStudySession)
 
     LaunchedEffect(taskId) {
         viewModel.onEvent(TaskDetailUiEvent.Load(taskId))
@@ -62,7 +64,9 @@ public fun TaskDetailRoute(
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is TaskDetailUiEffect.StartStudySession -> onStartStudySession(effect.taskId, effect.subjectId)
+                is TaskDetailUiEffect.StartStudySession -> {
+                    currentOnStartStudySession(effect.taskId, effect.subjectId)
+                }
             }
         }
     }

@@ -73,7 +73,9 @@ public sealed interface NotificationSettingsUiEvent : UiEvent {
 
     /** The system dialog closed. [shouldShowRationale] is re-read afterwards: a refusal that can
      * still be explained is a very different state from a final one. */
-    public data class PermissionResult(val shouldShowRationale: Boolean = false) : NotificationSettingsUiEvent
+    public data class PermissionResult(
+        val shouldShowRationale: Boolean = false,
+    ) : NotificationSettingsUiEvent
 
     public data class OpenChannelSettings(
         val channel: StudyFlowNotificationChannel,

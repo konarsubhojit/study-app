@@ -260,11 +260,24 @@ private class InMemorySessionRepository : SessionRepository {
         return SessionCommandResult.Applied(session, state)
     }
 
-    private fun activeSessionId(): String? = sessionsFlow.value.values.firstOrNull { it.isActive }?.id
+    private fun activeSessionId(): String? =
+        sessionsFlow.value.values
+            .firstOrNull { it.isActive }
+            ?.id
 
     private fun TimerCommand.descriptorFor(activeId: String?): SessionDescriptor =
         when (this) {
-            is TimerCommand.Start -> SessionDescriptor(id = sessionId, deviceId = "device-1", subjectId = subjectId, note = note)
-            else -> descriptors.getValue(requireNotNull(activeId) { "$this has no session to apply to" })
+            is TimerCommand.Start -> {
+                SessionDescriptor(
+                    id = sessionId,
+                    deviceId = "device-1",
+                    subjectId = subjectId,
+                    note = note,
+                )
+            }
+
+            else -> {
+                descriptors.getValue(requireNotNull(activeId) { "$this has no session to apply to" })
+            }
         }
 }

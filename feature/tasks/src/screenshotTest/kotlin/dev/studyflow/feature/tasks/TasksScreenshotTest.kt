@@ -105,7 +105,8 @@ private val detailTask: StudyTask =
                 Subtask(id = "subtask-1", title = "Draft thesis statement", completedAt = null),
                 Subtask(id = "subtask-2", title = "List supporting quotes", completedAt = null),
             ),
-        reminders = listOf(testReminder(id = "reminder-1", trigger = ReminderTrigger.BeforeDue())),
+        reminders =
+            listOf(testReminder(id = "reminder-1", taskId = "task-detail-1", trigger = ReminderTrigger.BeforeDue())),
         recurrence = RecurrenceRule(frequency = RecurrenceFrequency.WEEKLY, interval = 1),
     )
 

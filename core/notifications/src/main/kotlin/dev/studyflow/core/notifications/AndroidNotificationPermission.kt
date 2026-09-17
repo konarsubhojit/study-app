@@ -1,6 +1,7 @@
 package dev.studyflow.core.notifications
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
@@ -79,6 +80,10 @@ public class AndroidNotificationPermissionReader(
             else -> NotificationPermissionStatus.PERMANENTLY_DENIED
         }
 
+    // POST_NOTIFICATIONS was added in API 33; ContextCompat.checkSelfPermission safely handles
+    // unrecognised permission strings on older platforms, and [status] only calls this after
+    // confirming sdkInt is at least TIRAMISU.
+    @SuppressLint("InlinedApi")
     private fun isGranted(): Boolean =
         ContextCompat.checkSelfPermission(appContext, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED

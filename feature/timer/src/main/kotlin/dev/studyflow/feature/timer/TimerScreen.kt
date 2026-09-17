@@ -229,19 +229,20 @@ private fun PrimaryControls(
     ) {
         when (state.phase) {
             TimerPhase.IDLE -> {
-                PrimaryButton(label = "Start", contentDescription = "Start study session") {
-                    onEvent(TimerUiEvent.StartRequested)
-                }
+                PrimaryButton(
+                    label = "Start",
+                    contentDescription = "Start study session",
+                    onClick = { onEvent(TimerUiEvent.StartRequested) },
+                )
             }
 
             TimerPhase.RUNNING -> {
                 PrimaryButton(
                     label = "Pause",
                     contentDescription = "Pause study session",
+                    onClick = { onEvent(TimerUiEvent.PauseRequested) },
                     modifier = Modifier.weight(1f),
-                ) {
-                    onEvent(TimerUiEvent.PauseRequested)
-                }
+                )
                 StopButton(onEvent = onEvent, modifier = Modifier.weight(1f))
             }
 
@@ -249,10 +250,9 @@ private fun PrimaryControls(
                 PrimaryButton(
                     label = "Resume",
                     contentDescription = "Resume study session",
+                    onClick = { onEvent(TimerUiEvent.ResumeRequested) },
                     modifier = Modifier.weight(1f),
-                ) {
-                    onEvent(TimerUiEvent.ResumeRequested)
-                }
+                )
                 StopButton(onEvent = onEvent, modifier = Modifier.weight(1f))
             }
         }
@@ -263,8 +263,8 @@ private fun PrimaryControls(
 private fun PrimaryButton(
     label: String,
     contentDescription: String,
-    modifier: Modifier = Modifier,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Button(
         onClick = onClick,

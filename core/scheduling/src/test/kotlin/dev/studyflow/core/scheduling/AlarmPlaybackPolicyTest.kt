@@ -56,4 +56,3 @@ class AlarmPlaybackPolicyTest {
         assertEquals(ReminderActionKind.SNOOZE, AlarmPlaybackPolicy.OUTCOME_AFTER_TIMEOUT)
     }
 }
-

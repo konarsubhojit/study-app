@@ -51,11 +51,17 @@ private const val REQUEST_STOP = 33_103
 @AndroidEntryPoint
 internal class TimerForegroundService : Service() {
     @Inject lateinit var sessionRepository: SessionRepository
+
     @Inject lateinit var notificationFactory: StudyFlowNotificationFactory
+
     @Inject lateinit var notificationChannelRegistrar: NotificationChannelRegistrar
+
     @Inject lateinit var notifier: StudyFlowNotifier
+
     @Inject lateinit var activeTimerStore: ActiveTimerStore
+
     @Inject lateinit var dispatcherProvider: DispatcherProvider
+
     @Inject lateinit var wallClock: Clock
 
     private lateinit var scope: CoroutineScope
@@ -92,11 +98,12 @@ internal class TimerForegroundService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private suspend fun applyCommand(command: TimerCommand) {
-        val result = sessionRepository.execute(
-            command = command,
-            eventId = UUID.randomUUID().toString(),
-            anchor = currentAnchor(),
-        )
+        val result =
+            sessionRepository.execute(
+                command = command,
+                eventId = UUID.randomUUID().toString(),
+                anchor = currentAnchor(),
+            )
         val nextState =
             when (result) {
                 is SessionCommandResult.Applied -> result.state
@@ -111,11 +118,15 @@ internal class TimerForegroundService : Service() {
 
     private suspend fun refresh(state: TimerState) {
         when (state) {
-            TimerState.Idle, is TimerState.Stopped -> stopTimerForeground()
+            TimerState.Idle, is TimerState.Stopped -> {
+                stopTimerForeground()
+            }
+
             is TimerState.Running -> {
                 activeTimerStore.set(state.activeTimer())
                 startTimerForeground(state)
             }
+
             is TimerState.Paused -> {
                 // Only a ticking interval has an anchor to recover; paused elapsed time is already
                 // settled in the event log.

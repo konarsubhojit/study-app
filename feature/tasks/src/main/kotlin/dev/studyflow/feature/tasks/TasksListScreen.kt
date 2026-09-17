@@ -3,6 +3,7 @@ package dev.studyflow.feature.tasks
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -33,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -61,15 +63,16 @@ import kotlin.time.Instant
 @Composable
 public fun TasksListRoute(
     modifier: Modifier = Modifier,
-    onTaskSelected: (String) -> Unit = {},
+    onTaskSelect: (String) -> Unit = {},
     viewModel: TasksListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val currentOnTaskSelect by rememberUpdatedState(onTaskSelect)
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is TasksListUiEffect.NavigateToTaskDetail -> onTaskSelected(effect.taskId)
+                is TasksListUiEffect.NavigateToTaskDetail -> currentOnTaskSelect(effect.taskId)
             }
         }
     }
@@ -89,84 +92,107 @@ public fun TasksListScreen(
             QuickAddBar(
                 title = state.quickAddTitle,
                 dueDate = state.quickAddDueDate,
-                onTitleChanged = { onEvent(TasksListUiEvent.QuickAddTitleChanged(it)) },
-                onDueDateChanged = { onEvent(TasksListUiEvent.QuickAddDueDateChanged(it)) },
+                onTitleChange = { onEvent(TasksListUiEvent.QuickAddTitleChanged(it)) },
+                onDueDateChange = { onEvent(TasksListUiEvent.QuickAddDueDateChanged(it)) },
                 onSubmit = { onEvent(TasksListUiEvent.QuickAddSubmitted) },
             )
             FilterBar(state = state, onEvent = onEvent)
-
-            when {
-                state.loading -> {
-                    LoadingState(modifier = Modifier.fillMaxSize())
-                }
-
-                state.hasNoTasksWhatsoever -> {
-                    EmptyState(
-                        message =
-                            "No tasks yet. Type a title above and tap Add to create your first one — " +
-                                "add Today, Tomorrow or Next week to see it grouped automatically.",
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                else -> {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = MaterialTheme.spacing.huge),
-                    ) {
-                        taskSection(
-                            title = "Overdue",
-                            tasks = state.overdue,
-                            emptyMessage = sectionEmptyMessage("Nothing overdue.", state.filter.isNarrowed),
-                            onEvent = onEvent,
-                        )
-                        taskSection(
-                            title = "Today",
-                            tasks = state.today,
-                            emptyMessage = sectionEmptyMessage("Nothing due today.", state.filter.isNarrowed),
-                            onEvent = onEvent,
-                        )
-                        taskSection(
-                            title = "Upcoming",
-                            tasks = state.upcoming,
-                            emptyMessage = sectionEmptyMessage("Nothing coming up.", state.filter.isNarrowed),
-                            onEvent = onEvent,
-                        )
-                        taskSection(
-                            title = "Someday",
-                            tasks = state.someday,
-                            emptyMessage =
-                                sectionEmptyMessage("No undated tasks — nice and tidy.", state.filter.isNarrowed),
-                            onEvent = onEvent,
-                        )
-                    }
-                }
-            }
+            TaskListContent(state = state, onEvent = onEvent)
         }
 
         state.undo?.let { undo ->
-            Snackbar(
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(MaterialTheme.spacing.medium),
-                action = {
-                    TextButton(
-                        onClick = { onEvent(TasksListUiEvent.UndoRequested) },
-                        modifier = Modifier.semantics { contentDescription = "Undo" },
-                    ) {
-                        Text(text = "Undo")
-                    }
-                },
-                dismissAction = {
-                    TextButton(onClick = { onEvent(TasksListUiEvent.UndoDismissed) }) {
-                        Text(text = "Dismiss")
-                    }
-                },
-            ) {
-                Text(text = undo.message())
-            }
+            TasksListUndoSnackbar(undo = undo, onEvent = onEvent)
         }
+    }
+}
+
+@Composable
+private fun TaskListContent(
+    state: TasksListUiState,
+    onEvent: (TasksListUiEvent) -> Unit,
+) {
+    when {
+        state.loading -> {
+            LoadingState(modifier = Modifier.fillMaxSize())
+        }
+
+        state.hasNoTasksWhatsoever -> {
+            EmptyState(
+                message =
+                    "No tasks yet. Type a title above and tap Add to create your first one — " +
+                        "add Today, Tomorrow or Next week to see it grouped automatically.",
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+
+        else -> {
+            TaskSectionsList(state = state, onEvent = onEvent)
+        }
+    }
+}
+
+@Composable
+private fun TaskSectionsList(
+    state: TasksListUiState,
+    onEvent: (TasksListUiEvent) -> Unit,
+) {
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(bottom = MaterialTheme.spacing.huge),
+    ) {
+        taskSection(
+            title = "Overdue",
+            tasks = state.overdue,
+            emptyMessage = sectionEmptyMessage("Nothing overdue.", state.filter.isNarrowed),
+            onEvent = onEvent,
+        )
+        taskSection(
+            title = "Today",
+            tasks = state.today,
+            emptyMessage = sectionEmptyMessage("Nothing due today.", state.filter.isNarrowed),
+            onEvent = onEvent,
+        )
+        taskSection(
+            title = "Upcoming",
+            tasks = state.upcoming,
+            emptyMessage = sectionEmptyMessage("Nothing coming up.", state.filter.isNarrowed),
+            onEvent = onEvent,
+        )
+        taskSection(
+            title = "Someday",
+            tasks = state.someday,
+            emptyMessage =
+                sectionEmptyMessage("No undated tasks — nice and tidy.", state.filter.isNarrowed),
+            onEvent = onEvent,
+        )
+    }
+}
+
+@Composable
+private fun BoxScope.TasksListUndoSnackbar(
+    undo: TaskListUndo,
+    onEvent: (TasksListUiEvent) -> Unit,
+) {
+    Snackbar(
+        modifier =
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(MaterialTheme.spacing.medium),
+        action = {
+            TextButton(
+                onClick = { onEvent(TasksListUiEvent.UndoRequested) },
+                modifier = Modifier.semantics { contentDescription = "Undo" },
+            ) {
+                Text(text = "Undo")
+            }
+        },
+        dismissAction = {
+            TextButton(onClick = { onEvent(TasksListUiEvent.UndoDismissed) }) {
+                Text(text = "Dismiss")
+            }
+        },
+    ) {
+        Text(text = undo.message())
     }
 }
 
@@ -231,6 +257,7 @@ private fun TaskRow(
     onEvent: (TasksListUiEvent) -> Unit,
 ) {
     val dismissState = rememberSwipeToDismissBoxState()
+    val currentOnEvent by rememberUpdatedState(onEvent)
 
     // `confirmValueChange` is deprecated with no replacement that keeps a swipe non-destructive, so
     // the completion/snooze action is triggered from the settled value instead, and the box is
@@ -238,8 +265,8 @@ private fun TaskRow(
     // this row once the repository reflects the change.
     LaunchedEffect(dismissState.currentValue) {
         when (dismissState.currentValue) {
-            SwipeToDismissBoxValue.StartToEnd -> onEvent(TasksListUiEvent.TaskCompletionToggled(task))
-            SwipeToDismissBoxValue.EndToStart -> onEvent(TasksListUiEvent.TaskSnoozed(task))
+            SwipeToDismissBoxValue.StartToEnd -> currentOnEvent(TasksListUiEvent.TaskCompletionToggled(task))
+            SwipeToDismissBoxValue.EndToStart -> currentOnEvent(TasksListUiEvent.TaskSnoozed(task))
             SwipeToDismissBoxValue.Settled -> return@LaunchedEffect
         }
         dismissState.snapTo(SwipeToDismissBoxValue.Settled)
@@ -329,8 +356,8 @@ private fun SwipeBackground(direction: SwipeToDismissBoxValue?) {
 private fun QuickAddBar(
     title: String,
     dueDate: QuickAddDueDate,
-    onTitleChanged: (String) -> Unit,
-    onDueDateChanged: (QuickAddDueDate) -> Unit,
+    onTitleChange: (String) -> Unit,
+    onDueDateChange: (QuickAddDueDate) -> Unit,
     onSubmit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -342,89 +369,123 @@ private fun QuickAddBar(
                 .fillMaxWidth()
                 .padding(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            OutlinedTextField(
-                value = title,
-                onValueChange = onTitleChanged,
-                label = { Text(text = "Add a task") },
-                singleLine = true,
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .semantics { contentDescription = "New task title" },
-            )
-            Button(
-                onClick = onSubmit,
-                enabled = title.isNotBlank(),
-                modifier =
-                    Modifier.semantics {
-                        contentDescription = "Add task"
-                        role = Role.Button
-                    },
-            ) {
-                Text(text = "Add")
-            }
-        }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-            modifier = Modifier.padding(top = MaterialTheme.spacing.small),
-        ) {
-            DueDateChip(
-                label = "Today",
-                selected = dueDate == QuickAddDueDate.Today,
-                onClick = { onDueDateChanged(dueDate.toggled(QuickAddDueDate.Today)) },
-            )
-            DueDateChip(
-                label = "Tomorrow",
-                selected = dueDate == QuickAddDueDate.Tomorrow,
-                onClick = { onDueDateChanged(dueDate.toggled(QuickAddDueDate.Tomorrow)) },
-            )
-            DueDateChip(
-                label = "Next week",
-                selected = dueDate == QuickAddDueDate.NextWeek,
-                onClick = { onDueDateChanged(dueDate.toggled(QuickAddDueDate.NextWeek)) },
-            )
-            DueDateChip(
-                label = (dueDate as? QuickAddDueDate.Custom)?.date?.toString() ?: "Custom",
-                selected = dueDate is QuickAddDueDate.Custom,
-                onClick = {
-                    if (dueDate is QuickAddDueDate.Custom) {
-                        onDueDateChanged(QuickAddDueDate.None)
-                    } else {
-                        showDatePicker = true
-                    }
-                },
-            )
-        }
+        QuickAddInputRow(title = title, onTitleChange = onTitleChange, onSubmit = onSubmit)
+        QuickAddDueDateRow(
+            dueDate = dueDate,
+            onDueDateChange = onDueDateChange,
+            onCustomDateRequest = { showDatePicker = true },
+        )
     }
 
     if (showDatePicker) {
-        val pickerState = rememberDatePickerState()
-        DatePickerDialog(
+        QuickAddDatePickerDialog(
+            onDueDateChange = onDueDateChange,
             onDismissRequest = { showDatePicker = false },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        pickerState.selectedDateMillis?.let { millis ->
-                            onDueDateChanged(QuickAddDueDate.Custom(millis.toUtcLocalDate()))
-                        }
-                        showDatePicker = false
-                    },
-                ) {
-                    Text(text = "Select")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDatePicker = false }) {
-                    Text(text = "Cancel")
-                }
-            },
+        )
+    }
+}
+
+@Composable
+private fun QuickAddInputRow(
+    title: String,
+    onTitleChange: (String) -> Unit,
+    onSubmit: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    ) {
+        OutlinedTextField(
+            value = title,
+            onValueChange = onTitleChange,
+            label = { Text(text = "Add a task") },
+            singleLine = true,
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .semantics { contentDescription = "New task title" },
+        )
+        Button(
+            onClick = onSubmit,
+            enabled = title.isNotBlank(),
+            modifier =
+                Modifier.semantics {
+                    contentDescription = "Add task"
+                    role = Role.Button
+                },
         ) {
-            DatePicker(state = pickerState)
+            Text(text = "Add")
         }
+    }
+}
+
+@Composable
+private fun QuickAddDueDateRow(
+    dueDate: QuickAddDueDate,
+    onDueDateChange: (QuickAddDueDate) -> Unit,
+    onCustomDateRequest: () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        modifier = Modifier.padding(top = MaterialTheme.spacing.small),
+    ) {
+        DueDateChip(
+            label = "Today",
+            selected = dueDate == QuickAddDueDate.Today,
+            onClick = { onDueDateChange(dueDate.toggled(QuickAddDueDate.Today)) },
+        )
+        DueDateChip(
+            label = "Tomorrow",
+            selected = dueDate == QuickAddDueDate.Tomorrow,
+            onClick = { onDueDateChange(dueDate.toggled(QuickAddDueDate.Tomorrow)) },
+        )
+        DueDateChip(
+            label = "Next week",
+            selected = dueDate == QuickAddDueDate.NextWeek,
+            onClick = { onDueDateChange(dueDate.toggled(QuickAddDueDate.NextWeek)) },
+        )
+        DueDateChip(
+            label = (dueDate as? QuickAddDueDate.Custom)?.date?.toString() ?: "Custom",
+            selected = dueDate is QuickAddDueDate.Custom,
+            onClick = {
+                if (dueDate is QuickAddDueDate.Custom) {
+                    onDueDateChange(QuickAddDueDate.None)
+                } else {
+                    onCustomDateRequest()
+                }
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun QuickAddDatePickerDialog(
+    onDueDateChange: (QuickAddDueDate) -> Unit,
+    onDismissRequest: () -> Unit,
+) {
+    val pickerState = rememberDatePickerState()
+    DatePickerDialog(
+        onDismissRequest = onDismissRequest,
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    pickerState.selectedDateMillis?.let { millis ->
+                        onDueDateChange(QuickAddDueDate.Custom(millis.toUtcLocalDate()))
+                    }
+                    onDismissRequest()
+                },
+            ) {
+                Text(text = "Select")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text(text = "Cancel")
+            }
+        },
+    ) {
+        DatePicker(state = pickerState)
     }
 }
 
@@ -459,69 +520,88 @@ private fun FilterBar(
                 .fillMaxWidth()
                 .padding(horizontal = MaterialTheme.spacing.medium),
     ) {
-        OutlinedTextField(
-            value = state.filter.query,
-            onValueChange = { onEvent(TasksListUiEvent.QueryChanged(it)) },
-            label = { Text(text = "Search tasks") },
-            singleLine = true,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .semantics { contentDescription = "Search tasks by title, notes or tag" },
+        FilterSearchField(
+            query = state.filter.query,
+            onQueryChange = { onEvent(TasksListUiEvent.QueryChanged(it)) },
         )
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = MaterialTheme.spacing.small),
-        ) {
-            item {
-                val sortedByPriority = state.filter.sort == TaskSort.PRIORITY
-                FilterChip(
-                    selected = sortedByPriority,
-                    onClick = {
-                        val nextSort = if (sortedByPriority) TaskSort.DUE_DATE else TaskSort.PRIORITY
-                        onEvent(TasksListUiEvent.SortChanged(nextSort))
-                    },
-                    label = { Text(text = if (sortedByPriority) "Sorted by priority" else "Sorted by due date") },
-                )
-            }
-            items(TaskPriority.entries.toList()) { priority ->
-                FilterChip(
-                    selected = state.filter.priority == priority,
-                    onClick = {
-                        onEvent(
-                            TasksListUiEvent.PriorityFilterChanged(
-                                if (state.filter.priority == priority) null else priority,
-                            ),
-                        )
-                    },
-                    label = { Text(text = priority.name.lowercase().replaceFirstChar(Char::uppercase)) },
-                )
-            }
-            items(state.filterOptions.subjectIds.toList()) { subjectId ->
-                FilterChip(
-                    selected = state.filter.subjectId == subjectId,
-                    onClick = {
-                        onEvent(
-                            TasksListUiEvent.SubjectFilterChanged(
-                                if (state.filter.subjectId == subjectId) null else subjectId,
-                            ),
-                        )
-                    },
-                    label = { Text(text = subjectId) },
-                )
-            }
-            items(state.filterOptions.tags.toList()) { tag ->
-                FilterChip(
-                    selected = state.filter.tag == tag,
-                    onClick = {
-                        onEvent(TasksListUiEvent.TagFilterChanged(if (state.filter.tag == tag) null else tag))
-                    },
-                    label = { Text(text = "#$tag") },
-                )
-            }
+        FilterChipsRow(state = state, onEvent = onEvent)
+    }
+}
+
+@Composable
+private fun FilterSearchField(
+    query: String,
+    onQueryChange: (String) -> Unit,
+) {
+    OutlinedTextField(
+        value = query,
+        onValueChange = onQueryChange,
+        label = { Text(text = "Search tasks") },
+        singleLine = true,
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .semantics { contentDescription = "Search tasks by title, notes or tag" },
+    )
+}
+
+@Composable
+private fun FilterChipsRow(
+    state: TasksListUiState,
+    onEvent: (TasksListUiEvent) -> Unit,
+) {
+    LazyRow(
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(vertical = MaterialTheme.spacing.small),
+    ) {
+        item {
+            val sortedByPriority = state.filter.sort == TaskSort.PRIORITY
+            FilterChip(
+                selected = sortedByPriority,
+                onClick = {
+                    val nextSort = if (sortedByPriority) TaskSort.DUE_DATE else TaskSort.PRIORITY
+                    onEvent(TasksListUiEvent.SortChanged(nextSort))
+                },
+                label = { Text(text = if (sortedByPriority) "Sorted by priority" else "Sorted by due date") },
+            )
+        }
+        items(TaskPriority.entries.toList()) { priority ->
+            FilterChip(
+                selected = state.filter.priority == priority,
+                onClick = {
+                    onEvent(
+                        TasksListUiEvent.PriorityFilterChanged(
+                            if (state.filter.priority == priority) null else priority,
+                        ),
+                    )
+                },
+                label = { Text(text = priority.name.lowercase().replaceFirstChar(Char::uppercase)) },
+            )
+        }
+        items(state.filterOptions.subjectIds.toList()) { subjectId ->
+            FilterChip(
+                selected = state.filter.subjectId == subjectId,
+                onClick = {
+                    onEvent(
+                        TasksListUiEvent.SubjectFilterChanged(
+                            if (state.filter.subjectId == subjectId) null else subjectId,
+                        ),
+                    )
+                },
+                label = { Text(text = subjectId) },
+            )
+        }
+        items(state.filterOptions.tags.toList()) { tag ->
+            FilterChip(
+                selected = state.filter.tag == tag,
+                onClick = {
+                    onEvent(TasksListUiEvent.TagFilterChanged(if (state.filter.tag == tag) null else tag))
+                },
+                label = { Text(text = "#$tag") },
+            )
         }
     }
 }

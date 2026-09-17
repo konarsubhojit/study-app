@@ -1,5 +1,6 @@
 package dev.studyflow.core.scheduling
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.content.Context
 import android.content.pm.ServiceInfo
@@ -99,6 +100,10 @@ public class MaterialUploadWorker
             }
         }
 
+        // FOREGROUND_SERVICE_TYPE_DATA_SYNC was added in API 29; ForegroundInfo's 3-arg
+        // constructor accepts the type on every supported API level and WorkManager itself only
+        // applies it where the platform understands it, so this is safe below API 29.
+        @SuppressLint("InlinedApi")
         private fun foregroundInfo(
             materialId: String,
             progress: NotificationProgress,
