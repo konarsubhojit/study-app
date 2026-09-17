@@ -1,61 +1,255 @@
 package dev.studyflow.feature.timer
 
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.viewModelScope
+import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.studyflow.core.common.time.AnchoredClock
+import dev.studyflow.core.domain.session.SessionCommandResult
+import dev.studyflow.core.domain.session.SessionRepository
+import dev.studyflow.core.domain.subjects.SubjectRepository
+import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.domain.timer.TimerEngine
+import dev.studyflow.core.domain.timer.TimerRejection
 import dev.studyflow.core.domain.timer.TimerState
-import dev.studyflow.core.model.TimeAnchor
+import dev.studyflow.core.model.SessionStatus
+import dev.studyflow.core.model.StudySession
+import dev.studyflow.core.model.Subject
 import dev.studyflow.core.ui.mvi.MviViewModel
 import dev.studyflow.core.ui.mvi.UiEffect
 import dev.studyflow.core.ui.mvi.UiEvent
 import dev.studyflow.core.ui.mvi.UiState
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.flow.onStart
+import kotlinx.coroutines.launch
+import java.util.UUID
+import javax.inject.Inject
+import kotlin.time.Duration.Companion.seconds
 
+/** What the timer screen shows: an unmistakable, one-of-three state. */
+public enum class TimerPhase {
+    /** No session exists; the screen offers Start. */
+    IDLE,
+
+    /** A session is counting; the screen offers Pause and Stop. */
+    RUNNING,
+
+    /** A session exists but is not counting; the screen offers Resume and Stop. */
+    PAUSED,
+}
+
+/**
+ * Everything the timer screen renders.
+ *
+ * [subjects] and the draft [selectedSubjectId]/[note] are only meaningful before a session starts;
+ * once one is active, [selectedSubjectId] and [note] mirror the session's own (immutable) metadata
+ * so the screen always shows what was actually recorded, not a stale draft.
+ */
 public data class TimerUiState(
+    val phase: TimerPhase = TimerPhase.IDLE,
     val elapsedSeconds: Long = 0,
+    /** True once a reboot (or other unbridgeable clock gap) forced part of this session unverified. */
+    val hasUnverifiedTime: Boolean = false,
+    val subjects: List<Subject> = emptyList(),
+    val selectedSubjectId: String? = null,
+    val note: String = "",
+    val keepScreenOn: Boolean = false,
 ) : UiState
 
 public sealed interface TimerUiEvent : UiEvent {
+    /** Re-derives elapsed time from the log; also used to drive the once-a-second display tick. */
     public data object Refresh : TimerUiEvent
+
+    public data object StartRequested : TimerUiEvent
+
+    public data object PauseRequested : TimerUiEvent
+
+    public data object ResumeRequested : TimerUiEvent
+
+    public data object StopRequested : TimerUiEvent
+
+    public data class SubjectSelected(
+        val subjectId: String?,
+    ) : TimerUiEvent
+
+    public data class NoteChanged(
+        val note: String,
+    ) : TimerUiEvent
+
+    public data class KeepScreenOnChanged(
+        val keepScreenOn: Boolean,
+    ) : TimerUiEvent
 }
 
-public sealed interface TimerUiEffect : UiEffect
+public sealed interface TimerUiEffect : UiEffect {
+    /** A control was tapped in a state the timer engine refuses, e.g. double-tapping Stop. */
+    public data class CommandRejected(
+        val reason: TimerRejection,
+    ) : TimerUiEffect
+}
 
-public class TimerViewModel(
-    savedStateHandle: SavedStateHandle,
-    timerStates: Flow<TimerState>,
-    private val now: () -> TimeAnchor,
-) : MviViewModel<TimerUiEvent, TimerUiEffect>(savedStateHandle) {
-    // Refreshes are rendering invalidations; if several arrive together, one fresh re-read is enough.
-    private val refreshes =
-        MutableSharedFlow<Unit>(
-            extraBufferCapacity = 1,
-            onBufferOverflow = BufferOverflow.DROP_OLDEST,
-        )
+/**
+ * Drives the timer screen: Start/Pause/Resume/Stop, subject and note selection for a new session,
+ * and reboot recovery, all backed by [SessionRepository]'s append-only event log (see
+ * [TimerEngine]'s KDoc for why nothing here ticks a counter).
+ *
+ * Elapsed time is re-derived, never accumulated: [refreshes] combined with a once-a-second ticker
+ * while [TimerPhase.RUNNING] simply asks [SessionRepository.activeState] for a fresh fold and
+ * re-renders — a missed tick (screen off, process backgrounded) never desyncs the display, because
+ * the next one reads the same authoritative log.
+ */
+@OptIn(ExperimentalCoroutinesApi::class)
+@HiltViewModel
+public class TimerViewModel
+    @Inject
+    constructor(
+        savedStateHandle: SavedStateHandle,
+        private val sessionRepository: SessionRepository,
+        subjectRepository: SubjectRepository,
+        private val anchoredClock: AnchoredClock,
+    ) : MviViewModel<TimerUiEvent, TimerUiEffect>(savedStateHandle) {
+        // Refreshes are rendering invalidations; if several arrive together, one fresh re-read is enough.
+        private val refreshes =
+            MutableSharedFlow<Unit>(
+                extraBufferCapacity = 1,
+                onBufferOverflow = BufferOverflow.DROP_OLDEST,
+            )
+        private val draftSubjectId = MutableStateFlow<String?>(null)
+        private val draftNote = MutableStateFlow("")
+        private val keepScreenOn = MutableStateFlow(false)
 
-    public val state: StateFlow<TimerUiState> =
-        combine(timerStates, refreshes.onStart { emit(Unit) }) { timerState, _ ->
-            timerState.toUiState(now())
-        }.stateInViewModel(TimerUiState())
+        private val activeSession: Flow<StudySession?> = sessionRepository.observeActiveSession()
 
-    override fun onEvent(event: TimerUiEvent) {
-        when (event) {
-            TimerUiEvent.Refresh -> refreshes.tryEmit(Unit)
+        // While running, a session's stored elapsed time is only settled up to its last event; the
+        // open interval's length depends on when you ask, so a periodic re-read is what keeps the
+        // display honest. Paused/idle need no ticker at all — nothing changes between refreshes.
+        private val ticker: Flow<Unit> =
+            flow {
+                while (true) {
+                    delay(1.seconds)
+                    emit(Unit)
+                }
+            }
+
+        private val timerState: Flow<TimerState> =
+            activeSession
+                .map { it?.status }
+                .distinctUntilChanged()
+                .flatMapLatest { status ->
+                    val pulses = if (status == SessionStatus.RUNNING) merge(refreshes, ticker) else refreshes
+                    pulses.onStart { emit(Unit) }.map { sessionRepository.activeState() }
+                }
+
+        private val draft: Flow<Pair<String?, String>> =
+            combine(draftSubjectId, draftNote) { subjectId, note -> subjectId to note }
+
+        public val state: StateFlow<TimerUiState> =
+            combine(
+                timerState,
+                activeSession,
+                subjectRepository.observeSubjects(),
+                draft,
+                keepScreenOn,
+            ) { timerState, session, subjects, draft, keepScreenOn ->
+                buildState(
+                    timerState = timerState,
+                    session = session,
+                    subjects = subjects,
+                    draftSubjectId = draft.first,
+                    draftNote = draft.second,
+                    keepScreenOn = keepScreenOn,
+                )
+            }.stateInViewModel(TimerUiState())
+
+        init {
+            // Runs once per process start: closes any interval a reboot left open, booking the gap
+            // honestly as unverified rather than silently counting or discarding it.
+            viewModelScope.launch {
+                sessionRepository.reconcile(UUID.randomUUID().toString(), anchoredClock.anchor())
+                refreshes.tryEmit(Unit)
+            }
+        }
+
+        override fun onEvent(event: TimerUiEvent) {
+            when (event) {
+                TimerUiEvent.Refresh -> refreshes.tryEmit(Unit)
+                TimerUiEvent.StartRequested -> start()
+                TimerUiEvent.PauseRequested -> execute(TimerCommand.Pause)
+                TimerUiEvent.ResumeRequested -> execute(TimerCommand.Resume)
+                TimerUiEvent.StopRequested -> execute(TimerCommand.Stop)
+                is TimerUiEvent.SubjectSelected -> draftSubjectId.value = event.subjectId
+                is TimerUiEvent.NoteChanged -> draftNote.value = event.note
+                is TimerUiEvent.KeepScreenOnChanged -> keepScreenOn.value = event.keepScreenOn
+            }
+        }
+
+        private fun start() {
+            execute(
+                TimerCommand.Start(
+                    sessionId = UUID.randomUUID().toString(),
+                    subjectId = draftSubjectId.value,
+                    note = draftNote.value.trim().ifBlank { null },
+                ),
+            )
+        }
+
+        private fun execute(command: TimerCommand) {
+            viewModelScope.launch {
+                val result =
+                    sessionRepository.execute(
+                        command = command,
+                        eventId = UUID.randomUUID().toString(),
+                        anchor = anchoredClock.anchor(),
+                    )
+                if (result is SessionCommandResult.Rejected) {
+                    emitEffect(TimerUiEffect.CommandRejected(result.reason))
+                    return@launch
+                }
+                if (command is TimerCommand.Start) {
+                    draftSubjectId.value = null
+                    draftNote.value = ""
+                }
+                refreshes.tryEmit(Unit)
+            }
+        }
+
+        private fun buildState(
+            timerState: TimerState,
+            session: StudySession?,
+            subjects: List<Subject>,
+            draftSubjectId: String?,
+            draftNote: String,
+            keepScreenOn: Boolean,
+        ): TimerUiState {
+            val elapsed = TimerEngine.elapsedAt(timerState, anchoredClock.anchor())
+            return TimerUiState(
+                phase = timerState.toPhase(),
+                elapsedSeconds = elapsed.counted.inWholeSeconds,
+                hasUnverifiedTime = elapsed.hasUnverifiedTime,
+                subjects = subjects,
+                selectedSubjectId = session?.subjectId ?: draftSubjectId,
+                note = session?.note ?: draftNote,
+                keepScreenOn = keepScreenOn,
+            )
+        }
+
+        private companion object {
+            fun TimerState.toPhase(): TimerPhase =
+                when (this) {
+                    TimerState.Idle, is TimerState.Stopped -> TimerPhase.IDLE
+                    is TimerState.Running -> TimerPhase.RUNNING
+                    is TimerState.Paused -> TimerPhase.PAUSED
+                }
         }
     }
-
-    private companion object {
-        fun TimerState.toUiState(now: TimeAnchor): TimerUiState =
-            TimerUiState(
-                elapsedSeconds =
-                    TimerEngine
-                        .elapsedAt(this, now)
-                        .counted
-                        .inWholeSeconds,
-            )
-    }
-}

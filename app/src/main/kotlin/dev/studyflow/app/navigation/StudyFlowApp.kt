@@ -35,6 +35,7 @@ import dev.studyflow.feature.settings.NotificationSettingsRoute
 import dev.studyflow.feature.tasks.TaskDetailRoute
 import dev.studyflow.feature.tasks.TasksListRoute
 import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
+import dev.studyflow.feature.timer.TimerRoute as TimerScreenRoute
 
 @Composable
 internal fun StudyFlowApp(
@@ -90,10 +91,8 @@ private fun AppNavDisplay(
                     entry<HomeRoute> {
                         DestinationScreen("Home")
                     }
-                    entry<TimerRoute> { route ->
-                        DestinationScreen(
-                            if (route.openRunningTimer) "Running timer" else "Timer",
-                        )
+                    entry<TimerRoute> {
+                        TimerScreenRoute()
                     }
                     entry<MaterialsRoute> { route ->
                         MaterialsEntry(route = route, backStack = backStack)

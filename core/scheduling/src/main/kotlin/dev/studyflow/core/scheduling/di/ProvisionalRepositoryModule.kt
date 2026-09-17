@@ -7,7 +7,9 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.common.time.DefaultAnchoredClock
 import dev.studyflow.core.common.time.SystemTimeZoneProvider
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.common.time.TimeZoneProvider
@@ -23,17 +25,19 @@ import dev.studyflow.core.database.session.OfflineFirstSessionRepository
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
+import dev.studyflow.core.scheduling.AndroidBootIdProvider
+import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import javax.inject.Singleton
 
 /**
  * Binds the Room database and its repositories, since no feature module has claimed that
  * responsibility yet.
  *
- * This is, for now, the only place [TaskRepository], [SubjectRepository] and [SessionRepository]
- * are bound — split out from [SchedulingModule] (which owns this feature's own services) purely so
- * that module does not also carry bindings that belong to the app's data layer. When a feature
- * module takes ownership of these repositories, this whole file should move there rather than
- * being duplicated — Hilt only tolerates one binding per type in the graph.
+ * This is, for now, the only place [TaskRepository], [SubjectRepository], [SessionRepository] and
+ * [AnchoredClock] are bound — split out from [SchedulingModule] (which owns this feature's own
+ * services) purely so that module does not also carry bindings that belong to the app's data
+ * layer. When a feature module takes ownership of these repositories, this whole file should move
+ * there rather than being duplicated — Hilt only tolerates one binding per type in the graph.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -72,6 +76,13 @@ public object ProvisionalRepositoryModule {
     @Provides
     @Singleton
     public fun subjectRepository(dao: SubjectDao): SubjectRepository = OfflineFirstSubjectRepository(dao)
+
+    @Provides
+    @Singleton
+    public fun anchoredClock(
+        clock: Clock,
+        bootIdProvider: AndroidBootIdProvider,
+    ): AnchoredClock = DefaultAnchoredClock(clock, AndroidElapsedRealtimeSource, bootIdProvider)
 
     @Provides
     @Singleton
