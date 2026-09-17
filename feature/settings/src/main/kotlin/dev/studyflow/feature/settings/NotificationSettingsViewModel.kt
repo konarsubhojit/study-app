@@ -174,7 +174,12 @@ public class NotificationSettingsViewModel
                                 action.channel
                                     ?.let(source::channelSettingsIntent)
                                     ?: source.appSettingsIntent(),
-                            fallbackIntent = action.channel?.let { source.appSettingsIntent() },
+                            fallbackIntent =
+                                if (action.channel != null) {
+                                    source.appSettingsIntent()
+                                } else {
+                                    null
+                                },
                         ),
                     )
                 }
