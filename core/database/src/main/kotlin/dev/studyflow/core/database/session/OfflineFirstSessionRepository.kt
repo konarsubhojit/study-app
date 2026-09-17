@@ -5,6 +5,7 @@ import dev.studyflow.core.database.entity.SessionWithEvents
 import dev.studyflow.core.database.entity.asDescriptor
 import dev.studyflow.core.database.entity.asEntity
 import dev.studyflow.core.database.entity.asExternalModel
+import dev.studyflow.core.domain.result.DomainError
 import dev.studyflow.core.domain.result.toDomainError
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionDescriptor
@@ -16,6 +17,7 @@ import dev.studyflow.core.domain.timer.TimerEngine
 import dev.studyflow.core.domain.timer.TimerReconciliation
 import dev.studyflow.core.domain.timer.TimerState
 import dev.studyflow.core.model.SessionEvent
+import dev.studyflow.core.model.SessionEventType
 import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.TimeAnchor
 import kotlinx.coroutines.CancellationException
@@ -78,7 +80,7 @@ public class OfflineFirstSessionRepository(
         commandLock.withLock {
             runCatchingStorage {
                 val active = activeSession()
-                appliedDuplicate(eventId, active)?.let { return@runCatchingStorage it }
+                appliedDuplicate(eventId, active, command.expectedEventType())?.let { return@runCatchingStorage it }
                 val state = active?.foldEvents() ?: TimerState.Idle
 
                 when (val outcome = TimerEngine.execute(state, command, eventId, anchor)) {
@@ -105,7 +107,7 @@ public class OfflineFirstSessionRepository(
             runCatchingStorage {
                 val active =
                     activeSession() ?: return@runCatchingStorage SessionCommandResult.Unchanged(TimerState.Idle)
-                appliedDuplicate(eventId, active)?.let { return@runCatchingStorage it }
+                appliedDuplicate(eventId, active, SessionEventType.PAUSED)?.let { return@runCatchingStorage it }
                 when (
                     val outcome =
                         TimerEngine.reconcile(
@@ -151,8 +153,12 @@ public class OfflineFirstSessionRepository(
     private suspend fun appliedDuplicate(
         eventId: String,
         stored: SessionWithEvents?,
+        expectedType: SessionEventType,
     ): SessionCommandResult.Applied? {
-        if (stored == null || stored.events.none { it.id == eventId }) return null
+        val storedEvent = stored?.events?.firstOrNull { it.id == eventId } ?: return null
+        require(storedEvent.type == expectedType) {
+            "event $eventId was already used for ${storedEvent.type}, not $expectedType"
+        }
         val events = stored.events.map { it.asExternalModel() }
         val session =
             requireNotNull(SessionReducer.reduce(stored.session.asDescriptor(), events)) {
@@ -164,6 +170,14 @@ public class OfflineFirstSessionRepository(
         }
         return SessionCommandResult.Applied(session, TimerEngine.fold(events))
     }
+
+    private fun TimerCommand.expectedEventType(): SessionEventType =
+        when (this) {
+            is TimerCommand.Start -> SessionEventType.STARTED
+            TimerCommand.Pause -> SessionEventType.PAUSED
+            TimerCommand.Resume -> SessionEventType.RESUMED
+            TimerCommand.Stop -> SessionEventType.STOPPED
+        }
 
     /**
      * The running or paused session on this device, or `null`.

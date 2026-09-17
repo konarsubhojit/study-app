@@ -373,6 +373,12 @@ public object TimerEngine {
             lastSequence = event.sequence,
         )
 
+    /**
+     * Creates the auto-pause anchor for maximum-duration recovery.
+     *
+     * The app did not observe this exact instant; it is synthesized at the cap by advancing both
+     * clocks equally from the last observed anchor, preserving the same-boot monotonic invariant.
+     */
     private operator fun TimeAnchor.plus(duration: Duration): TimeAnchor =
         TimeAnchor(
             uptime = uptime + duration,

@@ -4,6 +4,7 @@ import androidx.room.Room
 import dev.studyflow.core.database.DATABASE_ROBOLECTRIC_SDK
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.entity.asEntity
+import dev.studyflow.core.domain.result.DomainError
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.domain.timer.TimerRejection
@@ -209,6 +210,18 @@ class OfflineFirstSessionRepositoryTest {
                     .first()
                     .map { it.type },
             )
+        }
+
+    @Test
+    fun `reusing an event id for a different command is rejected as invalid`() =
+        runBlocking {
+            repository.start()
+            device.advance(12.minutes)
+            repository.execute(TimerCommand.Pause, "event-pause", device.anchor()).applied()
+
+            val result = repository.execute(TimerCommand.Stop, "event-pause", device.anchor())
+
+            assertEquals(SessionCommandResult.Failed(DomainError.Validation), result)
         }
 
     @Test
