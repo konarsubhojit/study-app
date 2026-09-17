@@ -11,8 +11,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.domain.result.UserMessage
 
@@ -29,7 +27,7 @@ public fun EmptyState(
     modifier: Modifier = Modifier,
 ) {
     StateContainer(modifier) {
-        HeadingText(text = message)
+        StateMessage(text = message)
     }
 }
 
@@ -40,7 +38,7 @@ public fun ErrorState(
     modifier: Modifier = Modifier,
 ) {
     StateContainer(modifier) {
-        HeadingText(text = message.copy())
+        StateMessage(text = message.copy())
         Button(onClick = onRetry) {
             Text(text = "Try again")
         }
@@ -64,11 +62,10 @@ private fun StateContainer(
 }
 
 @Composable
-private fun HeadingText(text: String) {
+private fun StateMessage(text: String) {
     Text(
         text = text,
         style = MaterialTheme.typography.bodyLarge,
-        modifier = Modifier.semantics { heading() },
     )
 }
 
