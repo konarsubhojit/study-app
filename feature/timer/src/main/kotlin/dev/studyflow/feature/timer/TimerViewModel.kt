@@ -174,7 +174,10 @@ public class TimerViewModel
                     subjectId = subjectId,
                     note = note,
                     selectedTask = tasks.firstOrNull { it.id == taskId },
-                    suggestedTask = tasks.firstOrNull { !it.isCompleted && it.dueAtUtc != null },
+                    suggestedTask =
+                        tasks
+                            .filter { !it.isCompleted && it.dueAtUtc != null }
+                            .minByOrNull { requireNotNull(it.dueAtUtc) },
                 )
             }
 

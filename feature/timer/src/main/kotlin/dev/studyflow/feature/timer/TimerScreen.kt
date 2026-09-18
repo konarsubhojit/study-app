@@ -50,7 +50,7 @@ public fun TimerRoute(
     viewModel: TimerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var studyNowHandled by rememberSaveable(taskId) { mutableStateOf(false) }
+    var studyNowHandled by rememberSaveable(taskId, subjectId) { mutableStateOf(false) }
     LaunchedEffect(taskId, subjectId) {
         if (taskId != null && !studyNowHandled) {
             studyNowHandled = true
