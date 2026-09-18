@@ -4,6 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.domain.session.SessionHistoryRepository
+import dev.studyflow.core.domain.session.TaskStudyTime
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
@@ -24,6 +26,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.UUID
 import javax.inject.Inject
+import kotlin.time.Duration
 
 /**
  * Everything the detail screen renders for one task, plus the checklist draft the user is typing.
@@ -36,6 +39,8 @@ public data class TaskDetailUiState(
     val loading: Boolean = true,
     val task: StudyTask? = null,
     val newSubtaskTitle: String = "",
+    val taskStudyTime: Duration = Duration.ZERO,
+    val subjectStudyTime: Duration = Duration.ZERO,
 ) : UiState {
     public val notFound: Boolean
         get() = !loading && task == null
@@ -114,6 +119,7 @@ public class TaskDetailViewModel
     constructor(
         savedStateHandle: SavedStateHandle,
         private val repository: TaskRepository,
+        sessionHistoryRepository: SessionHistoryRepository,
         private val clock: Clock,
     ) : MviViewModel<TaskDetailUiEvent, TaskDetailUiEffect>(savedStateHandle) {
         private val taskId = MutableStateFlow(savedStateHandle.get<String>(TASK_ID_KEY))
@@ -125,15 +131,28 @@ public class TaskDetailViewModel
                     id?.let { repository.observeTask(it).map(TaskLoadResult::Loaded) } ?: flowOf(TaskLoadResult.Idle)
                 }.stateInViewModel(TaskLoadResult.Idle)
 
+        private val studyTime =
+            loadResult.flatMapLatest { result ->
+                val task = (result as? TaskLoadResult.Loaded)?.task
+                task?.let { sessionHistoryRepository.observeTaskStudyTime(it.id, it.subjectId) }
+                    ?: flowOf(TaskStudyTime())
+            }
+
         public val state: StateFlow<TaskDetailUiState> =
-            combine(loadResult, newSubtaskTitle) { result, subtaskTitle ->
+            combine(loadResult, newSubtaskTitle, studyTime) { result, subtaskTitle, studyTime ->
                 when (result) {
                     TaskLoadResult.Idle -> {
                         TaskDetailUiState(loading = true, newSubtaskTitle = subtaskTitle)
                     }
 
                     is TaskLoadResult.Loaded -> {
-                        TaskDetailUiState(loading = false, task = result.task, newSubtaskTitle = subtaskTitle)
+                        TaskDetailUiState(
+                            loading = false,
+                            task = result.task,
+                            newSubtaskTitle = subtaskTitle,
+                            taskStudyTime = studyTime.task,
+                            subjectStudyTime = studyTime.subject,
+                        )
                     }
                 }
             }.stateInViewModel(TaskDetailUiState())

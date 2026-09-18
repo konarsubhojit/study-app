@@ -270,6 +270,22 @@ class SessionHistoryEditorTest {
         }
 
         @Test
+        fun `merging sessions with different tasks is refused`() {
+            val first = stoppedSession(id = "session-1", taskId = "task-1")
+            val second = stoppedSession(id = "session-2", taskId = "task-2", startedAt = first.endedAt!!)
+
+            val result =
+                SessionHistoryEditor.execute(
+                    HistoryEditCommand.Merge(listOf(first.id, second.id)),
+                    sessions = mapOf(first.id to first, second.id to second),
+                    correctionId = "correction-1",
+                    at = AT,
+                )
+
+            assertEquals(HistoryRejection.MERGE_TASK_MISMATCH, result.assertRejected())
+        }
+
+        @Test
         fun `merging fewer than two sessions is refused`() {
             val session = stoppedSession()
 
@@ -478,12 +494,14 @@ class SessionHistoryEditorTest {
 
         fun stoppedSession(
             id: String = "session-1",
+            taskId: String? = null,
             subjectId: String? = "subject-1",
             startedAt: kotlin.time.Instant = TEST_WALL_CLOCK,
             duration: kotlin.time.Duration = 30.minutes,
         ): StudySession =
             testStudySession(
                 id = id,
+                taskId = taskId,
                 subjectId = subjectId,
                 startedAt = startedAt,
                 endedAt = startedAt + duration,

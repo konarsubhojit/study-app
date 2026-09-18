@@ -22,6 +22,7 @@ import kotlin.time.Duration
 public data class SessionDescriptor(
     val id: String,
     val deviceId: String,
+    val taskId: String? = null,
     val subjectId: String? = null,
     val note: String? = null,
     val deleted: Boolean = false,
@@ -69,6 +70,7 @@ public object SessionReducer {
         val state = TimerEngine.fold(ordered)
         return StudySession(
             id = descriptor.id,
+            taskId = descriptor.taskId,
             subjectId = descriptor.subjectId,
             note = descriptor.note,
             startedAt = ordered.first().anchor.wallClock,

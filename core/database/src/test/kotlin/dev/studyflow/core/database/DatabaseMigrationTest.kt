@@ -221,6 +221,27 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 9 to 10 preserves sessions and leaves task attribution optional`() {
+        helper.createDatabase(DATABASE_NAME, 9).use { database ->
+            database.insertVersionNineSession()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database.query("SELECT id, task_id FROM study_sessions WHERE id = 'legacy-session'").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals("legacy-session", cursor.getString(0))
+                    assertTrue("legacy sessions stay unlinked", cursor.isNull(1))
+                }
+            }
+    }
+
+    @Test
     fun `migration 2 to 3 derives the session projection from the event log`() {
         helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
@@ -421,6 +442,20 @@ class DatabaseMigrationTest {
                 id, subject_id, note, status, started_at, ended_at, device_id, updated_at, deleted
             ) VALUES (
                 'legacy-session', NULL, 'Algebra', 'STOPPED', 1000, 3000, 'device-legacy', 3000, 0
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionNineSession() {
+        execSQL(
+            """
+            INSERT INTO study_sessions (
+                id, subject_id, note, status, started_at, ended_at, device_id, updated_at, deleted,
+                manual_override, override_counted_millis, override_unverified_millis
+            ) VALUES (
+                'legacy-session', NULL, 'Algebra', 'STOPPED', 1000, 3000, 'device-legacy', 3000, 0,
+                0, NULL, NULL
             )
             """.trimIndent(),
         )

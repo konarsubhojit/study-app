@@ -113,6 +113,7 @@ public fun testReminder(
 
 public fun testStudySession(
     id: String = "session-1",
+    taskId: String? = null,
     subjectId: String? = "subject-1",
     note: String? = null,
     startedAt: Instant = TEST_WALL_CLOCK,
@@ -125,6 +126,7 @@ public fun testStudySession(
 ): StudySession =
     StudySession(
         id = id,
+        taskId = taskId,
         subjectId = subjectId,
         note = note,
         startedAt = startedAt,
