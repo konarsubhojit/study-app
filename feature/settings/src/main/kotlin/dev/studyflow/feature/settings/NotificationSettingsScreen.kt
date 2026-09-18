@@ -150,6 +150,10 @@ public fun NotificationSettingsScreen(
             }
         }
 
+        item {
+            BatteryDiagnosticsCard(state.batteryDiagnostics, onEvent)
+        }
+
         items(state.channels, key = { it.channel.id }) { status ->
             ChannelCard(
                 status = status,
@@ -162,6 +166,34 @@ public fun NotificationSettingsScreen(
         item {
             TextButton(onClick = { onEvent(NotificationSettingsUiEvent.OpenAppSettings) }) {
                 Text(text = "Open system notification settings")
+            }
+        }
+    }
+}
+
+@Composable
+private fun BatteryDiagnosticsCard(
+    diagnostics: BatteryDiagnosticsSnapshot,
+    onEvent: (NotificationSettingsUiEvent) -> Unit,
+) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text(text = "Battery diagnostics", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = diagnostics.impactText(),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            if (diagnostics.needsAttention) {
+                Text(
+                    text = diagnostics.oemGuidance(),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TextButton(onClick = { onEvent(NotificationSettingsUiEvent.OpenBatterySettings) }) {
+                    Text(text = "Open battery settings")
+                }
             }
         }
     }

@@ -280,6 +280,27 @@ class ReminderSchedulerTest {
                 ReminderScheduler.plan(task, SchedulingCapabilities(), Instant.parse("2026-03-02T08:30:00Z")).isEmpty(),
             )
         }
+
+        @Test
+        fun `a due-relative reminder that already fired is not fired again for the same occurrence`() {
+            val triggerAt = Instant.parse("2026-03-02T07:45:00Z")
+            val task =
+                task(leadTime = 15.minutes).copy(
+                    reminders =
+                        listOf(
+                            Reminder(
+                                id = "reminder-task-1",
+                                taskId = "task-1",
+                                trigger = ReminderTrigger.BeforeDue(15.minutes),
+                                lastFiredAt = triggerAt,
+                            ),
+                        ),
+                )
+
+            assertTrue(
+                ReminderScheduler.plan(task, SchedulingCapabilities(), Instant.parse("2026-03-02T07:50:00Z")).isEmpty(),
+            )
+        }
     }
 
     @Nested

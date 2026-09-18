@@ -5,6 +5,8 @@ import android.content.Intent
 import android.net.Uri
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
@@ -78,6 +80,7 @@ public class ReminderDeliveryCoordinator(
             SchedulingCapabilities()
         },
     private val notificationManager: NotificationManagerCompat = NotificationManagerCompat.from(context),
+    private val clock: Clock = SystemWallClock,
 ) {
     public suspend fun deliver(
         reminderId: String,
@@ -113,6 +116,7 @@ public class ReminderDeliveryCoordinator(
                 notification(task, reminder, subject),
             )
         if (result.posted) {
+            taskRepository.updateReminder(reminder.copy(lastFiredAt = clock.now(), snooze = null))
             refreshGroupSummary()
             if (reminder.mode == ReminderMode.ALARM) {
                 AlarmPlaybackService.start(context, reminderId, taskId, notificationId)

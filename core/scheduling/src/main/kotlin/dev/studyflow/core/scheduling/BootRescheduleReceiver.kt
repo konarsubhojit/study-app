@@ -16,7 +16,8 @@ import kotlinx.coroutines.launch
  * docs/adr/0004's "re-arm aggressively").
  *
  * `ACTION_MY_PACKAGE_REPLACED` covers an app update the same way `ACTION_BOOT_COMPLETED` covers a
- * reboot; both silently discard every alarm StudyFlow had scheduled. Without this receiver, an
+ * reboot; clock and timezone changes are handled here too because the next wall-clock occurrence
+ * may have moved. Without this receiver, an
  * `ALARM_CLOCK`-precision reminder set for tomorrow would never fire if the device rebooted
  * tonight and the app was never opened again before then — exactly the "locked, screen off, app
  * never opened since reboot" scenario the acceptance criteria call out.
@@ -26,7 +27,7 @@ public class BootRescheduleReceiver : BroadcastReceiver() {
         context: Context,
         intent: Intent,
     ) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) {
+        if (intent.action !in ACTIONS) {
             return
         }
 
@@ -35,11 +36,20 @@ public class BootRescheduleReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + entryPoint.dispatcherProvider().default).launch {
             try {
-                val tasks = entryPoint.taskRepository().observeTasks().first()
-                entryPoint.reminderSchedulingService().rescheduleAll(tasks)
+                entryPoint.reminderIntegrityCoordinator().reconcile(entryPoint.taskRepository().observeTasks().first())
             } finally {
                 pendingResult.finish()
             }
         }
+    }
+
+    private companion object {
+        val ACTIONS =
+            setOf(
+                Intent.ACTION_BOOT_COMPLETED,
+                Intent.ACTION_MY_PACKAGE_REPLACED,
+                Intent.ACTION_TIME_CHANGED,
+                Intent.ACTION_TIMEZONE_CHANGED,
+            )
     }
 }

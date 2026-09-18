@@ -7,6 +7,7 @@ import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.scheduling.ReminderActionExecutor
 import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
+import dev.studyflow.core.scheduling.ReminderIntegrityCoordinator
 import dev.studyflow.core.scheduling.ReminderSchedulingService
 
 /**
@@ -28,6 +29,9 @@ public interface SchedulingEntryPoint {
 
     /** Used by [BootRescheduleReceiver][dev.studyflow.core.scheduling.BootRescheduleReceiver]. */
     public fun reminderSchedulingService(): ReminderSchedulingService
+
+    /** Used by [BootRescheduleReceiver][dev.studyflow.core.scheduling.BootRescheduleReceiver]. */
+    public fun reminderIntegrityCoordinator(): ReminderIntegrityCoordinator
 
     /** Used by [BootRescheduleReceiver][dev.studyflow.core.scheduling.BootRescheduleReceiver]. */
     public fun taskRepository(): TaskRepository
