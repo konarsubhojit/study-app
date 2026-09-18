@@ -85,10 +85,15 @@ public data class ThumbnailSource(
  * time a cell is recycled.
  *
  * Colours are ARGB integers so the value stays Android-free; the UI layer wraps them in `Color`.
+ *
+ * @property labelColor what to draw *on* the gradient. Derived from the gradient's own luminance
+ *   rather than from the theme, because the gradient does not change with the theme: a fixed
+ *   on-surface colour would be legible in one theme and invisible in the other.
  */
 public data class ThumbnailPlaceholder(
     val topColor: Int,
     val bottomColor: Int,
+    val labelColor: Int,
 ) {
     public companion object {
         /** Muted, low-chroma surfaces: a placeholder must never compete with the real thumbnail. */
@@ -113,11 +118,36 @@ public data class ThumbnailPlaceholder(
         private const val GREEN_SHIFT = 8
         private val ALPHA_MASK = 0xFF000000.toInt()
 
-        /** The placeholder for [contentHash]; the same digest always yields the same pair. */
+        // ITU-R BT.601 weights, scaled to integers so no floating point is needed.
+        private const val RED_WEIGHT = 299
+        private const val GREEN_WEIGHT = 587
+        private const val BLUE_WEIGHT = 114
+        private const val WEIGHT_TOTAL = 1_000
+        private const val MID_LUMINANCE = 140
+
+        /** Near-black and near-white: contrast against a mid-tone gradient, without the harshness. */
+        private val INK = 0xFF1A1A1A.toInt()
+        private val PAPER = 0xFFFAFAFA.toInt()
+
+        /** The placeholder for [contentHash]; the same digest always yields the same colours. */
         public fun of(contentHash: ContentHash): ThumbnailPlaceholder {
             val index = contentHash.hex.take(PALETTE_INDEX_HEX_LENGTH).toInt(HEX_RADIX) % PALETTE.size
             val top = PALETTE[index]
-            return ThumbnailPlaceholder(topColor = top, bottomColor = top.shaded())
+            val bottom = top.shaded()
+            return ThumbnailPlaceholder(
+                topColor = top,
+                bottomColor = bottom,
+                labelColor = if (bottom.isLight()) INK else PAPER,
+            )
+        }
+
+        /** Perceived brightness, which is what decides whether ink or paper reads better on it. */
+        private fun Int.isLight(): Boolean {
+            val red = (this ushr RED_SHIFT) and CHANNEL_MASK
+            val green = (this ushr GREEN_SHIFT) and CHANNEL_MASK
+            val blue = this and CHANNEL_MASK
+            val luminance = (RED_WEIGHT * red + GREEN_WEIGHT * green + BLUE_WEIGHT * blue) / WEIGHT_TOTAL
+            return luminance > MID_LUMINANCE
         }
 
         private fun Int.shaded(): Int {

@@ -73,6 +73,18 @@ class ThumbnailsTest {
     }
 
     @Test
+    fun `the placeholder label contrasts with the gradient it is drawn on`() {
+        val placeholder = ThumbnailPlaceholder.of(ContentHash("7f" + "0".repeat(62)))
+        val backgroundLuminance = perceivedLuminance(placeholder.bottomColor)
+        val labelLuminance = perceivedLuminance(placeholder.labelColor)
+
+        assertTrue(
+            kotlin.math.abs(labelLuminance - backgroundLuminance) > 80,
+            "a badge the user cannot read is no better than an empty cell",
+        )
+    }
+
+    @Test
     fun `a cache within quota evicts nothing`() {
         val entries = listOf(entry("a", sizeBytes = 10), entry("b", sizeBytes = 10))
 
@@ -119,4 +131,11 @@ class ThumbnailsTest {
             sizeBytes = sizeBytes,
             lastAccessedAt = Instant.parse(lastAccessedAt),
         )
+
+    private fun perceivedLuminance(color: Int): Int {
+        val red = (color ushr 16) and 0xFF
+        val green = (color ushr 8) and 0xFF
+        val blue = color and 0xFF
+        return (299 * red + 587 * green + 114 * blue) / 1_000
+    }
 }

@@ -326,7 +326,7 @@ private fun MaterialThumbnail(
             Text(
                 text = material.kind.name.take(KIND_BADGE_LENGTH),
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.surface,
+                color = Color(placeholder.labelColor),
             )
         }
     }

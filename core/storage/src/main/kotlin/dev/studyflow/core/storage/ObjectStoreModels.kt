@@ -2,6 +2,7 @@ package dev.studyflow.core.storage
 
 import dev.studyflow.core.domain.materials.UploadPart
 import dev.studyflow.core.domain.materials.UploadPlan
+import dev.studyflow.core.domain.materials.thumbnails.ThumbnailSpec
 import dev.studyflow.core.model.ContentHash
 import kotlin.time.Instant
 
@@ -46,14 +47,14 @@ public value class ObjectKey(
          * Derived from the *original's* digest and the requested edge length, so a thumbnail the
          * backend renders for a format no device could decode (issue #7) is found by every client
          * that holds the same file, and is rendered once however many users uploaded it.
+         *
+         * The edge arrives as a [ThumbnailSpec] rather than a bare number so that the sizes this
+         * key can name are exactly the sizes the on-device pipeline can render.
          */
         public fun ofThumbnail(
             contentHash: ContentHash,
-            maxEdgePx: Int,
-        ): ObjectKey {
-            require(maxEdgePx > 0) { "a thumbnail edge must be positive, was $maxEdgePx" }
-            return ObjectKey("thumbnails/${contentHash.hex}/$maxEdgePx")
-        }
+            spec: ThumbnailSpec,
+        ): ObjectKey = ObjectKey("thumbnails/${contentHash.hex}/${spec.maxEdgePx}")
     }
 }
 

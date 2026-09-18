@@ -54,7 +54,14 @@ public class FileThumbnailCache(
     ) {
         withContext(dispatcherProvider.io) {
             val file = fileFor(key)
-            val staging = File(file.parentFile, "${file.name}.tmp")
+            // A temp file per write, not per key: two cells rendering the same material at once
+            // would otherwise stage into one file and rename half of each other's bytes into place.
+            val staging =
+                try {
+                    File.createTempFile(file.name, TEMP_SUFFIX, file.parentFile)
+                } catch (_: IOException) {
+                    return@withContext
+                }
             try {
                 staging.writeBytes(bytes)
                 if (staging.renameTo(file)) {
@@ -110,6 +117,7 @@ public class FileThumbnailCache(
     private fun String.toFileName(): String = ENCODER.encodeToString(toByteArray())
 
     private companion object {
+        const val TEMP_SUFFIX = ".tmp"
         val ENCODER: Base64.Encoder = Base64.getUrlEncoder().withoutPadding()
     }
 }
