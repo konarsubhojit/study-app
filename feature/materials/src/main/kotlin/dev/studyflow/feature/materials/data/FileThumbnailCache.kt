@@ -54,8 +54,8 @@ public class FileThumbnailCache(
     ) {
         withContext(dispatcherProvider.io) {
             val file = fileFor(key)
+            val staging = File(file.parentFile, "${file.name}.tmp")
             try {
-                val staging = File(file.parentFile, "${file.name}.tmp")
                 staging.writeBytes(bytes)
                 if (staging.renameTo(file)) {
                     file.setLastModified(clock.now().toEpochMilliseconds())
@@ -64,7 +64,9 @@ public class FileThumbnailCache(
                 }
             } catch (_: IOException) {
                 // A cache is an optimisation; a full or unwritable disk costs a re-render, not a
-                // failed import or a crashed grid.
+                // failed import or a crashed grid. The partial file goes with it, so a disk that
+                // ran out of room is not left holding bytes no key will ever reclaim.
+                staging.delete()
                 return@withContext
             }
             trimToQuota()

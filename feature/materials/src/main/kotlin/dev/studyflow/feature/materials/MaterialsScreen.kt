@@ -312,7 +312,8 @@ private fun MaterialThumbnail(
                 ),
         contentAlignment = Alignment.Center,
     ) {
-        thumbnail?.let { image ->
+        val image = thumbnail
+        if (image != null) {
             Image(
                 bitmap = image,
                 // The file name is already shown below the image; repeating it here would make a
@@ -321,11 +322,13 @@ private fun MaterialThumbnail(
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,
             )
-        } ?: Text(
-            text = material.kind.name.take(KIND_BADGE_LENGTH),
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.surface,
-        )
+        } else {
+            Text(
+                text = material.kind.name.take(KIND_BADGE_LENGTH),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.surface,
+            )
+        }
     }
 }
 

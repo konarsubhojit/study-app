@@ -39,7 +39,7 @@ internal class RecordingObjectStore : ObjectStore {
 
     override suspend fun initUpload(request: UploadRequest): UploadSession {
         val plan = UploadPlanner.plan(request.sizeBytes, request.contentHash)
-        val expiresAt = Instant.parse(EXPIRES_AT)
+        val expiresAt = Instant.parse(FIXED_INSTANT)
         return UploadSession.of(request.key, "upload-${request.key}", plan, expiresAt) { part ->
             PresignedUrl("${PresignedUrl.LOCAL_SCHEME}${request.key}/parts/${part.number}", expiresAt)
         }
@@ -76,14 +76,14 @@ internal class RecordingObjectStore : ObjectStore {
                 sizeBytes = session.sizeBytes,
                 contentType = "application/octet-stream",
                 contentHash = ContentHash(HASH),
-                updatedAt = Instant.parse(EXPIRES_AT),
+                updatedAt = Instant.parse(FIXED_INSTANT),
             )
         }
 
     override suspend fun getDownloadUrl(
         key: ObjectKey,
         ttl: Duration,
-    ): PresignedUrl = PresignedUrl("${PresignedUrl.LOCAL_SCHEME}$key", Instant.parse(EXPIRES_AT) + 15.minutes)
+    ): PresignedUrl = PresignedUrl("${PresignedUrl.LOCAL_SCHEME}$key", Instant.parse(FIXED_INSTANT) + 15.minutes)
 
     override suspend fun delete(key: ObjectKey) {
         mutex.withLock { partsByKey.remove(key) }
@@ -117,13 +117,13 @@ internal class RecordingObjectStore : ObjectStore {
                     sizeBytes = sizeBytes,
                     contentType = "application/octet-stream",
                     contentHash = contentHash,
-                    updatedAt = Instant.parse(EXPIRES_AT),
+                    updatedAt = Instant.parse(FIXED_INSTANT),
                 )
         }
     }
 
     private companion object {
-        const val EXPIRES_AT = "2026-01-01T00:00:00Z"
+        const val FIXED_INSTANT = "2026-01-01T00:00:00Z"
         val HASH = "a".repeat(64)
     }
 }
