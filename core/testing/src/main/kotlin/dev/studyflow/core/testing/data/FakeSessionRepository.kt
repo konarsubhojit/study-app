@@ -1,5 +1,6 @@
 package dev.studyflow.core.testing.data
 
+import dev.studyflow.core.domain.session.RecoveredTimerAnchor
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.timer.TimerCommand
@@ -22,9 +23,16 @@ public class FakeSessionRepository : SessionRepository {
     public val executedCommands: MutableList<TimerCommand> = mutableListOf()
     private val sessions = MutableStateFlow<List<StudySession>>(emptyList())
 
-    override fun observeActiveSession(): Flow<StudySession?> = sessions.map { list -> list.firstOrNull(StudySession::isActive) }
+    override fun observeActiveSession(): Flow<StudySession?> =
+        sessions.map { list -> list.firstOrNull(StudySession::isActive) }
 
-    override fun observeSession(sessionId: String): Flow<StudySession?> = sessions.map { list -> list.firstOrNull { it.id == sessionId } }
+    override fun observeSession(sessionId: String): Flow<StudySession?> =
+        sessions.map { list ->
+            list.firstOrNull {
+                it.id ==
+                    sessionId
+            }
+        }
 
     override fun observeSessions(): Flow<List<StudySession>> = sessions
 
@@ -71,5 +79,6 @@ public class FakeSessionRepository : SessionRepository {
     override suspend fun reconcile(
         eventId: String,
         now: TimeAnchor,
+        recoveredAnchor: RecoveredTimerAnchor?,
     ): SessionCommandResult = SessionCommandResult.Unchanged(TimerState.Idle)
 }

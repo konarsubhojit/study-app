@@ -5,6 +5,7 @@ import dev.studyflow.core.database.DATABASE_ROBOLECTRIC_SDK
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.entity.asEntity
 import dev.studyflow.core.domain.result.DomainError
+import dev.studyflow.core.domain.session.RecoveredTimerAnchor
 import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.timer.TimerCommand
@@ -262,6 +263,29 @@ class OfflineFirstSessionRepositoryTest {
             assertEquals(SessionStatus.PAUSED, reconciled.session.status)
             assertEquals(Duration.ZERO, reconciled.session.elapsed.counted)
             assertEquals(60.minutes, reconciled.session.elapsed.unverified)
+        }
+
+    @Test
+    fun `a corrected device-protected anchor keeps clock changes out of reboot recovery`() =
+        runBlocking {
+            repository.start()
+            val openedAt = device.anchor()
+            device.advance(30.minutes)
+            device.adjustWallClock(2.hours)
+            val correctedAnchor = openedAt.copy(wallClock = device.now() - 30.minutes)
+            device.reboot(downtime = 10.minutes)
+
+            val reconciled =
+                repository
+                    .reconcile(
+                        eventId = "event-reboot",
+                        now = device.anchor(),
+                        recoveredAnchor = RecoveredTimerAnchor(SESSION_ID, correctedAnchor),
+                    ).applied()
+
+            assertEquals(SessionStatus.PAUSED, reconciled.session.status)
+            assertEquals(Duration.ZERO, reconciled.session.elapsed.counted)
+            assertEquals(40.minutes, reconciled.session.elapsed.unverified)
         }
 
     @Test

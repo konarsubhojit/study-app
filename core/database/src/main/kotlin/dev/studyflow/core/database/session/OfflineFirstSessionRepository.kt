@@ -7,6 +7,7 @@ import dev.studyflow.core.database.entity.asEntity
 import dev.studyflow.core.database.entity.asExternalModel
 import dev.studyflow.core.domain.result.DomainError
 import dev.studyflow.core.domain.result.toDomainError
+import dev.studyflow.core.domain.session.RecoveredTimerAnchor
 import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionDescriptor
@@ -110,6 +111,7 @@ public class OfflineFirstSessionRepository(
     override suspend fun reconcile(
         eventId: String,
         now: TimeAnchor,
+        recoveredAnchor: RecoveredTimerAnchor?,
     ): SessionCommandResult =
         commandLock
             .withLock {
@@ -119,10 +121,11 @@ public class OfflineFirstSessionRepository(
                     appliedDuplicate(eventId, active, SessionEventType.PAUSED)?.let {
                         return@runCatchingStorage it
                     }
+                    val foldedState = active.foldEvents()
                     when (
                         val outcome =
                             TimerEngine.reconcile(
-                                state = active.foldEvents(),
+                                state = foldedState.withRecoveredAnchor(active.session.id, recoveredAnchor),
                                 eventId = eventId,
                                 now = now,
                                 maximumRunningDuration = maximumRunningDuration,
@@ -133,15 +136,21 @@ public class OfflineFirstSessionRepository(
                         }
 
                         is TimerReconciliation.Adjustment -> {
+                            val event = foldedState.correctedEventFor(outcome, recoveredAnchor)
                             commit(
                                 descriptor = active.session.asDescriptor(),
-                                events = active.eventsPlus(outcome.event),
-                                event = outcome.event,
+                                events = active.eventsPlus(event),
+                                event = event,
                             )
                         }
                     }
                 }
             }.alsoNotify()
+
+    public suspend fun reconcile(
+        eventId: String,
+        now: TimeAnchor,
+    ): SessionCommandResult = reconcile(eventId, now, null)
 
     /**
      * Runs process-local side effects after [commandLock] is released.
@@ -228,6 +237,31 @@ public class OfflineFirstSessionRepository(
     }
 
     private fun SessionWithEvents.foldEvents(): TimerState = TimerEngine.fold(events.map { it.asExternalModel() })
+
+    private fun TimerState.withRecoveredAnchor(
+        sessionId: String,
+        recoveredAnchor: RecoveredTimerAnchor?,
+    ): TimerState =
+        if (this is TimerState.Running && recoveredAnchor?.sessionId == sessionId) {
+            copy(openedAt = recoveredAnchor.openedAt)
+        } else {
+            this
+        }
+
+    private fun TimerState.correctedEventFor(
+        outcome: TimerReconciliation.Adjustment,
+        recoveredAnchor: RecoveredTimerAnchor?,
+    ): SessionEvent =
+        if (this is TimerState.Running &&
+            outcome is TimerReconciliation.RebootGap &&
+            recoveredAnchor?.sessionId == sessionId
+        ) {
+            outcome.event.copy(
+                anchor = outcome.event.anchor.copy(wallClock = openedAt.wallClock + outcome.unverifiedGap),
+            )
+        } else {
+            outcome.event
+        }
 
     private fun SessionWithEvents?.eventsPlus(appended: SessionEvent): List<SessionEvent> =
         this?.events?.map { it.asExternalModel() }.orEmpty() + appended

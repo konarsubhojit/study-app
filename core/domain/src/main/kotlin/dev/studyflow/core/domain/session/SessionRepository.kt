@@ -9,6 +9,19 @@ import dev.studyflow.core.model.TimeAnchor
 import kotlinx.coroutines.flow.Flow
 
 /**
+ * The device-protected copy of a running timer's open-interval anchor, used after reboot before
+ * credential-protected storage can necessarily be trusted for clock-change-corrected wall time.
+ */
+public data class RecoveredTimerAnchor(
+    val sessionId: String,
+    val openedAt: TimeAnchor,
+) {
+    init {
+        require(sessionId.isNotBlank()) { "sessionId must not be blank" }
+    }
+}
+
+/**
  * Durable storage for study sessions, as an append-only event log plus its projection.
  *
  * Implementations must commit the event and the projection it implies in a *single* transaction.
@@ -56,6 +69,7 @@ public interface SessionRepository {
     public suspend fun reconcile(
         eventId: String,
         now: TimeAnchor,
+        recoveredAnchor: RecoveredTimerAnchor? = null,
     ): SessionCommandResult
 }
 
