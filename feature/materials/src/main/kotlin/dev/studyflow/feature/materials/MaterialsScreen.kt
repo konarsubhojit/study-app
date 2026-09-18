@@ -283,8 +283,9 @@ private fun MaterialGridCell(
  *
  * `produceState` is what makes generation cancellable on scroll — it launches into the composition's
  * scope and cancels the moment the cell leaves it, so a half-decoded video frame stops being
- * decoded instead of finishing for a cell nobody is looking at. Keying on the material's id, not the
- * material itself, keeps a sync-state change (upload progress ticking) from restarting the render.
+ * decoded instead of finishing for a cell nobody is looking at. The keys are the two things that can
+ * change the answer — which file this is, and whether there is a local copy to render — so upload
+ * progress ticking over does not restart a render that is already running.
  */
 @Composable
 private fun MaterialThumbnail(
@@ -295,7 +296,7 @@ private fun MaterialThumbnail(
     // Read through a remembered snapshot so a caller passing a fresh lambda literal on every
     // recomposition does not restart a render that is already in flight.
     val currentOnLoadThumbnail by rememberUpdatedState(onLoadThumbnail)
-    val thumbnail by produceState<ImageBitmap?>(initialValue = null, material.id) {
+    val thumbnail by produceState<ImageBitmap?>(initialValue = null, material.id, material.localPath) {
         value = currentOnLoadThumbnail(material)
     }
 

@@ -7,6 +7,8 @@ import android.graphics.Color
 import android.graphics.pdf.PdfRenderer
 import android.media.MediaMetadataRetriever
 import android.os.ParcelFileDescriptor
+import androidx.core.graphics.createBitmap
+import androidx.core.graphics.scale
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailRenderer
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailSource
@@ -125,7 +127,7 @@ public class AndroidThumbnailRenderer(
                 if (renderer.pageCount == 0) return@use null
                 renderer.openPage(0).use { page ->
                     val (width, height) = boundedSize(page.width, page.height, spec)
-                    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+                    val bitmap = createBitmap(width, height)
                     // A PDF page is transparent where it is blank; a page rendered without a white
                     // canvas underneath it reads as a black rectangle in the grid.
                     Canvas(bitmap).drawColor(Color.WHITE)
@@ -138,7 +140,7 @@ public class AndroidThumbnailRenderer(
     private fun Bitmap.scaledTo(spec: ThumbnailSpec): Bitmap {
         val (targetWidth, targetHeight) = boundedSize(width, height, spec)
         if (targetWidth == width && targetHeight == height) return this
-        val scaled = Bitmap.createScaledBitmap(this, targetWidth, targetHeight, true)
+        val scaled = scale(targetWidth, targetHeight)
         if (scaled !== this) recycle()
         return scaled
     }
