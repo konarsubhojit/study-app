@@ -227,6 +227,16 @@ public object DatabaseMigrations {
             }
         }
 
+    /** Version 11 persists in-app preview progress for PDFs and lecture media. */
+    public val MIGRATION_10_11: Migration =
+        object : Migration(10, 11) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE materials ADD COLUMN preview_page_index INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE materials ADD COLUMN preview_position_millis INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL("ALTER TABLE materials ADD COLUMN playback_speed REAL NOT NULL DEFAULT 1")
+            }
+        }
+
     public val ALL: Array<Migration>
         get() =
             arrayOf(
@@ -239,6 +249,7 @@ public object DatabaseMigrations {
                 MIGRATION_7_8,
                 MIGRATION_8_9,
                 MIGRATION_9_10,
+                MIGRATION_10_11,
             )
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null

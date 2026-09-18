@@ -14,17 +14,43 @@ import kotlinx.coroutines.flow.map
 public class FakeMaterialRepository : MaterialRepository {
     private val materials = MutableStateFlow<List<Material>>(emptyList())
 
-    override fun observeAll(): Flow<List<Material>> = materials.map { it.sortedByDescending(Material::createdAt) }
+    override fun observeAll(): Flow<List<Material>> =
+        materials.map { list -> list.filterNot(Material::deleted).sortedByDescending(Material::createdAt) }
 
     override fun observeInFolder(folderId: String?): Flow<List<Material>> =
         observeAll().map { list -> list.filter { it.folderId == folderId } }
 
-    override fun observeById(id: String): Flow<Material?> = materials.map { list -> list.firstOrNull { it.id == id } }
+    override fun observeById(id: String): Flow<Material?> =
+        materials.map { list -> list.firstOrNull { it.id == id && !it.deleted } }
 
     override suspend fun findByContentHash(contentHash: ContentHash): Material? =
         materials.value.firstOrNull { it.contentHash == contentHash }
 
     override suspend fun save(material: Material) {
         materials.value = materials.value.filterNot { it.id == material.id } + material
+    }
+
+    override suspend fun updatePreviewState(
+        id: String,
+        pageIndex: Int?,
+        positionMillis: Long?,
+        playbackSpeed: Float?,
+    ) {
+        materials.value =
+            materials.value.map { material ->
+                if (material.id != id) {
+                    material
+                } else {
+                    material.copy(
+                        previewPageIndex = pageIndex ?: material.previewPageIndex,
+                        previewPositionMillis = positionMillis ?: material.previewPositionMillis,
+                        playbackSpeed = playbackSpeed ?: material.playbackSpeed,
+                    )
+                }
+            }
+    }
+
+    override suspend fun delete(id: String) {
+        materials.value = materials.value.map { material -> if (material.id == id) material.copy(deleted = true) else material }
     }
 }

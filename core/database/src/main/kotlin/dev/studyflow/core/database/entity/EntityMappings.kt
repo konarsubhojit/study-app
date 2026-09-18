@@ -60,6 +60,9 @@ public fun Material.asEntity(): MaterialEntity {
         deleted = deleted,
         pageCount = pageCount,
         duration = duration,
+        previewPageIndex = previewPageIndex,
+        previewPositionMillis = previewPositionMillis,
+        playbackSpeed = playbackSpeed,
     )
 }
 
@@ -83,6 +86,9 @@ public fun MaterialEntity.asExternalModel(): Material =
         deleted = deleted,
         pageCount = pageCount,
         duration = duration,
+        previewPageIndex = previewPageIndex,
+        previewPositionMillis = previewPositionMillis,
+        playbackSpeed = playbackSpeed,
     )
 
 public fun Tag.asEntity(): TagEntity = TagEntity(name)

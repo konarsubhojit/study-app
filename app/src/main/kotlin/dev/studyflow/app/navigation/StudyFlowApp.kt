@@ -161,6 +161,7 @@ private fun MaterialsEntry(
         MaterialDetailRoute(
             materialId = route.materialId,
             onBack = { backStack.removeLastOrNull() },
+            onStartStudySession = { subjectId -> backStack.add(TimerRoute(subjectId = subjectId)) },
         )
     }
 }

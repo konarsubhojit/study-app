@@ -93,6 +93,12 @@ public data class MaterialEntity(
     val pageCount: Int?,
     @ColumnInfo(name = "duration_millis")
     val duration: Duration?,
+    @ColumnInfo(name = "preview_page_index")
+    val previewPageIndex: Int = 0,
+    @ColumnInfo(name = "preview_position_millis")
+    val previewPositionMillis: Long = 0,
+    @ColumnInfo(name = "playback_speed")
+    val playbackSpeed: Float = 1f,
 )
 
 public enum class MaterialSyncState {

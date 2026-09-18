@@ -26,4 +26,15 @@ public interface MaterialRepository {
 
     /** Inserts or replaces a catalogue entry. */
     public suspend fun save(material: Material)
+
+    /** Persists lightweight preview progress so reopening a material resumes where the user left. */
+    public suspend fun updatePreviewState(
+        id: String,
+        pageIndex: Int?,
+        positionMillis: Long?,
+        playbackSpeed: Float?,
+    )
+
+    /** Soft-deletes a material while preserving the tombstone for sync. */
+    public suspend fun delete(id: String)
 }
