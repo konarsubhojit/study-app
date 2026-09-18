@@ -60,14 +60,18 @@ public class HomeViewModel
                     focusTime = sessions.focusTimeToday(),
                     streakDays = sessions.streakDays(),
                     activeSession = activeSession,
-                    nextTask = tasks.firstOrNull { !it.deleted && !it.isCompleted && it.dueAt != null },
+                    nextTask =
+                        tasks
+                            .filter { !it.deleted && !it.isCompleted && it.dueAt != null }
+                            .minByOrNull { requireNotNull(it.dueAtUtc) },
                     recentMaterials = materials.filterNot(Material::deleted).take(3),
                 )
             }.stateInViewModel(HomeUiState())
 
         private fun List<StudySession>.focusTimeToday(): Duration {
-            val today = clock.now().toLocalDateTime(timeZoneProvider.current()).date
-            return filter { !it.deleted && it.startedAt.toLocalDateTime(timeZoneProvider.current()).date == today }
+            val zone = timeZoneProvider.current()
+            val today = clock.now().toLocalDateTime(zone).date
+            return filter { !it.deleted && it.startedAt.toLocalDateTime(zone).date == today }
                 .fold(Duration.ZERO) { total, session -> total + session.elapsed.counted }
         }
 
