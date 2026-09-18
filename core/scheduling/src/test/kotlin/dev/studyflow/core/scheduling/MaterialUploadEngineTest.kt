@@ -116,6 +116,36 @@ class MaterialUploadEngineTest {
             assertTrue(objectStore.uploadedPartNumbers.isEmpty(), "an already-synced material must not be re-uploaded")
         }
 
+    @Test
+    fun `a file the store already holds is re-linked without sending a byte`() =
+        runBlocking {
+            materialRepository.save(material())
+            objectStore.seedStoredObject(ObjectKey.ofMaterial(contentHash), totalBytes, contentHash)
+
+            val outcome = engine.upload("m1")
+
+            assertEquals(UploadOutcome.Synced, outcome)
+            assertTrue(
+                objectStore.uploadedPartNumbers.isEmpty(),
+                "content addressing means identical bytes cost no storage and no bandwidth twice",
+            )
+            val updated = materialRepository.observeById("m1").first()
+            assertEquals(SyncState.Synced, updated?.sync)
+            assertEquals("materials/${contentHash.hex}", updated?.remoteKey)
+        }
+
+    @Test
+    fun `an object of the wrong size is uploaded rather than adopted`() =
+        runBlocking {
+            materialRepository.save(material())
+            objectStore.seedStoredObject(ObjectKey.ofMaterial(contentHash), totalBytes - 1, contentHash)
+
+            val outcome = engine.upload("m1")
+
+            assertEquals(UploadOutcome.Synced, outcome)
+            assertEquals(listOf(1, 2, 3), objectStore.uploadedPartNumbers, "a truncated object is not a valid re-link")
+        }
+
     private fun material(): Material =
         Material(
             id = "m1",

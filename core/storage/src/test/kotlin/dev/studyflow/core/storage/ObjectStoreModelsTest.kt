@@ -27,6 +27,14 @@ class ObjectStoreModelsTest {
     }
 
     @Test
+    fun `a thumbnail's key is derived from the original's digest and its size`() {
+        val hash = ContentHash("a".repeat(64))
+
+        assertEquals(ObjectKey("thumbnails/${hash.hex}/256"), ObjectKey.ofThumbnail(hash, maxEdgePx = 256))
+        assertThrows(IllegalArgumentException::class.java, { ObjectKey.ofThumbnail(hash, maxEdgePx = 0) })
+    }
+
+    @Test
     fun `a presigned URL knows when it has expired`() {
         val url = PresignedUrl("https://storage.example/object?signature=x", Instant.parse("2026-03-01T09:15:00Z"))
 

@@ -32,6 +32,8 @@ internal class RecordingObjectStore : ObjectStore {
     /** Every part number [uploadPart] was actually called with, in call order. */
     val uploadedPartNumbers = mutableListOf<Int>()
 
+    private val statResults = mutableMapOf<ObjectKey, StoredObject>()
+
     var failNextUploadPart: ObjectStoreException? = null
     var failCompleteUpload: ObjectStoreException? = null
 
@@ -87,7 +89,7 @@ internal class RecordingObjectStore : ObjectStore {
         mutex.withLock { partsByKey.remove(key) }
     }
 
-    override suspend fun stat(key: ObjectKey): StoredObject? = null
+    override suspend fun stat(key: ObjectKey): StoredObject? = mutex.withLock { statResults[key] }
 
     /**
      * Simulates a part the *server* already acknowledged before this test process existed — the
@@ -100,6 +102,24 @@ internal class RecordingObjectStore : ObjectStore {
         size: Long,
     ) {
         mutex.withLock { partsByKey.getOrPut(key) { mutableMapOf() }[number] = ByteArray(size.toInt()) }
+    }
+
+    /** Simulates an object the store already holds, the way content addressing lets it. */
+    suspend fun seedStoredObject(
+        key: ObjectKey,
+        sizeBytes: Long,
+        contentHash: ContentHash,
+    ) {
+        mutex.withLock {
+            statResults[key] =
+                StoredObject(
+                    key = key,
+                    sizeBytes = sizeBytes,
+                    contentType = "application/octet-stream",
+                    contentHash = contentHash,
+                    updatedAt = Instant.parse(EXPIRES_AT),
+                )
+        }
     }
 
     private companion object {
