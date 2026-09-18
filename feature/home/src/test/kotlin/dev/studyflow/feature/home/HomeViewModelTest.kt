@@ -90,4 +90,33 @@ class HomeViewModelTest {
             assertEquals(35.minutes, viewModel.state.value.focusTime)
             assertEquals(2, viewModel.state.value.streakDays)
         }
+
+    @Test
+    fun `streak remains visible before the first session today`() =
+        runTest(mainDispatcher.dispatcher) {
+            val sessions = FakeSessionRepository()
+            sessions.setSessions(
+                listOf(
+                    testStudySession(
+                        id = "yesterday",
+                        startedAt = Instant.parse("2026-02-28T09:00:00Z"),
+                        endedAt = Instant.parse("2026-02-28T09:30:00Z"),
+                        status = SessionStatus.STOPPED,
+                        elapsed = SessionElapsed(30.minutes),
+                    ),
+                ),
+            )
+            val viewModel =
+                HomeViewModel(
+                    SavedStateHandle(),
+                    sessions,
+                    FakeTaskRepository(),
+                    FakeMaterialRepository(),
+                    Clock { TEST_WALL_CLOCK },
+                    TimeZoneProvider { TimeZone.UTC },
+                )
+            advanceUntilIdle()
+
+            assertEquals(1, viewModel.state.value.streakDays)
+        }
 }

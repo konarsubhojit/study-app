@@ -82,6 +82,7 @@ public class HomeViewModel
                     .map { it.startedAt.toLocalDateTime(zone).date }
                     .toSet()
             var day = clock.now().toLocalDateTime(zone).date
+            if (day !in studiedDays) day = day.minus(1, DateTimeUnit.DAY)
             var streak = 0
             while (day in studiedDays) {
                 streak++
