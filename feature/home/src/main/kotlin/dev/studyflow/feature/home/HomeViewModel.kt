@@ -62,9 +62,11 @@ public class HomeViewModel
                     activeSession = activeSession,
                     nextTask =
                         tasks
-                            .mapNotNull { task -> task.dueAtUtc?.let { dueAt -> task to dueAt } }
-                            .filter { (task, _) -> !task.deleted && !task.isCompleted }
-                            .minByOrNull { (_, dueAt) -> dueAt }
+                            .mapNotNull { task ->
+                                task.dueAtUtc
+                                    ?.takeIf { !task.deleted && !task.isCompleted }
+                                    ?.let { dueAt -> task to dueAt }
+                            }.minByOrNull { (_, dueAt) -> dueAt }
                             ?.first,
                     recentMaterials = materials.filterNot(Material::deleted).take(3),
                 )

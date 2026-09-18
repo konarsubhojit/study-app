@@ -19,7 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.studyflow.core.designsystem.theme.spacing
-import kotlin.time.Duration
 
 /** Navigation destinations owned by dashboard cards. */
 public data class HomeActions(
@@ -69,7 +68,7 @@ public fun HomeScreen(
         item {
             SummaryCard(
                 title = "Focus time",
-                detail = "${state.focusTime.asMinutes()} of ${state.focusGoal.asMinutes()} min",
+                detail = "${state.focusTime.inWholeMinutes} of ${state.focusGoal.inWholeMinutes} min",
                 onClick = actions.onOpenHistory,
             )
         }
@@ -123,5 +122,3 @@ private fun SummaryCard(
         }
     }
 }
-
-private fun Duration.asMinutes(): Long = inWholeMinutes
