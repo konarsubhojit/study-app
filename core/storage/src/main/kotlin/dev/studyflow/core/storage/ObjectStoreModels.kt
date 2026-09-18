@@ -2,15 +2,17 @@ package dev.studyflow.core.storage
 
 import dev.studyflow.core.domain.materials.UploadPart
 import dev.studyflow.core.domain.materials.UploadPlan
+import dev.studyflow.core.domain.materials.thumbnails.ThumbnailSpec
 import dev.studyflow.core.model.ContentHash
 import kotlin.time.Instant
 
 /**
  * Where an object lives, as far as the app is concerned (issue #36).
  *
- * The value is opaque: the app derives it from content (`materials/<sha256>`) and hands it back
- * unchanged. It is deliberately *not* a URL, a bucket path or anything else that would leak the
- * provider's shape into the layers above [ObjectStore].
+ * The value is opaque: the app derives it from content (`materials/<sha256>`, or
+ * `thumbnails/<sha256>/<edge>`) and hands it back unchanged. It is deliberately *not* a URL, a
+ * bucket path or anything else that would leak the provider's shape into the layers above
+ * [ObjectStore].
  *
  * The rejected characters are the ones that turn a key into a path traversal on a store backed by a
  * filesystem — the same class of bug as zip slip, and worth refusing at the type rather than hoping
@@ -36,8 +38,23 @@ public value class ObjectKey(
     public companion object {
         private const val MAX_LENGTH = 1024
 
-        /** The content-addressed key of a material, the one key shape the app ever mints. */
+        /** The content-addressed key of a material's original bytes. */
         public fun ofMaterial(contentHash: ContentHash): ObjectKey = ObjectKey("materials/${contentHash.hex}")
+
+        /**
+         * The content-addressed key of a server-rendered thumbnail (issue #42).
+         *
+         * Derived from the *original's* digest and the requested edge length, so a thumbnail the
+         * backend renders for a format no device could decode (issue #7) is found by every client
+         * that holds the same file, and is rendered once however many users uploaded it.
+         *
+         * The edge arrives as a [ThumbnailSpec] rather than a bare number so that the sizes this
+         * key can name are exactly the sizes the on-device pipeline can render.
+         */
+        public fun ofThumbnail(
+            contentHash: ContentHash,
+            spec: ThumbnailSpec,
+        ): ObjectKey = ObjectKey("thumbnails/${contentHash.hex}/${spec.maxEdgePx}")
     }
 }
 

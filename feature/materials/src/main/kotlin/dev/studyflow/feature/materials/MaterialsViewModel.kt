@@ -1,13 +1,18 @@
 package dev.studyflow.feature.materials
 
+import android.graphics.BitmapFactory
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.domain.materials.ImportOutcome
 import dev.studyflow.core.domain.materials.MaterialImporter
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
 import dev.studyflow.core.domain.materials.ShareImportInbox
+import dev.studyflow.core.domain.materials.thumbnails.ThumbnailLoader
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.ui.mvi.MviViewModel
@@ -18,6 +23,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
 import kotlin.time.Duration
@@ -98,6 +104,8 @@ public class MaterialsViewModel
         private val importer: MaterialImporter,
         private val shareImportInbox: ShareImportInbox,
         private val uploadCoordinator: MaterialUploadCoordinator,
+        private val thumbnailLoader: ThumbnailLoader,
+        private val dispatcherProvider: DispatcherProvider,
     ) : MviViewModel<MaterialsUiEvent, MaterialsUiEffect>(savedStateHandle) {
         private val results = MutableStateFlow<List<MaterialImportResult>>(emptyList())
         private val importing = MutableStateFlow(false)
@@ -127,6 +135,21 @@ public class MaterialsViewModel
                         shareImportInbox.consume()
                     }
                 }
+            }
+        }
+
+        /**
+         * The grid image for [material], or `null` when this device cannot produce one (issue #42).
+         *
+         * Pulled per cell rather than pushed through [MaterialsUiState] on purpose: a catalogue of
+         * a thousand files would otherwise hold a thousand bitmaps in state, when the grid only
+         * ever draws the dozen that are on screen. The caller's coroutine owns the work, so
+         * scrolling a cell away cancels both the render and the decode instead of racing them.
+         */
+        public suspend fun loadThumbnail(material: Material): ImageBitmap? {
+            val bytes = thumbnailLoader.load(material) ?: return null
+            return withContext(dispatcherProvider.default) {
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
             }
         }
 

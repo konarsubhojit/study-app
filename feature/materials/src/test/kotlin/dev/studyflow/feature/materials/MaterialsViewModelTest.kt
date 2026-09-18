@@ -7,15 +7,20 @@ import dev.studyflow.core.domain.materials.ImportContentMetadata
 import dev.studyflow.core.domain.materials.ImportContentReader
 import dev.studyflow.core.domain.materials.MaterialImporter
 import dev.studyflow.core.domain.materials.ShareImportInbox
+import dev.studyflow.core.domain.materials.thumbnails.ThumbnailLoader
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.coroutines.TestDispatcherProvider
 import dev.studyflow.core.testing.data.FakeMaterialRepository
 import dev.studyflow.core.testing.data.FakeMaterialUploadCoordinator
+import dev.studyflow.core.testing.data.FakeThumbnailCache
+import dev.studyflow.core.testing.data.FakeThumbnailRenderer
 import dev.studyflow.core.testing.data.TEST_WALL_CLOCK
+import dev.studyflow.core.testing.data.testMaterial
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -162,6 +167,17 @@ class MaterialsViewModelTest {
             assertEquals(listOf(materialId), uploadCoordinator.retried)
         }
 
+    @Test
+    fun `a material the device cannot render has no thumbnail and no download`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel(fakeReader())
+
+            assertNull(
+                viewModel.loadThumbnail(testMaterial(localUri = null)),
+                "browsing a cloud-only material must not pull the original down to draw a cell",
+            )
+        }
+
     private fun viewModel(reader: ImportContentReader): MaterialsViewModel {
         val importer =
             MaterialImporter(
@@ -177,6 +193,13 @@ class MaterialsViewModelTest {
             importer = importer,
             shareImportInbox = shareImportInbox,
             uploadCoordinator = uploadCoordinator,
+            thumbnailLoader =
+                ThumbnailLoader(
+                    cache = FakeThumbnailCache(),
+                    renderer = FakeThumbnailRenderer(),
+                    dispatcherProvider = TestDispatcherProvider(mainDispatcher.dispatcher),
+                ),
+            dispatcherProvider = TestDispatcherProvider(mainDispatcher.dispatcher),
         )
     }
 

@@ -44,6 +44,9 @@ Archives are treated as the attacker-controlled data structures they are: entry 
 and checked for zip slip (absolute paths, drive letters, `..` escapes, Windows separators, null
 bytes, colliding paths), and entry count, size and compression ratio are capped against zip bombs.
 
+The catalogue grid renders from thumbnails generated on device and cached under a content-addressed
+key, so browsing never downloads an original, and identical files are rendered — and stored — once.
+
 The offline cache is LRU with two hard exceptions — it will never evict a file the user pinned, and
 never a file that has not finished uploading, because that local copy is the only copy.
 
@@ -51,7 +54,8 @@ never a file that has not finished uploading, because that local copy is the onl
 [`ObjectStore`](core/storage/src/main/kotlin/dev/studyflow/core/storage/ObjectStore.kt) ·
 [`UploadPlanner`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/UploadPlanner.kt) ·
 [`ArchiveSafety`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/ArchiveSafety.kt) ·
-[`CachePlanner`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/CachePlanner.kt)
+[`CachePlanner`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/CachePlanner.kt) ·
+[`ThumbnailLoader`](core/domain/src/main/kotlin/dev/studyflow/core/domain/materials/thumbnails/ThumbnailLoader.kt)
 
 ### 3. Reminders that actually fire
 

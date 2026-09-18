@@ -32,12 +32,14 @@ internal class RecordingObjectStore : ObjectStore {
     /** Every part number [uploadPart] was actually called with, in call order. */
     val uploadedPartNumbers = mutableListOf<Int>()
 
+    private val statResults = mutableMapOf<ObjectKey, StoredObject>()
+
     var failNextUploadPart: ObjectStoreException? = null
     var failCompleteUpload: ObjectStoreException? = null
 
     override suspend fun initUpload(request: UploadRequest): UploadSession {
         val plan = UploadPlanner.plan(request.sizeBytes, request.contentHash)
-        val expiresAt = Instant.parse(EXPIRES_AT)
+        val expiresAt = Instant.parse(FIXED_INSTANT)
         return UploadSession.of(request.key, "upload-${request.key}", plan, expiresAt) { part ->
             PresignedUrl("${PresignedUrl.LOCAL_SCHEME}${request.key}/parts/${part.number}", expiresAt)
         }
@@ -74,20 +76,20 @@ internal class RecordingObjectStore : ObjectStore {
                 sizeBytes = session.sizeBytes,
                 contentType = "application/octet-stream",
                 contentHash = ContentHash(HASH),
-                updatedAt = Instant.parse(EXPIRES_AT),
+                updatedAt = Instant.parse(FIXED_INSTANT),
             )
         }
 
     override suspend fun getDownloadUrl(
         key: ObjectKey,
         ttl: Duration,
-    ): PresignedUrl = PresignedUrl("${PresignedUrl.LOCAL_SCHEME}$key", Instant.parse(EXPIRES_AT) + 15.minutes)
+    ): PresignedUrl = PresignedUrl("${PresignedUrl.LOCAL_SCHEME}$key", Instant.parse(FIXED_INSTANT) + 15.minutes)
 
     override suspend fun delete(key: ObjectKey) {
         mutex.withLock { partsByKey.remove(key) }
     }
 
-    override suspend fun stat(key: ObjectKey): StoredObject? = null
+    override suspend fun stat(key: ObjectKey): StoredObject? = mutex.withLock { statResults[key] }
 
     /**
      * Simulates a part the *server* already acknowledged before this test process existed — the
@@ -102,8 +104,26 @@ internal class RecordingObjectStore : ObjectStore {
         mutex.withLock { partsByKey.getOrPut(key) { mutableMapOf() }[number] = ByteArray(size.toInt()) }
     }
 
+    /** Simulates an object the store already holds, the way content addressing lets it. */
+    suspend fun seedStoredObject(
+        key: ObjectKey,
+        sizeBytes: Long,
+        contentHash: ContentHash,
+    ) {
+        mutex.withLock {
+            statResults[key] =
+                StoredObject(
+                    key = key,
+                    sizeBytes = sizeBytes,
+                    contentType = "application/octet-stream",
+                    contentHash = contentHash,
+                    updatedAt = Instant.parse(FIXED_INSTANT),
+                )
+        }
+    }
+
     private companion object {
-        const val EXPIRES_AT = "2026-01-01T00:00:00Z"
+        const val FIXED_INSTANT = "2026-01-01T00:00:00Z"
         val HASH = "a".repeat(64)
     }
 }
