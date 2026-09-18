@@ -36,6 +36,10 @@ class NotificationChannelsTest {
         assertEquals(NotificationManagerCompat.IMPORTANCE_LOW, StudyFlowNotificationChannel.STUDY_TIMER.importance)
         assertEquals(
             NotificationManagerCompat.IMPORTANCE_DEFAULT,
+            StudyFlowNotificationChannel.FOCUS_INTERVALS.importance,
+        )
+        assertEquals(
+            NotificationManagerCompat.IMPORTANCE_DEFAULT,
             StudyFlowNotificationChannel.TASK_REMINDERS.importance,
         )
         assertEquals(NotificationManagerCompat.IMPORTANCE_HIGH, StudyFlowNotificationChannel.ALARMS.importance)
@@ -53,6 +57,7 @@ class NotificationChannelsTest {
     fun `ongoing and progress channels stay silent`() {
         assertTrue(StudyFlowNotificationChannel.STUDY_TIMER.isSilentByDefault)
         assertTrue(StudyFlowNotificationChannel.UPLOADS.isSilentByDefault)
+        assertFalse(StudyFlowNotificationChannel.FOCUS_INTERVALS.isSilentByDefault)
         assertFalse(StudyFlowNotificationChannel.TASK_REMINDERS.isSilentByDefault)
         assertFalse(StudyFlowNotificationChannel.ALARMS.isSilentByDefault)
     }

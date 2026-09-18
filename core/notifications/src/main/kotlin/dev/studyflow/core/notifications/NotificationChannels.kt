@@ -35,6 +35,7 @@ public enum class StudyFlowChannelGroup(
  * | Channel | Importance | Why |
  * |---|---|---|
  * | [STUDY_TIMER] | low | an ongoing chronometer the user opted into; it must be visible, never noisy |
+ * | [FOCUS_INTERVALS] | default | a scheduled focus/break transition that should get attention |
  * | [TASK_REMINDERS] | default | the user asked to be told; a heads-up peek is proportionate |
  * | [ALARMS] | high | "wake me for the exam" — full-screen, vibrating, allowed to be loud |
  * | [UPLOADS] | min | progress the user can watch if they care, silent and badge-free if they do not |
@@ -55,6 +56,15 @@ public enum class StudyFlowNotificationChannel(
         description = "The running session, so the timer stays visible after you leave the app.",
         importance = NotificationManagerCompat.IMPORTANCE_LOW,
         showsBadge = false,
+    ),
+
+    FOCUS_INTERVALS(
+        id = "studyflow.channel.focus_intervals",
+        group = StudyFlowChannelGroup.FOCUS,
+        channelName = "Focus intervals",
+        description = "Pomodoro focus and break transition prompts.",
+        importance = NotificationManagerCompat.IMPORTANCE_DEFAULT,
+        vibrates = true,
     ),
 
     TASK_REMINDERS(

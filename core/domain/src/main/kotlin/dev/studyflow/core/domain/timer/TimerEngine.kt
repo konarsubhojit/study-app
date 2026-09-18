@@ -33,12 +33,12 @@ public object TimerEngine {
     /**
      * Recovery auto-pauses an uninterrupted same-boot interval after this cap.
      *
-     * A full day is deliberately generous for normal study while bounding only the current
+     * Eight hours is deliberately generous for a study day while bounding only the current
      * `openedAt`→`now` interval left running after a service crash, swipe-away, or forgotten timer.
      * Earlier [TimerState.Running.settled] time is not compared to this value; it is preserved, and
      * the capped open-interval amount is added to it during recovery.
      */
-    public val DEFAULT_MAXIMUM_RUNNING_DURATION: Duration = 24.hours
+    public val DEFAULT_MAXIMUM_RUNNING_DURATION: Duration = 8.hours
 
     /**
      * Rebuilds state by replaying a session's event log.
@@ -63,15 +63,23 @@ public object TimerEngine {
         var settled = Duration.ZERO
         var unverified = Duration.ZERO
         var openedAt: TimeAnchor? = null
+        var lastConfirmedAt: TimeAnchor? = null
         var stopped = false
 
         for (event in ordered) {
             when (event.type) {
-                SessionEventType.STARTED, SessionEventType.RESUMED -> {
-                    if (openedAt == null && !stopped) openedAt = event.anchor
+                SessionEventType.STARTED, SessionEventType.RESUMED, SessionEventType.FOCUS_RESUMED -> {
+                    if (openedAt == null && !stopped) {
+                        openedAt = event.anchor
+                        lastConfirmedAt = event.anchor
+                    }
                 }
 
-                SessionEventType.PAUSED, SessionEventType.STOPPED -> {
+                SessionEventType.ACTIVITY_CONFIRMED -> {
+                    if (openedAt != null && !stopped) lastConfirmedAt = event.anchor
+                }
+
+                SessionEventType.PAUSED, SessionEventType.STOPPED, SessionEventType.BREAK_STARTED -> {
                     openedAt?.let { open ->
                         val interval = measure(open, event.anchor)
                         settled += interval.counted
@@ -86,7 +94,16 @@ public object TimerEngine {
         val lastSequence = ordered.last().sequence
         return when {
             stopped -> TimerState.Stopped(sessionId, settled, unverified, lastSequence)
-            openedAt != null -> TimerState.Running(sessionId, settled, unverified, lastSequence, openedAt)
+            openedAt != null -> {
+                TimerState.Running(
+                    sessionId = sessionId,
+                    settled = settled,
+                    unverified = unverified,
+                    lastSequence = lastSequence,
+                    openedAt = openedAt,
+                    lastConfirmedAt = lastConfirmedAt ?: openedAt,
+                )
+            }
             else -> TimerState.Paused(sessionId, settled, unverified, lastSequence)
         }
     }
@@ -163,6 +180,18 @@ public object TimerEngine {
 
             TimerCommand.Resume -> {
                 appendTo(state, SessionEventType.RESUMED, eventId, anchor)
+            }
+
+            TimerCommand.StartBreak -> {
+                appendTo(state, SessionEventType.BREAK_STARTED, eventId, anchor)
+            }
+
+            TimerCommand.ResumeFocus -> {
+                appendTo(state, SessionEventType.FOCUS_RESUMED, eventId, anchor)
+            }
+
+            TimerCommand.ConfirmActivity -> {
+                appendTo(state, SessionEventType.ACTIVITY_CONFIRMED, eventId, anchor)
             }
 
             TimerCommand.Stop -> {
@@ -247,6 +276,18 @@ public object TimerEngine {
                 requireActive(state) ?: (TimerRejection.NOT_PAUSED.takeIf { state !is TimerState.Paused })
             }
 
+            TimerCommand.StartBreak -> {
+                requireActive(state) ?: (TimerRejection.NOT_RUNNING.takeIf { state !is TimerState.Running })
+            }
+
+            TimerCommand.ResumeFocus -> {
+                requireActive(state) ?: (TimerRejection.NOT_PAUSED.takeIf { state !is TimerState.Paused })
+            }
+
+            TimerCommand.ConfirmActivity -> {
+                requireActive(state) ?: (TimerRejection.NOT_RUNNING.takeIf { state !is TimerState.Running })
+            }
+
             TimerCommand.Stop -> {
                 requireActive(state)
             }
@@ -276,13 +317,26 @@ public object TimerEngine {
             )
         val next =
             when (type) {
-                SessionEventType.RESUMED -> {
+                SessionEventType.RESUMED, SessionEventType.FOCUS_RESUMED -> {
                     TimerState.Running(
                         sessionId = active.sessionId,
                         settled = active.settled,
                         unverified = active.unverified,
                         lastSequence = event.sequence,
                         openedAt = anchor,
+                        lastConfirmedAt = anchor,
+                    )
+                }
+
+                SessionEventType.ACTIVITY_CONFIRMED -> {
+                    val running = state as TimerState.Running
+                    TimerState.Running(
+                        sessionId = running.sessionId,
+                        settled = running.settled,
+                        unverified = running.unverified,
+                        lastSequence = event.sequence,
+                        openedAt = running.openedAt,
+                        lastConfirmedAt = anchor,
                     )
                 }
 
@@ -350,7 +404,7 @@ public object TimerEngine {
         maximumRunningDuration: Duration,
     ): TimerReconciliation {
         val openDuration = state.openedAt.uptimeDurationTo(now)?.coerceAtLeast(Duration.ZERO)
-        return if (openDuration == null || openDuration <= maximumRunningDuration) {
+        return if (openDuration == null || openDuration < maximumRunningDuration) {
             TimerReconciliation.Unchanged(state)
         } else {
             val event = pauseEvent(state, eventId, state.openedAt + maximumRunningDuration)

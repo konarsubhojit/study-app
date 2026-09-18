@@ -18,6 +18,8 @@ import kotlinx.coroutines.withContext
 import java.io.InputStream
 import java.io.OutputStream
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 
 private const val SETTINGS_FILE_NAME = "user_settings.pb"
 private const val TIMER_FILE_NAME = "active_timer.pb"
@@ -72,6 +74,65 @@ public class UserSettingsAlarmRingtoneSettings(
 
     override suspend fun setUri(uri: String) {
         store.update { alarmRingtoneUri = uri }
+    }
+}
+
+public data class FocusTimerConfig(
+    val focusInterval: Duration,
+    val breakInterval: Duration,
+    val maximumSessionDuration: Duration,
+    val inactivityPromptAfter: Duration,
+) {
+    init {
+        require(focusInterval.isPositive()) { "focusInterval must be positive" }
+        require(breakInterval.isPositive()) { "breakInterval must be positive" }
+        require(maximumSessionDuration.isPositive()) { "maximumSessionDuration must be positive" }
+        require(inactivityPromptAfter.isPositive()) { "inactivityPromptAfter must be positive" }
+    }
+}
+
+public interface FocusTimerSettings {
+    public val config: Flow<FocusTimerConfig>
+
+    public suspend fun setFocusIntervalMinutes(minutes: Int)
+
+    public suspend fun setBreakIntervalMinutes(minutes: Int)
+
+    public suspend fun setMaximumSessionMinutes(minutes: Int)
+
+    public suspend fun setInactivityPromptMinutes(minutes: Int)
+}
+
+public class UserSettingsFocusTimerSettings(
+    private val store: UserSettingsStore,
+) : FocusTimerSettings {
+    override val config: Flow<FocusTimerConfig> = store.data.map { settings ->
+        FocusTimerConfig(
+            focusInterval = settings.defaultFocusMinutes.toPositiveMinutes(),
+            breakInterval = settings.defaultBreakMinutes.toPositiveMinutes(),
+            maximumSessionDuration = settings.maximumSessionMinutes.toPositiveMinutes(),
+            inactivityPromptAfter = settings.inactivityPromptMinutes.toPositiveMinutes(),
+        )
+    }
+
+    override suspend fun setFocusIntervalMinutes(minutes: Int) {
+        require(minutes > 0) { "minutes must be positive" }
+        store.update { defaultFocusMinutes = minutes }
+    }
+
+    override suspend fun setBreakIntervalMinutes(minutes: Int) {
+        require(minutes > 0) { "minutes must be positive" }
+        store.update { defaultBreakMinutes = minutes }
+    }
+
+    override suspend fun setMaximumSessionMinutes(minutes: Int) {
+        require(minutes > 0) { "minutes must be positive" }
+        store.update { maximumSessionMinutes = minutes }
+    }
+
+    override suspend fun setInactivityPromptMinutes(minutes: Int) {
+        require(minutes > 0) { "minutes must be positive" }
+        store.update { inactivityPromptMinutes = minutes }
     }
 }
 
@@ -231,3 +292,5 @@ private fun ActiveTimerAnchor.toActiveTimer(): ActiveTimer? =
             bootId = bootId,
         )
     }
+
+private fun Int.toPositiveMinutes(): Duration = coerceAtLeast(1).minutes

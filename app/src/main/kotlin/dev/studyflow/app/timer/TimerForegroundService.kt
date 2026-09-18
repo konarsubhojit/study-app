@@ -274,8 +274,10 @@ internal class TimerForegroundServiceController
         private val context: Context,
         private val notifier: StudyFlowNotifier,
         private val logger: AppLogger,
+        private val intervalCoordinator: TimerIntervalCoordinator,
     ) : SessionCommandObserver {
         override fun onSessionCommandApplied(result: SessionCommandResult.Applied) {
+            intervalCoordinator.refreshSchedules(result.state)
             if (result.state is TimerState.Stopped) {
                 notifier.cancel(NOTIFICATION_ID)
                 context.stopService(TimerForegroundService.refreshIntent(context))

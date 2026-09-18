@@ -29,7 +29,7 @@ public data class SessionEvent(
     }
 }
 
-/** The four transitions a study session can record. */
+/** The transitions a study session can record. */
 public enum class SessionEventType {
     /** Opens the session and starts the first counted interval. */
     STARTED,
@@ -39,6 +39,15 @@ public enum class SessionEventType {
 
     /** Opens a new counted interval after a pause. */
     RESUMED,
+
+    /** Records that a focus interval ended and a non-counted break began. */
+    BREAK_STARTED,
+
+    /** Records that the user returned from a break and opened another counted interval. */
+    FOCUS_RESUMED,
+
+    /** Records the user confirmed they are still studying without changing the counted interval. */
+    ACTIVITY_CONFIRMED,
 
     /** Closes the session permanently. */
     STOPPED,

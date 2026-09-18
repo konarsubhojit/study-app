@@ -37,6 +37,7 @@ public sealed interface TimerState {
         override val unverified: Duration,
         override val lastSequence: Long,
         val openedAt: TimeAnchor,
+        val lastConfirmedAt: TimeAnchor = openedAt,
     ) : Active
 
     /** Not counting, but resumable. */
@@ -71,6 +72,15 @@ public sealed interface TimerCommand {
 
     /** Open a new interval after a pause. */
     public data object Resume : TimerCommand
+
+    /** Close the current focus interval and record that a break began. */
+    public data object StartBreak : TimerCommand
+
+    /** Open the next focus interval after a recorded break. */
+    public data object ResumeFocus : TimerCommand
+
+    /** Record that the user confirmed a long-running interval is intentional. */
+    public data object ConfirmActivity : TimerCommand
 
     /** Close the open interval, if any, and end the session. */
     public data object Stop : TimerCommand

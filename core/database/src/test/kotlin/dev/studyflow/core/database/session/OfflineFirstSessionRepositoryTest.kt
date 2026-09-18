@@ -194,6 +194,29 @@ class OfflineFirstSessionRepositoryTest {
         }
 
     @Test
+    fun `focus break transitions are persisted as explicit events`() =
+        runBlocking {
+            repository.start()
+            device.advance(25.minutes)
+            val breakStarted = repository.execute(TimerCommand.StartBreak, "event-break", device.anchor()).applied()
+            device.advance(5.minutes)
+            val focusResumed = repository.execute(TimerCommand.ResumeFocus, "event-focus", device.anchor()).applied()
+
+            assertEquals(SessionStatus.PAUSED, breakStarted.session.status)
+            assertEquals(25.minutes, breakStarted.session.elapsed.counted)
+            assertEquals(SessionStatus.RUNNING, focusResumed.session.status)
+            assertEquals(25.minutes, focusResumed.session.elapsed.counted)
+            assertEquals(
+                listOf(SessionEventType.STARTED, SessionEventType.BREAK_STARTED, SessionEventType.FOCUS_RESUMED),
+                database
+                    .sessionDao()
+                    .observeEvents(SESSION_ID)
+                    .first()
+                    .map { it.type },
+            )
+        }
+
+    @Test
     fun `retrying an already committed event returns the original outcome`() =
         runBlocking {
             repository.start()

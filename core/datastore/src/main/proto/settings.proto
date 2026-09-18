@@ -42,4 +42,8 @@ message UserSettings {
   // this app needing to know about it. A non-empty value is whatever content URI the system
   // ringtone picker (`RingtoneManager.ACTION_RINGTONE_PICKER`) returned, persisted verbatim.
   optional string alarm_ringtone_uri = 17 [default = ""];
+
+  // Pomodoro/session-safety defaults used by the timer's scheduled alarms (issue #34).
+  optional uint32 maximum_session_minutes = 18 [default = 480];
+  optional uint32 inactivity_prompt_minutes = 19 [default = 120];
 }
