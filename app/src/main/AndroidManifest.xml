@@ -37,6 +37,7 @@
                 <data android:host="materials" />
                 <data android:host="tasks" />
                 <data android:host="history" />
+                <data android:host="insights" />
                 <data android:host="settings" />
                 <data android:host="widget" />
             </intent-filter>

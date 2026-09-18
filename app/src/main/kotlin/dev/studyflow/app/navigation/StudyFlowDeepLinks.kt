@@ -10,6 +10,7 @@ internal enum class WidgetAction(
     MATERIALS("materials"),
     TASKS("tasks"),
     HISTORY("history"),
+    INSIGHTS("insights"),
     SETTINGS("settings"),
 }
 
@@ -20,6 +21,7 @@ internal object StudyFlowDeepLinks {
     private const val MATERIALS = "materials"
     private const val TASKS = "tasks"
     private const val HISTORY = "history"
+    private const val INSIGHTS = "insights"
     private const val SETTINGS = "settings"
     private const val WIDGET = "widget"
     private const val RUNNING = "running"
@@ -31,6 +33,7 @@ internal object StudyFlowDeepLinks {
             is MaterialsRoute -> uri(MATERIALS, route.materialId)
             is TasksRoute -> uri(TASKS, route.taskId)
             HistoryRoute -> uri(HISTORY)
+            InsightsRoute -> uri(INSIGHTS)
             SettingsRoute -> uri(SETTINGS)
         }
 
@@ -55,6 +58,7 @@ internal object StudyFlowDeepLinks {
             MATERIALS -> identifier(segments)?.let(::MaterialsRoute) ?: MaterialsRoute().takeIf { segments.isEmpty() }
             TASKS -> identifier(segments)?.let(::TasksRoute) ?: TasksRoute().takeIf { segments.isEmpty() }
             HISTORY -> HistoryRoute.takeIf { segments.isEmpty() }
+            INSIGHTS -> InsightsRoute.takeIf { segments.isEmpty() }
             SETTINGS -> SettingsRoute.takeIf { segments.isEmpty() }
             WIDGET -> widgetRoute(segments)
             else -> null
@@ -88,6 +92,7 @@ internal object StudyFlowDeepLinks {
             WidgetAction.MATERIALS.path -> MaterialsRoute()
             WidgetAction.TASKS.path -> TasksRoute()
             WidgetAction.HISTORY.path -> HistoryRoute
+            WidgetAction.INSIGHTS.path -> InsightsRoute
             WidgetAction.SETTINGS.path -> SettingsRoute
             else -> null
         }
