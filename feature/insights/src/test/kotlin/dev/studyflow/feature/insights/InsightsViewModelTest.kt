@@ -84,7 +84,8 @@ class InsightsViewModelTest {
             val viewModel = viewModel(FakeStatsRepository(utcZone(), seed = listOf(old)))
             advanceUntilIdle()
             assertTrue(
-                viewModel.state.value.subjectTotals.isEmpty(),
+                viewModel.state.value.subjectTotals
+                    .isEmpty(),
                 "60 days ago is outside the default 30-day range",
             )
 

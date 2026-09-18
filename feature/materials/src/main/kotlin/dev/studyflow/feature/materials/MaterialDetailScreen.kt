@@ -27,8 +27,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -36,6 +36,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -54,15 +55,17 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.cache.CacheDataSource
 import androidx.media3.datasource.cache.LeastRecentlyUsedCacheEvictor
 import androidx.media3.datasource.cache.SimpleCache
-import androidx.media3.database.StandaloneDatabaseProvider
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
 import coil3.compose.AsyncImage
+import dev.studyflow.core.common.coroutines.DispatcherProvider
+import dev.studyflow.core.common.coroutines.StandardDispatcherProvider
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.MaterialKind
@@ -70,11 +73,10 @@ import dev.studyflow.core.ui.components.DurationText
 import dev.studyflow.core.ui.components.StudyFlowTopAppBar
 import dev.studyflow.core.ui.state.EmptyState
 import dev.studyflow.core.ui.state.LoadingState
-import java.io.File
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
  * The material detail screen: what the catalogue knows about one imported file (issue #37).
@@ -99,10 +101,11 @@ public fun MaterialDetailRoute(
         viewModel.onEvent(MaterialDetailUiEvent.Load(materialId))
     }
 
+    val currentOnBack by rememberUpdatedState(onBack)
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                MaterialDetailUiEffect.CloseMaterial -> onBack()
+                MaterialDetailUiEffect.CloseMaterial -> currentOnBack()
             }
         }
     }
@@ -202,8 +205,8 @@ private fun MaterialDetailContent(
         )
         MaterialPreview(
             state = state,
-            onPdfPageChanged = { pageIndex -> onEvent(MaterialDetailUiEvent.PdfPageChanged(pageIndex)) },
-            onPlaybackChanged = { position, speed ->
+            onPdfPageChange = { pageIndex -> onEvent(MaterialDetailUiEvent.PdfPageChanged(pageIndex)) },
+            onPlaybackChange = { position, speed ->
                 onEvent(MaterialDetailUiEvent.PlaybackChanged(position, speed))
             },
             modifier = Modifier.weight(1f),
@@ -242,22 +245,41 @@ private fun PreviewActions(
 @Composable
 private fun MaterialPreview(
     state: MaterialDetailUiState,
-    onPdfPageChanged: (Int) -> Unit,
-    onPlaybackChanged: (Long, Float) -> Unit,
+    onPdfPageChange: (Int) -> Unit,
+    onPlaybackChange: (Long, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val material = state.material
     val source = state.previewSource
     when {
-        state.previewSourceLoading -> LoadingState(modifier = modifier.fillMaxSize())
-        state.previewSourceMessage != null -> EmptyState(message = state.previewSourceMessage, modifier = modifier.fillMaxSize())
-        material == null || source == null -> EmptyState(message = "No preview is available for this material.", modifier = modifier)
-        material.kind == MaterialKind.IMAGE -> ImagePreview(material = material, source = source, modifier = modifier)
-        material.kind == MaterialKind.VIDEO || material.kind == MaterialKind.AUDIO ->
-            MediaPreview(material = material, source = source, onPlaybackChanged = onPlaybackChanged, modifier = modifier)
-        material.kind == MaterialKind.PDF ->
-            PdfPreview(material = material, source = source, onPageChanged = onPdfPageChanged, modifier = modifier)
-        else -> EmptyState(message = "This file type is saved in your library, but has no in-app preview yet.", modifier = modifier)
+        state.previewSourceLoading -> {
+            LoadingState(modifier = modifier.fillMaxSize())
+        }
+
+        state.previewSourceMessage != null -> {
+            EmptyState(message = state.previewSourceMessage, modifier = modifier.fillMaxSize())
+        }
+
+        material == null || source == null -> {
+            EmptyState(message = "No preview is available for this material.", modifier = modifier)
+        }
+
+        material.kind == MaterialKind.IMAGE -> {
+            ImagePreview(material = material, source = source, modifier = modifier)
+        }
+
+        material.kind == MaterialKind.VIDEO || material.kind == MaterialKind.AUDIO -> {
+            MediaPreview(material = material, source = source, onPlaybackChange = onPlaybackChange, modifier = modifier)
+        }
+
+        material.kind == MaterialKind.PDF -> {
+            PdfPreview(material = material, source = source, onPageChange = onPdfPageChange, modifier = modifier)
+        }
+
+        else -> {
+            val message = "This file type is saved in your library, but has no in-app preview yet."
+            EmptyState(message = message, modifier = modifier)
+        }
     }
 }
 
@@ -272,7 +294,7 @@ private fun ImagePreview(
     var offsetY by remember { mutableFloatStateOf(0f) }
     val transformableState =
         rememberTransformableState { _, zoomChange, offsetChange, _ ->
-            scale = (scale * zoomChange).coerceIn(1f, 5f)
+            scale = (scale * zoomChange).coerceIn(IMAGE_ZOOM_MIN_SCALE, IMAGE_ZOOM_MAX_SCALE)
             offsetX += offsetChange.x
             offsetY += offsetChange.y
         }
@@ -306,7 +328,7 @@ private fun ImagePreview(
 private fun MediaPreview(
     material: Material,
     source: MaterialPreviewSource,
-    onPlaybackChanged: (Long, Float) -> Unit,
+    onPlaybackChange: (Long, Float) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -332,9 +354,11 @@ private fun MediaPreview(
                 }
         }
 
+    val currentOnPlaybackChange by rememberUpdatedState(onPlaybackChange)
+
     DisposableEffect(player) {
         onDispose {
-            onPlaybackChanged(player.currentPosition.coerceAtLeast(0), player.playbackParameters.speed)
+            currentOnPlaybackChange(player.currentPosition.coerceAtLeast(0), player.playbackParameters.speed)
             player.release()
         }
     }
@@ -357,16 +381,24 @@ private fun MediaPreview(
                     .fillMaxWidth()
                     .weight(1f),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-            listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { speed ->
-                TextButton(
-                    onClick = {
-                        player.setPlaybackSpeed(speed)
-                        onPlaybackChanged(player.currentPosition.coerceAtLeast(0), speed)
-                    },
-                ) {
-                    Text(text = "${speed}x")
-                }
+        PlaybackSpeedRow(player = player, onPlaybackChange = onPlaybackChange)
+    }
+}
+
+@Composable
+private fun PlaybackSpeedRow(
+    player: ExoPlayer,
+    onPlaybackChange: (Long, Float) -> Unit,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+        PLAYBACK_SPEEDS.forEach { speed ->
+            TextButton(
+                onClick = {
+                    player.setPlaybackSpeed(speed)
+                    onPlaybackChange(player.currentPosition.coerceAtLeast(0), speed)
+                },
+            ) {
+                Text(text = "${speed}x")
             }
         }
     }
@@ -393,37 +425,66 @@ private fun rememberMediaCache(context: Context): SimpleCache {
 private fun PdfPreview(
     material: Material,
     source: MaterialPreviewSource,
-    onPageChanged: (Int) -> Unit,
+    onPageChange: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (source !is MaterialPreviewSource.Local) {
-        EmptyState(message = "Download this PDF for offline use before previewing it.", modifier = modifier.fillMaxSize())
-        return
-    }
-    val document = rememberPdfDocument(source.uri)
-    if (document == null) {
-        EmptyState(message = "This PDF could not be opened.", modifier = modifier.fillMaxSize())
-        return
-    }
+    when {
+        source !is MaterialPreviewSource.Local -> {
+            EmptyState(
+                message = "Download this PDF for offline use before previewing it.",
+                modifier = modifier.fillMaxSize(),
+            )
+        }
 
+        else -> {
+            val document = rememberPdfDocument(source.uri)
+            if (document == null) {
+                EmptyState(message = "This PDF could not be opened.", modifier = modifier.fillMaxSize())
+            } else {
+                PdfPreviewContent(
+                    material = material,
+                    document = document,
+                    onPageChange = onPageChange,
+                    modifier = modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PdfPreviewContent(
+    material: Material,
+    document: PdfDocument,
+    onPageChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val listState =
         rememberLazyListState(
-            initialFirstVisibleItemIndex = material.previewPageIndex.coerceIn(0, (document.pageCount - 1).coerceAtLeast(0)),
+            initialFirstVisibleItemIndex =
+                material.previewPageIndex.coerceIn(0, (document.pageCount - 1).coerceAtLeast(0)),
         )
     val coroutineScope = rememberCoroutineScope()
     var jumpPage by remember { mutableStateOf((listState.firstVisibleItemIndex + 1).toString()) }
+    val currentOnPageChange by rememberUpdatedState(onPageChange)
 
     LaunchedEffect(listState) {
         snapshotFlow { listState.firstVisibleItemIndex }
             .distinctUntilChanged()
             .collect { pageIndex ->
                 jumpPage = (pageIndex + 1).toString()
-                onPageChanged(pageIndex)
+                currentOnPageChange(pageIndex)
             }
     }
 
-    Column(modifier = modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small), verticalAlignment = Alignment.CenterVertically) {
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+    ) {
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(text = "Page", style = MaterialTheme.typography.bodyMedium)
             OutlinedTextField(
                 value = jumpPage,
@@ -472,10 +533,11 @@ private fun rememberPdfDocument(path: String): PdfDocument? {
 private fun PdfPage(
     document: PdfDocument,
     pageIndex: Int,
+    dispatcherProvider: DispatcherProvider = StandardDispatcherProvider,
 ) {
     val bitmap by produceState<Bitmap?>(initialValue = null, document, pageIndex) {
         value =
-            withContext(Dispatchers.Default) {
+            withContext(dispatcherProvider.default) {
                 synchronized(document.renderer) {
                     document.renderer.openPage(pageIndex).use { page ->
                         createBitmap(page.width, page.height).also { bitmap ->
@@ -541,9 +603,11 @@ private fun shareLocalMaterial(
             .putExtra(
                 Intent.EXTRA_STREAM,
                 FileProvider.getUriForFile(context, "${context.packageName}.files", File(source.uri)),
-            )
-            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     context.startActivity(Intent.createChooser(intent, material.displayName))
 }
 
 private const val MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
+private const val IMAGE_ZOOM_MIN_SCALE = 1f
+private const val IMAGE_ZOOM_MAX_SCALE = 5f
+private val PLAYBACK_SPEEDS = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)

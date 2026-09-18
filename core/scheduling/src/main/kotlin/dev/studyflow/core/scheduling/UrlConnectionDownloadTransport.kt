@@ -54,8 +54,9 @@ public class UrlConnectionDownloadTransport(
 
     private fun openConnection(request: DownloadRequest): HttpURLConnection {
         val url = URL(request.url.url)
-        val connection = url.openConnection() as? HttpURLConnection
-            ?: throw IOException("download URL is not HTTP")
+        val connection =
+            url.openConnection() as? HttpURLConnection
+                ?: throw IOException("download URL is not HTTP")
         if (request.rangeStart > 0) {
             connection.setRequestProperty("Range", "bytes=${request.rangeStart}-")
         }

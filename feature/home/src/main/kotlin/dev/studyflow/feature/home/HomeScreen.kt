@@ -3,10 +3,10 @@ package dev.studyflow.feature.home
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -19,14 +19,6 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.studyflow.core.designsystem.theme.spacing
-
-/** Navigation destinations owned by dashboard cards. */
-public data class HomeActions(
-    val onOpenTimer: () -> Unit = {},
-    val onOpenTask: (String) -> Unit = {},
-    val onOpenMaterial: (String) -> Unit = {},
-    val onOpenHistory: () -> Unit = {},
-)
 
 @Composable
 public fun HomeRoute(
@@ -82,7 +74,12 @@ public fun HomeScreen(
         state.activeSession?.let { session ->
             item {
                 SummaryCard(
-                    title = if (session.elapsed.hasUnverifiedTime) "Session recovered after reboot" else "Session in progress",
+                    title =
+                        if (session.elapsed.hasUnverifiedTime) {
+                            "Session recovered after reboot"
+                        } else {
+                            "Session in progress"
+                        },
                     detail = session.note ?: "Tap to continue",
                     onClick = actions.onOpenTimer,
                 )
@@ -98,7 +95,10 @@ public fun HomeScreen(
             items(state.recentMaterials, key = { it.id }) { material ->
                 SummaryCard(
                     title = material.displayName,
-                    detail = material.kind.name.lowercase().replaceFirstChar(Char::uppercase),
+                    detail =
+                        material.kind.name
+                            .lowercase()
+                            .replaceFirstChar(Char::uppercase),
                     onClick = { actions.onOpenMaterial(material.id) },
                 )
             }

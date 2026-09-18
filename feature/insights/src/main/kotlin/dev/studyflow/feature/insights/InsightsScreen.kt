@@ -197,9 +197,9 @@ private fun TrendSection(
                     .clearAndSetSemantics {
                         contentDescription =
                             "Trend chart: " +
-                                buckets.joinToString {
-                                    "${it.bucketStart.toDateLabel()}, ${it.totalCounted.minutesLabel()}"
-                                }
+                            buckets.joinToString {
+                                "${it.bucketStart.toDateLabel()}, ${it.totalCounted.minutesLabel()}"
+                            }
                     },
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
             verticalAlignment = Alignment.Bottom,
@@ -217,8 +217,9 @@ private fun TrendSection(
         Column(modifier = Modifier.padding(top = MaterialTheme.spacing.small)) {
             buckets.forEach { bucket ->
                 Text(
-                    text = "${bucket.bucketStart.toDateLabel()}: ${bucket.totalCounted.minutesLabel()} " +
-                        "(${bucket.sessionCount} session${if (bucket.sessionCount == 1) "" else "s"})",
+                    text =
+                        "${bucket.bucketStart.toDateLabel()}: ${bucket.totalCounted.minutesLabel()} " +
+                            "(${bucket.sessionCount} session${if (bucket.sessionCount == 1) "" else "s"})",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -243,9 +244,9 @@ private fun SubjectBreakdownSection(
                 Modifier.clearAndSetSemantics {
                     contentDescription =
                         "By-subject chart: " +
-                            subjectTotals.joinToString {
-                                "${it.subjectId.subjectName(subjectOptions)}, ${it.totalCounted.minutesLabel()}"
-                            }
+                        subjectTotals.joinToString {
+                            "${it.subjectId.subjectName(subjectOptions)}, ${it.totalCounted.minutesLabel()}"
+                        }
                 },
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
         ) {
@@ -254,8 +255,11 @@ private fun SubjectBreakdownSection(
                     Box(
                         modifier =
                             Modifier
-                                .weight(total.totalCounted.inWholeMinutes.toFloat().coerceAtLeast(MIN_BAR_WEIGHT))
-                                .height(BAR_HEIGHT)
+                                .weight(
+                                    total.totalCounted.inWholeMinutes
+                                        .toFloat()
+                                        .coerceAtLeast(MIN_BAR_WEIGHT),
+                                ).height(BAR_HEIGHT)
                                 .background(MaterialTheme.colorScheme.secondary),
                     )
                     Box(modifier = Modifier.weight((maxMinutes - total.totalCounted.inWholeMinutes).toFloat()))
@@ -265,8 +269,9 @@ private fun SubjectBreakdownSection(
         Column(modifier = Modifier.padding(top = MaterialTheme.spacing.small)) {
             subjectTotals.forEach { total ->
                 Text(
-                    text = "${total.subjectId.subjectName(subjectOptions)}: ${total.totalCounted.minutesLabel()} " +
-                        "(${total.sessionCount} session${if (total.sessionCount == 1) "" else "s"})",
+                    text =
+                        "${total.subjectId.subjectName(subjectOptions)}: ${total.totalCounted.minutesLabel()} " +
+                            "(${total.sessionCount} session${if (total.sessionCount == 1) "" else "s"})",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -288,7 +293,7 @@ private fun HourOfDaySection(hourOfDayTotals: List<HourOfDayTotal>) {
                 Modifier.clearAndSetSemantics {
                     contentDescription =
                         "Time-of-day heatmap: " +
-                            hourOfDayTotals.joinToString { "${it.hourOfDay}:00, ${it.totalCounted.minutesLabel()}" }
+                        hourOfDayTotals.joinToString { "${it.hourOfDay}:00, ${it.totalCounted.minutesLabel()}" }
                 },
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
         ) {
@@ -307,8 +312,9 @@ private fun HourOfDaySection(hourOfDayTotals: List<HourOfDayTotal>) {
         Column(modifier = Modifier.padding(top = MaterialTheme.spacing.small)) {
             hourOfDayTotals.filter { it.sessionCount > 0 }.forEach { bucket ->
                 Text(
-                    text = "${bucket.hourOfDay}:00: ${bucket.totalCounted.minutesLabel()} " +
-                        "(${bucket.sessionCount} session${if (bucket.sessionCount == 1) "" else "s"})",
+                    text =
+                        "${bucket.hourOfDay}:00: ${bucket.totalCounted.minutesLabel()} " +
+                            "(${bucket.sessionCount} session${if (bucket.sessionCount == 1) "" else "s"})",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -359,7 +365,7 @@ private fun StatsBucketSize.label(): String =
 private fun String?.subjectName(subjects: List<Subject>): String =
     this?.let { id -> subjects.firstOrNull { it.id == id }?.name } ?: "No subject"
 
-private fun Duration.minutesLabel(): String = "${inWholeMinutes} min"
+private fun Duration.minutesLabel(): String = "$inWholeMinutes min"
 
 private fun Instant.toDateLabel(): String = toLocalDateTime(TimeZone.currentSystemDefault()).date.toString()
 

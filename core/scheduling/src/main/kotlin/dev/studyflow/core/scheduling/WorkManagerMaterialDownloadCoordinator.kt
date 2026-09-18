@@ -25,8 +25,7 @@ public class WorkManagerMaterialDownloadCoordinator(
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .setRequiresBatteryNotLow(true)
                         .build(),
-                )
-                .build()
+                ).build()
         workManager.enqueueUniqueWork(materialDownloadWorkName(materialId), ExistingWorkPolicy.KEEP, request)
     }
 

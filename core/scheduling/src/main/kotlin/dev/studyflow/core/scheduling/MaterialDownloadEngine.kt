@@ -140,5 +140,4 @@ public fun interface DownloadTransport {
     ): DownloadResult
 }
 
-private suspend fun MaterialRepository.observeByIdOnce(materialId: String): Material? =
-    observeById(materialId).first()
+private suspend fun MaterialRepository.observeByIdOnce(materialId: String): Material? = observeById(materialId).first()

@@ -15,14 +15,14 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
-import kotlin.coroutines.cancellation.CancellationException
 import javax.inject.Inject
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
  * Everything the material detail screen renders for one catalogue entry (issue #37).
@@ -176,27 +176,32 @@ public class MaterialDetailViewModel
             previewSource.value = MaterialPreviewSourceState()
             if (material == null) return
 
-            material.localPath?.let { localPath ->
-                previewSource.value = MaterialPreviewSourceState(source = MaterialPreviewSource.Local(localPath))
-                return
-            }
-
+            val localPath = material.localPath
             val remoteKey = material.remoteKey
-            if (remoteKey == null) {
-                previewSource.value =
-                    MaterialPreviewSourceState(message = "No cached copy is available on this device.")
-                return
-            }
+            when {
+                localPath != null -> {
+                    previewSource.value = MaterialPreviewSourceState(source = MaterialPreviewSource.Local(localPath))
+                }
 
-            previewSource.value = MaterialPreviewSourceState(loading = true)
-            try {
-                val url = objectStore.getDownloadUrl(ObjectKey(remoteKey)).url
-                previewSource.value = MaterialPreviewSourceState(source = MaterialPreviewSource.Remote(url))
-            } catch (exception: CancellationException) {
-                throw exception
-            } catch (_: Throwable) {
-                previewSource.value =
-                    MaterialPreviewSourceState(message = "Preview is unavailable until the file can be fetched.")
+                remoteKey == null -> {
+                    previewSource.value =
+                        MaterialPreviewSourceState(message = "No cached copy is available on this device.")
+                }
+
+                else -> {
+                    previewSource.value = MaterialPreviewSourceState(loading = true)
+                    try {
+                        val url = objectStore.getDownloadUrl(ObjectKey(remoteKey)).url
+                        previewSource.value = MaterialPreviewSourceState(source = MaterialPreviewSource.Remote(url))
+                    } catch (exception: CancellationException) {
+                        throw exception
+                    } catch (_: Throwable) {
+                        previewSource.value =
+                            MaterialPreviewSourceState(
+                                message = "Preview is unavailable until the file can be fetched.",
+                            )
+                    }
+                }
             }
         }
 

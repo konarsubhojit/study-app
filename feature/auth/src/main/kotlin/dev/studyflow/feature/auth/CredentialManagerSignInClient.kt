@@ -71,9 +71,16 @@ public sealed interface SignInCredential {
 
 private fun androidx.credentials.Credential.toSignInCredential(): SignInCredential =
     when (this) {
-        is PublicKeyCredential -> SignInCredential.Passkey(authenticationResponseJson)
+        is PublicKeyCredential -> {
+            SignInCredential.Passkey(authenticationResponseJson)
+        }
+
         is CustomCredential
-            if type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL ->
+        if type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL -> {
             SignInCredential.GoogleIdToken(GoogleIdTokenCredential.createFrom(data).idToken)
-        else -> error("Unsupported Credential Manager credential type")
+        }
+
+        else -> {
+            error("Unsupported Credential Manager credential type")
+        }
     }

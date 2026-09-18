@@ -255,11 +255,13 @@ public object SyntheticDataFactory {
             val status =
                 when (eventType(eventsPerSession - 1, eventsPerSession)) {
                     SessionEventType.STOPPED -> SessionStatus.STOPPED
+
                     SessionEventType.STARTED,
                     SessionEventType.RESUMED,
                     SessionEventType.FOCUS_RESUMED,
                     SessionEventType.ACTIVITY_CONFIRMED,
                     -> SessionStatus.RUNNING
+
                     SessionEventType.PAUSED, SessionEventType.BREAK_STARTED -> SessionStatus.PAUSED
                 }
             StudySessionEntity(

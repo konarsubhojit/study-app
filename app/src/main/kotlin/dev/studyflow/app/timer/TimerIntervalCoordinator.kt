@@ -29,8 +29,8 @@ import dev.studyflow.core.notifications.StudyFlowNotificationChannel
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.notifications.StudyFlowPendingIntents
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -63,7 +63,10 @@ internal class TimerIntervalCoordinator
             }
         }
 
-        fun handle(intent: Intent, onComplete: () -> Unit) {
+        fun handle(
+            intent: Intent,
+            onComplete: () -> Unit,
+        ) {
             applicationScope.launch {
                 try {
                     when (intent.action) {

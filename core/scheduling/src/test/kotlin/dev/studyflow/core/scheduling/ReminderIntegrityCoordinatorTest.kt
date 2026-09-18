@@ -76,9 +76,8 @@ class ReminderIntegrityCoordinatorTest {
             assertTrue(report.hasAnomaly)
         }
 
-    private suspend fun ReminderIntegrityCoordinator.check(): ReminderIntegrityReport {
-        return reconcile(taskRepository.observeTasks().first())
-    }
+    private suspend fun ReminderIntegrityCoordinator.check(): ReminderIntegrityReport =
+        reconcile(taskRepository.observeTasks().first())
 
     private fun task(
         id: String,

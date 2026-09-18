@@ -49,7 +49,8 @@ public class EncryptedTokenStore(
         // commit() is required (not apply()) so we synchronously verify the write succeeded.
         @SuppressLint("ApplySharedPref")
         val persisted =
-            preferences.edit()
+            preferences
+                .edit()
                 .putString(ACCESS_TOKEN_KEY, tokens.accessToken)
                 .putString(REFRESH_TOKEN_KEY, tokens.refreshToken)
                 .commit()
@@ -76,5 +77,4 @@ public class EncryptedTokenStore(
     }
 }
 
-private fun AuthTokens?.toAuthState(): AuthState =
-    if (this == null) AuthState.LocalOnly else AuthState.SignedIn
+private fun AuthTokens?.toAuthState(): AuthState = if (this == null) AuthState.LocalOnly else AuthState.SignedIn

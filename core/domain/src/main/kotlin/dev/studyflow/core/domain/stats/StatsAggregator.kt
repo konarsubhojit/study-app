@@ -80,8 +80,12 @@ public object StatsAggregator {
         zone: TimeZone,
     ): List<DailySubjectTotal> =
         sessions
-            .groupBy { it.startedAt.toLocalDateTime(zone).date.toString() to it.subjectId }
-            .map { (key, forDay) ->
+            .groupBy {
+                it.startedAt
+                    .toLocalDateTime(zone)
+                    .date
+                    .toString() to it.subjectId
+            }.map { (key, forDay) ->
                 val (day, subjectId) = key
                 DailySubjectTotal(day = day, subjectId = subjectId, totalCounted = forDay.totalCounted())
             }.sortedWith(compareBy({ it.day }, { it.subjectId ?: "" }))
@@ -105,9 +109,11 @@ public object StatsAggregator {
         val truncated =
             when (bucketSize) {
                 StatsBucketSize.DAY -> date
+
                 // DayOfWeek.ordinal is 0 for MONDAY..6 for SUNDAY, so subtracting it walks back to
                 // that week's Monday — an ISO week, matching the history screen's day grouping.
                 StatsBucketSize.WEEK -> date.minus(date.dayOfWeek.ordinal, DateTimeUnit.DAY)
+
                 StatsBucketSize.MONTH -> LocalDate(date.year, date.month, 1)
             }
         return truncated.atStartOfDayIn(zone)

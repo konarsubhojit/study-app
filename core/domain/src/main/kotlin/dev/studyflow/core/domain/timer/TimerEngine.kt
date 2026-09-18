@@ -67,7 +67,10 @@ public object TimerEngine {
 
         val lastSequence = ordered.last().sequence
         return when {
-            fold.stopped -> TimerState.Stopped(sessionId, fold.settled, fold.unverified, lastSequence)
+            fold.stopped -> {
+                TimerState.Stopped(sessionId, fold.settled, fold.unverified, lastSequence)
+            }
+
             fold.openedAt != null -> {
                 TimerState.Running(
                     sessionId = sessionId,
@@ -78,7 +81,10 @@ public object TimerEngine {
                     lastConfirmedAt = fold.lastConfirmedAt ?: fold.openedAt,
                 )
             }
-            else -> TimerState.Paused(sessionId, fold.settled, fold.unverified, lastSequence)
+
+            else -> {
+                TimerState.Paused(sessionId, fold.settled, fold.unverified, lastSequence)
+            }
         }
     }
 
@@ -92,7 +98,10 @@ public object TimerEngine {
     )
 
     /** Applies a single event to [state], returning the updated fold state. */
-    private fun applyEvent(state: FoldState, event: SessionEvent): FoldState =
+    private fun applyEvent(
+        state: FoldState,
+        event: SessionEvent,
+    ): FoldState =
         when (event.type) {
             SessionEventType.STARTED, SessionEventType.RESUMED, SessionEventType.FOCUS_RESUMED -> {
                 if (state.openedAt == null && !state.stopped) {
