@@ -23,10 +23,10 @@ import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
 import dev.studyflow.feature.materials.MaterialDetailRoute
 import dev.studyflow.feature.settings.NotificationSettingsRoute
-import dev.studyflow.feature.tasks.StudyNowDashboardRoute
 import dev.studyflow.feature.tasks.TaskDetailRoute
 import dev.studyflow.feature.tasks.TasksListRoute
 import dev.studyflow.feature.history.HistoryRoute as HistoryScreenRoute
+import dev.studyflow.feature.home.HomeRoute as HomeScreenRoute
 import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
 import dev.studyflow.feature.timer.TimerRoute as TimerScreenRoute
 
@@ -82,10 +82,11 @@ private fun AppNavDisplay(
             entryProvider =
                 entryProvider {
                     entry<HomeRoute> {
-                        StudyNowDashboardRoute(
-                            onStudyNow = { taskId, subjectId ->
-                                backStack.add(TimerRoute(taskId = taskId, subjectId = subjectId))
-                            },
+                        HomeScreenRoute(
+                            onOpenTimer = { backStack.add(TimerRoute(openRunningTimer = true)) },
+                            onOpenTask = { taskId -> backStack.add(TasksRoute(taskId)) },
+                            onOpenMaterial = { materialId -> backStack.add(MaterialsRoute(materialId)) },
+                            onOpenHistory = { backStack.add(HistoryRoute) },
                         )
                     }
                     entry<TimerRoute> { route ->
