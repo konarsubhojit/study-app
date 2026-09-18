@@ -48,6 +48,8 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
+import androidx.core.graphics.createBitmap
+import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.MediaItem
@@ -476,7 +478,7 @@ private fun PdfPage(
             withContext(Dispatchers.Default) {
                 synchronized(document.renderer) {
                     document.renderer.openPage(pageIndex).use { page ->
-                        Bitmap.createBitmap(page.width, page.height, Bitmap.Config.ARGB_8888).also { bitmap ->
+                        createBitmap(page.width, page.height).also { bitmap ->
                             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                         }
                     }
@@ -524,7 +526,7 @@ private fun MaterialPreviewSource.previewModel(): Any =
 private fun MaterialPreviewSource.playerUri(): Uri =
     when (this) {
         is MaterialPreviewSource.Local -> Uri.fromFile(File(uri))
-        is MaterialPreviewSource.Remote -> Uri.parse(uri)
+        is MaterialPreviewSource.Remote -> uri.toUri()
     }
 
 private fun shareLocalMaterial(
