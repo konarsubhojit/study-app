@@ -182,8 +182,11 @@ internal class TimerIntervalCoordinator
         private suspend fun onRunawaySession(intent: Intent) {
             val state = sessionRepository.get().activeState()
             if (state !is TimerState.Running || !state.matchesExpectedOpen(intent)) return
-            val result = sessionRepository.get().reconcile(UUID.randomUUID().toString(), clock.anchor())
-            if (result is SessionCommandResult.Applied) postRunawayPaused(result.state)
+            val result =
+                sessionRepository
+                    .get()
+                    .execute(TimerCommand.Stop, UUID.randomUUID().toString(), intent.requiredAnchor(EXTRA_TRIGGER))
+            if (result is SessionCommandResult.Applied) postRunawayStopped()
         }
 
         private fun postFocusComplete(state: TimerState.Paused) {
@@ -260,7 +263,7 @@ internal class TimerIntervalCoordinator
             )
         }
 
-        private fun postRunawayPaused(state: TimerState) {
+        private fun postRunawayStopped() {
             notifier.post(
                 id = NOTIFICATION_RUNAWAY,
                 channel = StudyFlowNotificationChannel.FOCUS_INTERVALS,
@@ -271,15 +274,13 @@ internal class TimerIntervalCoordinator
                         text = context.getString(R.string.timer_runaway_paused_text),
                         contentIntent = openIntent(),
                         actions =
-                            (state as? TimerState.Paused)?.let {
-                                listOf(
-                                    NotificationAction(
-                                        title = context.getString(R.string.timer_notification_action_open),
-                                        icon = R.drawable.ic_notification,
-                                        intent = openIntent(),
-                                    ),
-                                )
-                            }.orEmpty(),
+                            listOf(
+                                NotificationAction(
+                                    title = context.getString(R.string.timer_notification_action_open),
+                                    icon = R.drawable.ic_notification,
+                                    intent = openIntent(),
+                                ),
+                            ),
                     ),
             )
         }
