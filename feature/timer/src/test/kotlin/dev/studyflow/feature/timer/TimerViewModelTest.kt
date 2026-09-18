@@ -137,6 +137,29 @@ class TimerViewModelTest {
         }
 
     @Test
+    fun `a handled route study request is not replayed`() =
+        runTest(mainDispatcher.dispatcher) {
+            try {
+                val viewModel = viewModel()
+                val request = TimerUiEvent.RouteStudyNowRequested("task-1", "subject-1")
+
+                viewModel.onEvent(request)
+                runCurrent()
+                assertEquals(TimerPhase.RUNNING, viewModel.state.value.phase)
+
+                viewModel.onEvent(TimerUiEvent.StopRequested)
+                runCurrent()
+                assertEquals(TimerPhase.IDLE, viewModel.state.value.phase)
+
+                viewModel.onEvent(request)
+                runCurrent()
+                assertEquals(TimerPhase.IDLE, viewModel.state.value.phase)
+            } finally {
+                stopTickers()
+            }
+        }
+
+    @Test
     fun `pause then resume round-trips back to running without losing settled time`() =
         runTest(mainDispatcher.dispatcher) {
             try {

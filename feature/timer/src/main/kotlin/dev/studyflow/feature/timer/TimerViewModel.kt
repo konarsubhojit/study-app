@@ -82,6 +82,11 @@ public sealed interface TimerUiEvent : UiEvent {
         val subjectId: String?,
     ) : TimerUiEvent
 
+    public data class RouteStudyNowRequested(
+        val taskId: String,
+        val subjectId: String?,
+    ) : TimerUiEvent
+
     public data object PauseRequested : TimerUiEvent
 
     public data object ResumeRequested : TimerUiEvent
@@ -176,8 +181,10 @@ public class TimerViewModel
                     selectedTask = tasks.firstOrNull { it.id == taskId },
                     suggestedTask =
                         tasks
-                            .filter { !it.isCompleted && it.dueAtUtc != null }
-                            .minByOrNull { requireNotNull(it.dueAtUtc) },
+                            .filterNot { it.isCompleted }
+                            .mapNotNull { task -> task.dueAtUtc?.let { dueAt -> dueAt to task } }
+                            .minByOrNull { it.first }
+                            ?.second,
                 )
             }
 
@@ -218,9 +225,14 @@ public class TimerViewModel
                 }
 
                 is TimerUiEvent.StudyNowRequested -> {
-                    draftTaskId.value = event.taskId
-                    draftSubjectId.value = event.subjectId
-                    start()
+                    studyNow(event.taskId, event.subjectId)
+                }
+
+                is TimerUiEvent.RouteStudyNowRequested -> {
+                    if (!routeStudyNowHandled(event.taskId, event.subjectId)) {
+                        markRouteStudyNowHandled(event.taskId, event.subjectId)
+                        studyNow(event.taskId, event.subjectId)
+                    }
                 }
 
                 TimerUiEvent.PauseRequested -> {
@@ -258,6 +270,32 @@ public class TimerViewModel
                     note = draftNote.value.trim().ifBlank { null },
                 ),
             )
+        }
+
+        private fun studyNow(
+            taskId: String,
+            subjectId: String?,
+        ) {
+            draftTaskId.value = taskId
+            draftSubjectId.value = subjectId
+            start()
+        }
+
+        private fun routeStudyNowHandled(
+            taskId: String,
+            subjectId: String?,
+        ): Boolean =
+            savedStateHandle.get<Boolean>(ROUTE_STUDY_NOW_HANDLED_KEY) == true &&
+                savedStateHandle.get<String>(ROUTE_TASK_ID_KEY) == taskId &&
+                savedStateHandle.get<String>(ROUTE_SUBJECT_ID_KEY) == subjectId
+
+        private fun markRouteStudyNowHandled(
+            taskId: String,
+            subjectId: String?,
+        ) {
+            savedStateHandle[ROUTE_STUDY_NOW_HANDLED_KEY] = true
+            savedStateHandle[ROUTE_TASK_ID_KEY] = taskId
+            savedStateHandle[ROUTE_SUBJECT_ID_KEY] = subjectId
         }
 
         private fun execute(command: TimerCommand) {
@@ -303,6 +341,10 @@ public class TimerViewModel
         }
 
         private companion object {
+            const val ROUTE_STUDY_NOW_HANDLED_KEY = "timer.routeStudyNowHandled"
+            const val ROUTE_TASK_ID_KEY = "timer.routeTaskId"
+            const val ROUTE_SUBJECT_ID_KEY = "timer.routeSubjectId"
+
             fun TimerState.toPhase(): TimerPhase =
                 when (this) {
                     TimerState.Idle, is TimerState.Stopped -> TimerPhase.IDLE

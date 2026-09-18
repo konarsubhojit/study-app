@@ -19,9 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
@@ -50,12 +47,8 @@ public fun TimerRoute(
     viewModel: TimerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var studyNowHandled by rememberSaveable(taskId, subjectId) { mutableStateOf(false) }
     LaunchedEffect(taskId, subjectId) {
-        if (taskId != null && !studyNowHandled) {
-            studyNowHandled = true
-            viewModel.onEvent(TimerUiEvent.StudyNowRequested(taskId, subjectId))
-        }
+        taskId?.let { viewModel.onEvent(TimerUiEvent.RouteStudyNowRequested(it, subjectId)) }
     }
     TimerScreen(state = state, onEvent = viewModel::onEvent, modifier = modifier)
 }
