@@ -160,5 +160,6 @@ internal fun HistoryRejection.toUserMessage(): UserMessage =
         HistoryRejection.SPLIT_POINT_OUT_OF_BOUNDS -> UserMessage.Validation
         HistoryRejection.MERGE_REQUIRES_AT_LEAST_TWO_SESSIONS -> UserMessage.Validation
         HistoryRejection.MERGE_SUBJECT_MISMATCH -> UserMessage.Validation
+        HistoryRejection.MERGE_TASK_MISMATCH -> UserMessage.Validation
         HistoryRejection.MERGE_DEVICE_MISMATCH -> UserMessage.Validation
     }

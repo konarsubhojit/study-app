@@ -44,14 +44,14 @@ import dev.studyflow.core.model.Subject
  */
 @Composable
 public fun TimerRoute(
+    modifier: Modifier = Modifier,
     taskId: String? = null,
     subjectId: String? = null,
-    modifier: Modifier = Modifier,
     viewModel: TimerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var studyNowHandled by rememberSaveable(taskId) { mutableStateOf(false) }
-    LaunchedEffect(taskId, subjectId, studyNowHandled) {
+    LaunchedEffect(taskId, subjectId) {
         if (taskId != null && !studyNowHandled) {
             studyNowHandled = true
             viewModel.onEvent(TimerUiEvent.StudyNowRequested(taskId, subjectId))

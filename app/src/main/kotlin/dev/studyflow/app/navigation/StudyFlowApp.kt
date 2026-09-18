@@ -95,23 +95,7 @@ private fun AppNavDisplay(
                         MaterialsEntry(route = route, backStack = backStack)
                     }
                     entry<TasksRoute> { route ->
-                        if (route.taskId == null) {
-                            TasksListRoute(
-                                onTaskSelect = { taskId ->
-                                    if (backStack.lastOrNull() != TasksRoute(taskId)) {
-                                        backStack.add(TasksRoute(taskId))
-                                    }
-                                },
-                            )
-                        } else {
-                            TaskDetailRoute(
-                                taskId = route.taskId,
-                                onBack = { backStack.removeLastOrNull() },
-                                onStartStudySession = { taskId, subjectId ->
-                                    backStack.add(TimerRoute(taskId = taskId, subjectId = subjectId))
-                                },
-                            )
-                        }
+                        TasksEntry(route = route, backStack = backStack)
                     }
                     entry<SettingsRoute> {
                         NotificationSettingsRoute()
@@ -131,6 +115,30 @@ private fun AppNavDisplay(
                 StudyFlowMotion.popEnter togetherWith StudyFlowMotion.popExit
             },
             sharedTransitionScope = this,
+        )
+    }
+}
+
+@Composable
+private fun TasksEntry(
+    route: TasksRoute,
+    backStack: NavBackStack<NavKey>,
+) {
+    if (route.taskId == null) {
+        TasksListRoute(
+            onTaskSelect = { taskId ->
+                if (backStack.lastOrNull() != TasksRoute(taskId)) {
+                    backStack.add(TasksRoute(taskId))
+                }
+            },
+        )
+    } else {
+        TaskDetailRoute(
+            taskId = route.taskId,
+            onBack = { backStack.removeLastOrNull() },
+            onStartStudySession = { taskId, subjectId ->
+                backStack.add(TimerRoute(taskId = taskId, subjectId = subjectId))
+            },
         )
     }
 }

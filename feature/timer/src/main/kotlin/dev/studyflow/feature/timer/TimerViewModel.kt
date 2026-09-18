@@ -291,7 +291,7 @@ public class TimerViewModel
                 elapsedSeconds = elapsed.counted.inWholeSeconds,
                 hasUnverifiedTime = elapsed.hasUnverifiedTime,
                 subjects = subjects,
-                selectedTask = draft.selectedTask?.takeIf { session == null || it.id == session.taskId },
+                selectedTask = draft.selectedTask.takeIf { session == null },
                 suggestedTask = draft.suggestedTask,
                 selectedSubjectId = session?.subjectId ?: draft.subjectId,
                 note = session?.note ?: draft.note,
