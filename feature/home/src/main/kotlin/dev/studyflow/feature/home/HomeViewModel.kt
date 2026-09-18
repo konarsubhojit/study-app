@@ -62,7 +62,7 @@ public class HomeViewModel
                     activeSession = activeSession,
                     nextTask =
                         tasks
-                            .filter { !it.deleted && !it.isCompleted && it.dueAt != null }
+                            .filter { !it.deleted && !it.isCompleted && it.dueAtUtc != null }
                             .minByOrNull { requireNotNull(it.dueAtUtc) },
                     recentMaterials = materials.filterNot(Material::deleted).take(3),
                 )

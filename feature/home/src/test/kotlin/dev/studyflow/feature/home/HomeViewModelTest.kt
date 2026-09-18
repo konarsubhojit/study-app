@@ -8,12 +8,17 @@ import dev.studyflow.core.testing.data.FakeMaterialRepository
 import dev.studyflow.core.testing.data.FakeSessionRepository
 import dev.studyflow.core.testing.data.FakeTaskRepository
 import dev.studyflow.core.testing.data.TEST_WALL_CLOCK
+import dev.studyflow.core.testing.data.testStudySession
 import dev.studyflow.core.testing.data.testStudyTask
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
+import dev.studyflow.core.model.SessionElapsed
+import dev.studyflow.core.model.SessionStatus
+import kotlin.time.Instant
+import kotlin.time.Duration.Companion.minutes
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
@@ -47,5 +52,42 @@ class HomeViewModelTest {
             advanceUntilIdle()
 
             assertEquals("next", viewModel.state.value.nextTask?.id)
+        }
+
+    @Test
+    fun `focus time and streak use cached sessions`() =
+        runTest(mainDispatcher.dispatcher) {
+            val sessions = FakeSessionRepository()
+            sessions.setSessions(
+                listOf(
+                    testStudySession(
+                        id = "today",
+                        startedAt = TEST_WALL_CLOCK,
+                        endedAt = TEST_WALL_CLOCK,
+                        status = SessionStatus.STOPPED,
+                        elapsed = SessionElapsed(35.minutes),
+                    ),
+                    testStudySession(
+                        id = "yesterday",
+                        startedAt = Instant.parse("2026-02-28T09:00:00Z"),
+                        endedAt = Instant.parse("2026-02-28T09:30:00Z"),
+                        status = SessionStatus.STOPPED,
+                        elapsed = SessionElapsed(30.minutes),
+                    ),
+                ),
+            )
+            val viewModel =
+                HomeViewModel(
+                    SavedStateHandle(),
+                    sessions,
+                    FakeTaskRepository(),
+                    FakeMaterialRepository(),
+                    Clock { TEST_WALL_CLOCK },
+                    TimeZoneProvider { TimeZone.UTC },
+                )
+            advanceUntilIdle()
+
+            assertEquals(35.minutes, viewModel.state.value.focusTime)
+            assertEquals(2, viewModel.state.value.streakDays)
         }
 }

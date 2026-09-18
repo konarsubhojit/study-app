@@ -20,15 +20,19 @@ import kotlin.time.Duration
  */
 public class FakeSessionRepository : SessionRepository {
     public val executedCommands: MutableList<TimerCommand> = mutableListOf()
-    private val activeSession = MutableStateFlow<StudySession?>(null)
+    private val sessions = MutableStateFlow<List<StudySession>>(emptyList())
 
-    override fun observeActiveSession(): Flow<StudySession?> = activeSession
+    override fun observeActiveSession(): Flow<StudySession?> = sessions.map { list -> list.firstOrNull(StudySession::isActive) }
 
-    override fun observeSession(sessionId: String): Flow<StudySession?> = activeSession
+    override fun observeSession(sessionId: String): Flow<StudySession?> = sessions.map { list -> list.firstOrNull { it.id == sessionId } }
 
-    override fun observeSessions(): Flow<List<StudySession>> = activeSession.map { listOfNotNull(it) }
+    override fun observeSessions(): Flow<List<StudySession>> = sessions
 
     override suspend fun activeState(): TimerState = TimerState.Idle
+
+    public fun setSessions(values: List<StudySession>) {
+        sessions.value = values
+    }
 
     override suspend fun execute(
         command: TimerCommand,
@@ -53,10 +57,10 @@ public class FakeSessionRepository : SessionRepository {
                 }
 
                 else -> {
-                    activeSession.value
+                    sessions.value.firstOrNull(StudySession::isActive)
                 }
             } ?: return SessionCommandResult.Unchanged(TimerState.Idle)
-        activeSession.value = session
+        sessions.value = sessions.value.filterNot { it.id == session.id } + session
         return SessionCommandResult.Applied(
             session = session,
             state = TimerState.Running(session.id, Duration.ZERO, Duration.ZERO, lastSequence = 0, openedAt = anchor),
