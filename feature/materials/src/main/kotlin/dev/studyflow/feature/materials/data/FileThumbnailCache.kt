@@ -9,6 +9,7 @@ import dev.studyflow.core.domain.materials.thumbnails.ThumbnailKey
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.util.Base64
 import kotlin.time.Instant
 
 /**
@@ -78,6 +79,8 @@ public class FileThumbnailCache(
 
     private fun trimToQuota() {
         val files = directory().listFiles()?.filter { file -> file.isFile }.orEmpty()
+        // Eviction only needs sizes and access times, so the on-disk name stands in for the key
+        // here rather than being decoded back into one.
         val entries =
             files.map { file ->
                 ThumbnailCacheEntry(
@@ -95,16 +98,16 @@ public class FileThumbnailCache(
     /**
      * The file a key maps to.
      *
-     * The name is filtered rather than trusted: a key is derived from a digest today, but a cache
-     * that turns an arbitrary string into a path is one refactor away from writing outside its own
-     * directory.
+     * The key is encoded rather than filtered: replacing "unsafe" characters would map two distinct
+     * keys onto one file, and a grid that serves one material's thumbnail for another is worse than
+     * a long file name. URL-safe Base64 is injective and uses only characters a file name can hold,
+     * so a key can never escape this directory either.
      */
-    private fun fileFor(key: ThumbnailKey): File {
-        val safeName = key.value.map { character -> if (character in SAFE_NAME_CHARACTERS) character else '_' }
-        return File(directory().apply { mkdirs() }, safeName.joinToString(separator = ""))
-    }
+    private fun fileFor(key: ThumbnailKey): File = File(directory().apply { mkdirs() }, key.value.toFileName())
+
+    private fun String.toFileName(): String = ENCODER.encodeToString(toByteArray())
 
     private companion object {
-        val SAFE_NAME_CHARACTERS: Set<Char> = (('a'..'z') + ('A'..'Z') + ('0'..'9') + listOf('@', '-', '_')).toSet()
+        val ENCODER: Base64.Encoder = Base64.getUrlEncoder().withoutPadding()
     }
 }

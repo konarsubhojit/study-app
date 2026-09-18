@@ -76,7 +76,7 @@ class FileThumbnailCacheTest {
 
             cache.write(key, byteArrayOf(9))
 
-            assertArrayEquals(byteArrayOf(9), cache.read(key), "a sanitised name still round-trips")
+            assertArrayEquals(byteArrayOf(9), cache.read(key), "an encoded name still round-trips")
             assertTrue(
                 cacheDir.listFiles().orEmpty().isNotEmpty(),
                 "the bytes stay inside the cache directory the caller chose",
@@ -85,6 +85,22 @@ class FileThumbnailCacheTest {
                 File(cacheDir.parentFile?.parentFile, "escaped").exists(),
                 "a key must not be able to traverse out of the cache",
             )
+        }
+
+    @Test
+    fun `two keys that differ only in punctuation stay two thumbnails`() =
+        runTest {
+            val cache = cache()
+
+            cache.write(ThumbnailKey("a/b@256"), byteArrayOf(1))
+            cache.write(ThumbnailKey("a.b@256"), byteArrayOf(2))
+
+            assertArrayEquals(
+                byteArrayOf(1),
+                cache.read(ThumbnailKey("a/b@256")),
+                "one material's cell must never be served another's thumbnail",
+            )
+            assertArrayEquals(byteArrayOf(2), cache.read(ThumbnailKey("a.b@256")))
         }
 
     @Test

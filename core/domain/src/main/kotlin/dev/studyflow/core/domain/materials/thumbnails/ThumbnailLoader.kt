@@ -53,7 +53,4 @@ public class ThumbnailLoader(
             cache.write(key, rendered)
             rendered
         }
-
-    /** The colours to draw while [load] is still running, or when it returned `null`. */
-    public fun placeholderFor(material: Material): ThumbnailPlaceholder = ThumbnailPlaceholder.of(material.contentHash)
 }

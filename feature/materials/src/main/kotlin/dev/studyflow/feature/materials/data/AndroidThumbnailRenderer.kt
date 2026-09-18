@@ -22,6 +22,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
 import java.net.URI
+import java.net.URISyntaxException
 
 /**
  * The on-device half of the thumbnail pipeline (issue #42).
@@ -47,36 +48,10 @@ public class AndroidThumbnailRenderer(
     ): ByteArray? =
         withContext(dispatcherProvider.default) {
             if (!supports(source.kind)) return@withContext null
-            val file = source.localPath.toLocalFile()
-            if (!file.isFile) return@withContext null
+            val file = source.localPath.toLocalFileOrNull()
+            if (file == null || !file.isFile) return@withContext null
 
-            val bitmap =
-                try {
-                    when (source.kind) {
-                        MaterialKind.IMAGE -> decodeImage(file, spec)
-                        MaterialKind.VIDEO -> decodeVideoFrame(file, spec)
-                        MaterialKind.PDF -> decodePdfCover(file, spec)
-                        else -> null
-                    }
-                } catch (cancellation: CancellationException) {
-                    // `CancellationException` is an `IllegalStateException`; a scroll must cancel
-                    // the render rather than be mistaken for an undecodable file.
-                    throw cancellation
-                } catch (_: IOException) {
-                    null
-                } catch (_: SecurityException) {
-                    null
-                } catch (_: IllegalStateException) {
-                    // What `MediaMetadataRetriever` and `PdfRenderer` throw for a file they cannot
-                    // parse. A file the device cannot render is a placeholder, never a crash.
-                    null
-                } catch (_: IllegalArgumentException) {
-                    null
-                } catch (_: OutOfMemoryError) {
-                    // A pathological source can still exhaust the heap mid-decode; losing one
-                    // thumbnail is survivable, taking the process down with it is not.
-                    null
-                } ?: return@withContext null
+            val bitmap = decode(file, source.kind, spec) ?: return@withContext null
 
             currentCoroutineContext().ensureActive()
             try {
@@ -84,6 +59,43 @@ public class AndroidThumbnailRenderer(
             } finally {
                 bitmap.recycle()
             }
+        }
+
+    /**
+     * The decoded bitmap, or `null` for a file this device cannot read.
+     *
+     * Every decoder failure is a placeholder in one grid cell rather than a crash, so the whole
+     * family of "this file is not what it claims to be" throwables is caught here.
+     */
+    private fun decode(
+        file: File,
+        kind: MaterialKind,
+        spec: ThumbnailSpec,
+    ): Bitmap? =
+        try {
+            when (kind) {
+                MaterialKind.IMAGE -> decodeImage(file, spec)
+                MaterialKind.VIDEO -> decodeVideoFrame(file, spec)
+                MaterialKind.PDF -> decodePdfCover(file, spec)
+                else -> null
+            }
+        } catch (cancellation: CancellationException) {
+            // `CancellationException` is an `IllegalStateException`; a scroll must cancel the
+            // render rather than be mistaken for an undecodable file.
+            throw cancellation
+        } catch (_: IOException) {
+            null
+        } catch (_: SecurityException) {
+            null
+        } catch (_: IllegalStateException) {
+            // What `MediaMetadataRetriever` and `PdfRenderer` throw for a file they cannot parse.
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        } catch (_: OutOfMemoryError) {
+            // A pathological source can still exhaust the heap mid-decode; losing one thumbnail is
+            // survivable, taking the process down with it is not.
+            null
         }
 
     /** Reads the bounds first, then decodes at the smallest power-of-two sample that covers [spec]. */
@@ -174,7 +186,20 @@ public class AndroidThumbnailRenderer(
         return sampleSize
     }
 
-    private fun String.toLocalFile(): File = if (startsWith("file:")) File(URI(this)) else File(this)
+    /**
+     * The local file behind a path, or `null` when the path is not one.
+     *
+     * A malformed or opaque `file:` URI is a catalogue row this device cannot render — a
+     * placeholder in one cell — rather than an exception thrown out of a scrolling grid.
+     */
+    private fun String.toLocalFileOrNull(): File? =
+        try {
+            if (startsWith("file:")) File(URI(this)) else File(this)
+        } catch (_: URISyntaxException) {
+            null
+        } catch (_: IllegalArgumentException) {
+            null
+        }
 
     private companion object {
         /** What this device can rasterise without asking the server (issue #7) for help. */

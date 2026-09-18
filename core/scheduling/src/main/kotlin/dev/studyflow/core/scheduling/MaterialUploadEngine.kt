@@ -63,16 +63,19 @@ public class MaterialUploadEngine(
         // observed. Nothing to resend, and re-uploading would waste the user's data for no reason.
         if (material.sync == SyncState.Synced) return UploadOutcome.Synced
 
+        // The transfer rewrites the row as parts are acknowledged, so a failure has to be recorded
+        // against the newest snapshot rather than the one this function started with.
+        var latest = material
         return try {
-            relinkIfAlreadyStored(material) ?: transfer(material)
+            relinkIfAlreadyStored(material) ?: transfer(material) { snapshot -> latest = snapshot }
         } catch (exception: ObjectStoreException) {
             val reason = exception.message ?: exception::class.simpleName.orEmpty()
-            material.fail(reason, exception.retryable)
+            latest.fail(reason, exception.retryable)
             if (exception.retryable) UploadOutcome.Retryable(reason) else UploadOutcome.Permanent(reason)
         } catch (exception: IOException) {
             // The local staging copy is gone or unreadable; resending the same bytes cannot help.
             val reason = "local file unreadable: ${exception.message}"
-            material.fail(reason, retryable = false)
+            latest.fail(reason, retryable = false)
             UploadOutcome.Permanent(reason)
         }
     }
@@ -95,9 +98,17 @@ public class MaterialUploadEngine(
         return UploadOutcome.Synced
     }
 
-    /** The transfer itself: everything the store does not already have, part by part. */
+    /**
+     * The transfer itself: everything the store does not already have, part by part.
+     *
+     * @param onSnapshot receives every rewritten copy of the material, so a caller that has to
+     *  record a failure does so against the latest row rather than a stale one.
+     */
     @Suppress("ReturnCount")
-    private suspend fun transfer(material: Material): UploadOutcome {
+    private suspend fun transfer(
+        material: Material,
+        onSnapshot: (Material) -> Unit,
+    ): UploadOutcome {
         var current = material
         val materialId = material.id
         val localPath = current.localPath
@@ -114,7 +125,7 @@ public class MaterialUploadEngine(
         val signedPartsByNumber = session.parts.associateBy { it.number }
 
         val completed = uploadProgressStore.completedParts(materialId).associateBy { it.number }.toMutableMap()
-        current = current.markUploading(plan, completed.values)
+        current = current.markUploading(plan, completed.values).also(onSnapshot)
 
         if (!plan.isComplete(completed.keys)) {
             val remaining = plan.remaining(completed.keys)
@@ -134,7 +145,7 @@ public class MaterialUploadEngine(
                 completed[completedPart.number] = completedPart
                 val isLastPart = index == remaining.lastIndex
                 if (isLastPart || (index + 1) % PROGRESS_SAVE_INTERVAL_PARTS == 0) {
-                    current = current.markUploading(plan, completed.values)
+                    current = current.markUploading(plan, completed.values).also(onSnapshot)
                 }
                 onProgress(plan.uploadedBytes(completed.keys), plan.totalBytes)
             }
