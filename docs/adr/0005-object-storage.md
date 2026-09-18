@@ -53,6 +53,16 @@ data loss, not cache pressure. When the budget cannot be met without breaking on
 `EvictionPlan.shortfallBytes` says so and the UI asks the user, rather than the app quietly
 exceeding its budget or quietly destroying a file.
 
+**Browsing reads thumbnails, never originals.** The catalogue grid draws a small bitmap rendered on
+the device — the image itself, a video's first sync frame, a PDF's first page — cached under a key
+derived from the file's SHA-256 (`<digest>@<edge>`), so two catalogue rows holding the same bytes
+are rendered once. That cache is separate from the material cache and has its own small quota:
+thumbnails are always regenerable, so unlike an original they can all be evicted freely. Generation
+runs off the main thread and is cancelled when a cell scrolls away, and a deterministic
+digest-derived placeholder is drawn until there is a bitmap — cheaper than a stored blur-hash, and
+stable across recompositions. Formats no device can rasterise fall back to a server-rendered
+thumbnail under `thumbnails/<digest>/<edge>`, requested at upload completion (#7).
+
 **Previewers are per type**, with Office formats handed to installed viewers via intents rather than
 reimplemented, and an optional Keystore-backed AES-GCM vault for material the user marks private.
 
@@ -74,7 +84,9 @@ is provider-agnostic, so switching later is a data-layer change rather than an a
 ## Consequences
 
 - An interrupted 700 MB upload costs one part, not the whole file.
-- Duplicate uploads cost nothing in storage or egress.
+- Duplicate uploads cost nothing in storage or egress: the key is the digest, so an upload whose
+  object the store already holds is re-linked after one `stat` instead of being sent again.
+- Browsing a catalogue of hundred-megabyte recordings costs kilobytes: only thumbnails are read.
 - No cloud credential ever ships in the APK.
 - Everything works offline; the network is an optimisation, not a prerequisite.
 - The cost is a BFF to build and operate, and a client upload path with more moving parts than a

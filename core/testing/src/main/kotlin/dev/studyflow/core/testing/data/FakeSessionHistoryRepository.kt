@@ -12,7 +12,11 @@ import dev.studyflow.core.domain.session.SessionHistoryCommandResult
 import dev.studyflow.core.domain.session.SessionHistoryEditor
 import dev.studyflow.core.domain.session.SessionHistoryFilter
 import dev.studyflow.core.domain.session.SessionHistoryRepository
+import dev.studyflow.core.domain.session.TaskStudyTime
 import dev.studyflow.core.model.StudySession
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.toLocalDateTime
 import kotlin.time.Duration
@@ -30,7 +34,7 @@ import kotlin.time.Instant
 public class FakeSessionHistoryRepository(
     seed: List<StudySession> = emptyList(),
 ) : SessionHistoryRepository {
-    private val sessions: MutableMap<String, StudySession> = seed.associateBy { it.id }.toMutableMap()
+    private val sessions = MutableStateFlow(seed.associateBy { it.id })
 
     /** Every correction ever applied, in application order, for assertions in tests. */
     public val corrections: MutableList<SessionCorrection> = mutableListOf()
@@ -38,9 +42,27 @@ public class FakeSessionHistoryRepository(
     /** Set by a test to force the next command to fail as [SessionHistoryCommandResult.Failed]. */
     public var failNext: Boolean = false
 
+    override fun observeTaskStudyTime(
+        taskId: String,
+        subjectId: String?,
+    ): Flow<TaskStudyTime> =
+        sessions.map { values ->
+            val visible = values.values.filterNot(StudySession::deleted)
+            TaskStudyTime(
+                task =
+                    visible
+                        .filter { it.taskId == taskId }
+                        .fold(Duration.ZERO) { total, session -> total + session.elapsed.counted },
+                subject =
+                    visible
+                        .filter { subjectId != null && it.subjectId == subjectId }
+                        .fold(Duration.ZERO) { total, session -> total + session.elapsed.counted },
+            )
+        }
+
     override fun historyPagingSource(filter: SessionHistoryFilter): PagingSource<Int, StudySession> =
         FakeHistoryPagingSource {
-            sessions.values
+            sessions.value.values
                 .filter { !it.deleted }
                 .filter { filter.subjectId == null || it.subjectId == filter.subjectId }
                 .filter { session -> filter.from?.let { session.startedAt >= it } ?: true }
@@ -161,10 +183,10 @@ public class FakeSessionHistoryRepository(
             failNext = false
             return SessionHistoryCommandResult.Failed(DomainError.Unknown)
         }
-        val loaded = sessionIds.distinct().mapNotNull { id -> sessions[id]?.let { id to it } }.toMap()
+        val loaded = sessionIds.distinct().mapNotNull { id -> sessions.value[id]?.let { id to it } }.toMap()
         return when (val result = SessionHistoryEditor.execute(command, loaded, correctionId, at)) {
             is HistoryEditResult.Applied -> {
-                result.sessions.forEach { sessions[it.id] = it }
+                sessions.value = sessions.value + result.sessions.associateBy(StudySession::id)
                 corrections += result.correction
                 SessionHistoryCommandResult.Applied(result.sessions, result.correction)
             }

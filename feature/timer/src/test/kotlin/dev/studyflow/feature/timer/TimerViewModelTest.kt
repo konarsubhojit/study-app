@@ -18,16 +18,20 @@ import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.TimeAnchor
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.data.FakeSubjectRepository
+import dev.studyflow.core.testing.data.FakeTaskRepository
+import dev.studyflow.core.testing.data.testStudyTask
 import dev.studyflow.core.testing.data.testSubject
 import dev.studyflow.core.testing.time.FakeDevice
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.datetime.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -58,6 +62,7 @@ class TimerViewModelTest {
     private val device = FakeDevice()
     private val sessionRepository = InMemorySessionRepository()
     private val subjectRepository = FakeSubjectRepository()
+    private val taskRepository = FakeTaskRepository()
 
     private val viewModels = mutableListOf<TimerViewModel>()
 
@@ -96,6 +101,59 @@ class TimerViewModelTest {
                     assertEquals("Chapter 4 exercises", running.note)
                     cancelAndIgnoreRemainingEvents()
                 }
+            } finally {
+                stopTickers()
+            }
+        }
+
+    @Test
+    fun `study now suggests the next due task and attributes the session to it`() =
+        runTest(mainDispatcher.dispatcher) {
+            try {
+                taskRepository.save(
+                    testStudyTask(
+                        id = "task-1",
+                        subjectId = "subject-1",
+                        dueAt = LocalDateTime(2026, 3, 1, 10, 0),
+                    ),
+                )
+                val viewModel = viewModel()
+                runCurrent()
+
+                assertEquals(
+                    "task-1",
+                    viewModel.state.value.suggestedTask
+                        ?.id,
+                )
+                viewModel.onEvent(TimerUiEvent.StudyNowRequested("task-1", "subject-1"))
+                runCurrent()
+
+                val session = sessionRepository.observeActiveSession().first()
+                assertEquals("task-1", session?.taskId)
+                assertEquals("subject-1", session?.subjectId)
+            } finally {
+                stopTickers()
+            }
+        }
+
+    @Test
+    fun `a handled route study request is not replayed`() =
+        runTest(mainDispatcher.dispatcher) {
+            try {
+                val viewModel = viewModel()
+                val request = TimerUiEvent.RouteStudyNowRequested("task-1", "subject-1")
+
+                viewModel.onEvent(request)
+                runCurrent()
+                assertEquals(TimerPhase.RUNNING, viewModel.state.value.phase)
+
+                viewModel.onEvent(TimerUiEvent.StopRequested)
+                runCurrent()
+                assertEquals(TimerPhase.IDLE, viewModel.state.value.phase)
+
+                viewModel.onEvent(request)
+                runCurrent()
+                assertEquals(TimerPhase.IDLE, viewModel.state.value.phase)
             } finally {
                 stopTickers()
             }
@@ -245,6 +303,7 @@ class TimerViewModelTest {
             savedStateHandle = SavedStateHandle(),
             sessionRepository = sessionRepository,
             subjectRepository = subjectRepository,
+            taskRepository = taskRepository,
             anchoredClock = device,
         ).also { viewModels += it }
 
@@ -327,6 +386,7 @@ private class InMemorySessionRepository : SessionRepository {
                 SessionDescriptor(
                     id = sessionId,
                     deviceId = "device-1",
+                    taskId = taskId,
                     subjectId = subjectId,
                     note = note,
                 )

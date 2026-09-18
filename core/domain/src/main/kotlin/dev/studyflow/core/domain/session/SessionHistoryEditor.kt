@@ -98,6 +98,9 @@ public enum class HistoryRejection {
     /** Merged sessions must share a subject, so the merged total is not attributed to the wrong one. */
     MERGE_SUBJECT_MISMATCH,
 
+    /** Merged sessions must share a task, so task totals retain their original attribution. */
+    MERGE_TASK_MISMATCH,
+
     /** Merged sessions must belong to the same device, the scope timing anchors are comparable within. */
     MERGE_DEVICE_MISMATCH,
     NOTHING_TO_UNDO,
@@ -271,6 +274,7 @@ public object SessionHistoryEditor {
         val second =
             StudySession(
                 id = command.newSessionId,
+                taskId = session.taskId,
                 subjectId = session.subjectId,
                 note = session.note,
                 startedAt = command.at,
@@ -315,6 +319,9 @@ public object SessionHistoryEditor {
         }
         if (resolved.map(StudySession::subjectId).distinct().size > 1) {
             return HistoryEditResult.Rejected(HistoryRejection.MERGE_SUBJECT_MISMATCH)
+        }
+        if (resolved.map(StudySession::taskId).distinct().size > 1) {
+            return HistoryEditResult.Rejected(HistoryRejection.MERGE_TASK_MISMATCH)
         }
         if (resolved.map(StudySession::deviceId).distinct().size > 1) {
             return HistoryEditResult.Rejected(HistoryRejection.MERGE_DEVICE_MISMATCH)

@@ -2,6 +2,7 @@ package dev.studyflow.core.storage
 
 import dev.studyflow.core.domain.materials.UploadPart
 import dev.studyflow.core.domain.materials.UploadPlanner
+import dev.studyflow.core.domain.materials.thumbnails.ThumbnailSpec
 import dev.studyflow.core.model.ContentHash
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertThrows
@@ -24,6 +25,13 @@ class ObjectStoreModelsTest {
         val hash = ContentHash("a".repeat(64))
 
         assertEquals(ObjectKey("materials/${hash.hex}"), ObjectKey.ofMaterial(hash))
+    }
+
+    @Test
+    fun `a thumbnail's key is derived from the original's digest and its size`() {
+        val hash = ContentHash("a".repeat(64))
+
+        assertEquals(ObjectKey("thumbnails/${hash.hex}/256"), ObjectKey.ofThumbnail(hash, ThumbnailSpec.GRID))
     }
 
     @Test

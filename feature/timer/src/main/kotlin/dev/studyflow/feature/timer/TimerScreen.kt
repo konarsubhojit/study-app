@@ -17,6 +17,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -41,9 +42,14 @@ import dev.studyflow.core.model.Subject
 @Composable
 public fun TimerRoute(
     modifier: Modifier = Modifier,
+    taskId: String? = null,
+    subjectId: String? = null,
     viewModel: TimerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    LaunchedEffect(taskId, subjectId) {
+        taskId?.let { viewModel.onEvent(TimerUiEvent.RouteStudyNowRequested(it, subjectId)) }
+    }
     TimerScreen(state = state, onEvent = viewModel::onEvent, modifier = modifier)
 }
 
@@ -79,11 +85,29 @@ public fun TimerScreen(
             if (state.hasUnverifiedTime) {
                 UnverifiedTimeNotice()
             }
+            StudyTaskContext(state = state, onEvent = onEvent)
             SubjectPicker(state = state, onEvent = onEvent)
             NotesField(state = state, onEvent = onEvent)
         }
 
         BottomControls(state = state, onEvent = onEvent)
+    }
+}
+
+@Composable
+private fun StudyTaskContext(
+    state: TimerUiState,
+    onEvent: (TimerUiEvent) -> Unit,
+) {
+    if (state.phase != TimerPhase.IDLE) return
+    state.selectedTask?.let {
+        Text(text = "Studying now: ${it.title}", style = MaterialTheme.typography.titleMedium)
+        return
+    }
+    state.suggestedTask?.let { task ->
+        Button(onClick = { onEvent(TimerUiEvent.StudyNowRequested(task.id, task.subjectId)) }) {
+            Text(text = "Study now: ${task.title}")
+        }
     }
 }
 

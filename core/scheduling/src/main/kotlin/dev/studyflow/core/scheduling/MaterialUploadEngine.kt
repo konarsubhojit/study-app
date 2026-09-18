@@ -8,6 +8,7 @@ import dev.studyflow.core.domain.materials.UploadPlanner
 import dev.studyflow.core.domain.materials.UploadProgressStore
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStore
 import dev.studyflow.core.storage.ObjectStoreException
 import dev.studyflow.core.storage.UploadRequest
@@ -56,12 +57,60 @@ public class MaterialUploadEngine(
     private val onProgress: suspend (uploadedBytes: Long, totalBytes: Long) -> Unit = { _, _ -> },
 ) {
     public suspend fun upload(materialId: String): UploadOutcome {
-        var current = materialRepository.observeById(materialId).first() ?: return UploadOutcome.MaterialMissing
+        val material = materialRepository.observeById(materialId).first() ?: return UploadOutcome.MaterialMissing
 
         // Already synced — most likely a second run queued before the first one's success was
         // observed. Nothing to resend, and re-uploading would waste the user's data for no reason.
-        if (current.sync == SyncState.Synced) return UploadOutcome.Synced
+        if (material.sync == SyncState.Synced) return UploadOutcome.Synced
 
+        // The transfer rewrites the row as parts are acknowledged, so a failure has to be recorded
+        // against the newest snapshot rather than the one this function started with.
+        var latest = material
+        return try {
+            relinkIfAlreadyStored(material) ?: transfer(material) { snapshot -> latest = snapshot }
+        } catch (exception: ObjectStoreException) {
+            val reason = exception.message ?: exception::class.simpleName.orEmpty()
+            latest.fail(reason, exception.retryable)
+            if (exception.retryable) UploadOutcome.Retryable(reason) else UploadOutcome.Permanent(reason)
+        } catch (exception: IOException) {
+            // The local staging copy is gone or unreadable; resending the same bytes cannot help.
+            val reason = "local file unreadable: ${exception.message}"
+            latest.fail(reason, retryable = false)
+            UploadOutcome.Permanent(reason)
+        }
+    }
+
+    /**
+     * Re-links [material] to bytes the store already holds, or `null` when they have to be sent.
+     *
+     * The key *is* the digest, so "has anyone already uploaded this file?" is one cheap `stat`
+     * rather than a transfer: a slide deck the user imported on another device, shared into the app
+     * twice, or whose upload died between `completeUpload` and the catalogue write costs no storage
+     * and no bandwidth the second time round (issue #42). The size is compared as well, so a
+     * truncated or partially written object is uploaded properly instead of being adopted.
+     */
+    private suspend fun relinkIfAlreadyStored(material: Material): UploadOutcome? {
+        val stored = objectStore.stat(ObjectKey.ofMaterial(material.contentHash)) ?: return null
+        if (stored.sizeBytes != material.sizeBytes) return null
+
+        materialRepository.save(material.copy(sync = SyncState.Synced, remoteKey = stored.key.value))
+        uploadProgressStore.clear(material.id)
+        return UploadOutcome.Synced
+    }
+
+    /**
+     * The transfer itself: everything the store does not already have, part by part.
+     *
+     * @param onSnapshot receives every rewritten copy of the material, so a caller that has to
+     *  record a failure does so against the latest row rather than a stale one.
+     */
+    @Suppress("ReturnCount")
+    private suspend fun transfer(
+        material: Material,
+        onSnapshot: (Material) -> Unit,
+    ): UploadOutcome {
+        var current = material
+        val materialId = material.id
         val localPath = current.localPath
         if (localPath == null) {
             val reason = "material has no local file to upload"
@@ -71,58 +120,47 @@ public class MaterialUploadEngine(
 
         val plan = UploadPlanner.plan(current.sizeBytes, current.contentHash)
 
-        return try {
-            val request = UploadRequest.ofMaterial(current.contentHash, current.sizeBytes, current.mimeType)
-            val session = objectStore.initUpload(request)
-            val signedPartsByNumber = session.parts.associateBy { it.number }
+        val request = UploadRequest.ofMaterial(current.contentHash, current.sizeBytes, current.mimeType)
+        val session = objectStore.initUpload(request)
+        val signedPartsByNumber = session.parts.associateBy { it.number }
 
-            val completed = uploadProgressStore.completedParts(materialId).associateBy { it.number }.toMutableMap()
-            current = current.markUploading(plan, completed.values)
+        val completed = uploadProgressStore.completedParts(materialId).associateBy { it.number }.toMutableMap()
+        current = current.markUploading(plan, completed.values).also(onSnapshot)
 
-            if (!plan.isComplete(completed.keys)) {
-                val remaining = plan.remaining(completed.keys)
-                remaining.forEachIndexed { index, part ->
-                    val signedPart =
-                        signedPartsByNumber[part.number]
-                            ?: error("upload session for '${current.id}' has no signed URL for part ${part.number}")
-                    val bytes = readPart(localPath, part)
-                    val uploaded = objectStore.uploadPart(session, signedPart, bytes)
-                    val completedPart = CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size)
-                    // Every part is durably recorded the instant it is acknowledged, so a process
-                    // death never loses a receipt. The catalogue row's `Uploading` progress is a UI
-                    // nicety rather than a resume source, so it is only rewritten every few parts —
-                    // a many-thousand-part transfer would otherwise turn one database write per part
-                    // acknowledged into needless churn on the catalogue's observers.
-                    uploadProgressStore.recordCompletedPart(materialId, completedPart)
-                    completed[completedPart.number] = completedPart
-                    val isLastPart = index == remaining.lastIndex
-                    if (isLastPart || (index + 1) % PROGRESS_SAVE_INTERVAL_PARTS == 0) {
-                        current = current.markUploading(plan, completed.values)
-                    }
-                    onProgress(plan.uploadedBytes(completed.keys), plan.totalBytes)
+        if (!plan.isComplete(completed.keys)) {
+            val remaining = plan.remaining(completed.keys)
+            remaining.forEachIndexed { index, part ->
+                val signedPart =
+                    signedPartsByNumber[part.number]
+                        ?: error("upload session for '${current.id}' has no signed URL for part ${part.number}")
+                val bytes = readPart(localPath, part)
+                val uploaded = objectStore.uploadPart(session, signedPart, bytes)
+                val completedPart = CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size)
+                // Every part is durably recorded the instant it is acknowledged, so a process
+                // death never loses a receipt. The catalogue row's `Uploading` progress is a UI
+                // nicety rather than a resume source, so it is only rewritten every few parts —
+                // a many-thousand-part transfer would otherwise turn one database write per part
+                // acknowledged into needless churn on the catalogue's observers.
+                uploadProgressStore.recordCompletedPart(materialId, completedPart)
+                completed[completedPart.number] = completedPart
+                val isLastPart = index == remaining.lastIndex
+                if (isLastPart || (index + 1) % PROGRESS_SAVE_INTERVAL_PARTS == 0) {
+                    current = current.markUploading(plan, completed.values).also(onSnapshot)
                 }
+                onProgress(plan.uploadedBytes(completed.keys), plan.totalBytes)
             }
-
-            val orderedParts = plan.parts.map { part -> completed.getValue(part.number).asUploadedPart() }
-            val stored = objectStore.completeUpload(session, orderedParts)
-
-            // Synced first, cleared second: a crash between the two leaves stale-but-harmless part
-            // rows behind a material already marked Synced, rather than a Synced object whose part
-            // receipts are gone — which would force a full re-upload of a file the server already
-            // has, the exact redundant work this engine exists to avoid.
-            materialRepository.save(current.copy(sync = SyncState.Synced, remoteKey = stored.key.value))
-            uploadProgressStore.clear(materialId)
-            UploadOutcome.Synced
-        } catch (exception: ObjectStoreException) {
-            val reason = exception.message ?: exception::class.simpleName.orEmpty()
-            current.fail(reason, exception.retryable)
-            if (exception.retryable) UploadOutcome.Retryable(reason) else UploadOutcome.Permanent(reason)
-        } catch (exception: IOException) {
-            // The local staging copy is gone or unreadable; resending the same bytes cannot help.
-            val reason = "local file unreadable: ${exception.message}"
-            current.fail(reason, retryable = false)
-            UploadOutcome.Permanent(reason)
         }
+
+        val orderedParts = plan.parts.map { part -> completed.getValue(part.number).asUploadedPart() }
+        val stored = objectStore.completeUpload(session, orderedParts)
+
+        // Synced first, cleared second: a crash between the two leaves stale-but-harmless part
+        // rows behind a material already marked Synced, rather than a Synced object whose part
+        // receipts are gone — which would force a full re-upload of a file the server already
+        // has, the exact redundant work this engine exists to avoid.
+        materialRepository.save(current.copy(sync = SyncState.Synced, remoteKey = stored.key.value))
+        uploadProgressStore.clear(materialId)
+        return UploadOutcome.Synced
     }
 
     private suspend fun Material.markUploading(

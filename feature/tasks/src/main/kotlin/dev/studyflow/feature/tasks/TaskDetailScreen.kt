@@ -37,6 +37,7 @@ import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.ReminderTrigger
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subtask
+import dev.studyflow.core.ui.components.DurationText
 import dev.studyflow.core.ui.components.StudyFlowTopAppBar
 import dev.studyflow.core.ui.state.EmptyState
 import dev.studyflow.core.ui.state.LoadingState
@@ -117,6 +118,7 @@ public fun TaskDetailScreen(
                     item { TitleField(task = task, onEvent = onEvent) }
                     item { NotesField(task = task, onEvent = onEvent) }
                     item { SubjectMaterialLinks(task = task) }
+                    item { StudyTimeSection(state = state) }
                     item {
                         SubtaskSection(
                             subtasks = task.subtasks,
@@ -124,9 +126,29 @@ public fun TaskDetailScreen(
                             onEvent = onEvent,
                         )
                     }
+
                     item { ReminderSection(reminders = task.reminders, onEvent = onEvent) }
                     item { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) }
                     item { StartStudySessionButton(onEvent = onEvent) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StudyTimeSection(state: TaskDetailUiState) {
+    Column {
+        SectionHeader(title = "Study time")
+        Row(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large)) {
+            Column {
+                Text(text = "This task", style = MaterialTheme.typography.labelMedium)
+                DurationText(duration = state.taskStudyTime)
+            }
+            state.task?.subjectId?.let {
+                Column {
+                    Text(text = "Subject total", style = MaterialTheme.typography.labelMedium)
+                    DurationText(duration = state.subjectStudyTime)
                 }
             }
         }

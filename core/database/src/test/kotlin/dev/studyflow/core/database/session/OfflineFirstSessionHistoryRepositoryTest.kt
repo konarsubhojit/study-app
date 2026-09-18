@@ -270,16 +270,53 @@ class OfflineFirstSessionHistoryRepositoryTest {
             assertEquals("math", totals.single().subjectId)
         }
 
+    @Test
+    fun `task and subject totals follow corrected session projections`() =
+        runBlocking {
+            seedStoppedSession(
+                id = "session-1",
+                start = EPOCH,
+                end = EPOCH + 30.minutes,
+                subjectId = "math",
+                taskId = "task-1",
+            )
+            seedStoppedSession(
+                id = "session-2",
+                start = EPOCH + 40.minutes,
+                end = EPOCH + 60.minutes,
+                subjectId = "math",
+                taskId = "task-2",
+            )
+
+            val initial = historyRepository.observeTaskStudyTime("task-1", "math").first()
+            assertEquals(30.minutes, initial.task)
+            assertEquals(50.minutes, initial.subject)
+
+            historyRepository.editTiming(
+                sessionId = "session-1",
+                startedAt = EPOCH,
+                endedAt = EPOCH + 45.minutes,
+                correctionId = "correction-1",
+                at = EPOCH + 90.minutes,
+            )
+
+            val corrected = historyRepository.observeTaskStudyTime("task-1", "math").first()
+            assertEquals(45.minutes, corrected.task)
+            assertEquals(65.minutes, corrected.subject)
+        }
+
     /** Seeds a stopped session's row directly, bypassing corrections so the audit trail stays clean. */
     private suspend fun seedStoppedSession(
         id: String,
         start: Instant,
         end: Instant,
         subjectId: String? = null,
+        taskId: String? = null,
         note: String? = null,
     ): StudySession =
         seedSession(
             id = id,
+            taskId = taskId,
             subjectId = subjectId,
             start = start,
             end = end,
@@ -290,6 +327,7 @@ class OfflineFirstSessionHistoryRepositoryTest {
 
     private suspend fun seedSession(
         id: String,
+        taskId: String? = null,
         subjectId: String?,
         start: Instant,
         end: Instant?,
@@ -300,6 +338,7 @@ class OfflineFirstSessionHistoryRepositoryTest {
         val session =
             StudySession(
                 id = id,
+                taskId = taskId,
                 subjectId = subjectId,
                 note = note,
                 startedAt = start,

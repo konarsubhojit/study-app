@@ -25,8 +25,13 @@ This keeps notification and widget targets aligned with the typed destination mo
 | Completed upload | `studyflow://materials/{materialId}` |
 | Tasks | `studyflow://tasks` |
 | Reminder notification | `studyflow://tasks/{taskId}` |
+| History | `studyflow://history` |
 | Settings | `studyflow://settings` |
-| Widget action | `studyflow://widget/{home|timer|materials|tasks|settings}` |
+| Widget action | `studyflow://widget/{home|timer|materials|tasks|history|settings}` |
+
+Every host in this table is declared in the app manifest as well as parsed by
+`StudyFlowDeepLinks`; a link the app can parse but the manifest does not advertise is unreachable
+from outside the app, which `StudyFlowDeepLinksTest` checks against the merged manifest.
 
 Unknown or malformed links are rejected rather than opening a partially parsed destination.
 

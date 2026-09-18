@@ -45,6 +45,7 @@ public class FakeSessionRepository : SessionRepository {
                 is TimerCommand.Start -> {
                     StudySession(
                         id = command.sessionId,
+                        taskId = command.taskId,
                         subjectId = command.subjectId,
                         note = command.note,
                         startedAt = anchor.wallClock,

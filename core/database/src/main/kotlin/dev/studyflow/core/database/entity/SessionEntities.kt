@@ -25,6 +25,7 @@ import kotlin.time.Instant
         ),
     ],
     indices = [
+        Index(value = ["task_id"], name = "index_study_sessions_task_id"),
         Index(value = ["subject_id"], name = "index_study_sessions_subject_id"),
         // Serves the active-session lookup, which runs on every timer command and on every
         // subscription to the running session.
@@ -34,6 +35,8 @@ import kotlin.time.Instant
 public data class StudySessionEntity(
     @PrimaryKey
     val id: String,
+    @ColumnInfo(name = "task_id")
+    val taskId: String? = null,
     @ColumnInfo(name = "subject_id")
     val subjectId: String?,
     val note: String?,
@@ -156,6 +159,8 @@ public data class SessionCorrectionEntity(
     val restoresCorrectionGroupId: String?,
     @ColumnInfo(name = "before_subject_id")
     val beforeSubjectId: String?,
+    @ColumnInfo(name = "before_task_id")
+    val beforeTaskId: String? = null,
     @ColumnInfo(name = "before_note")
     val beforeNote: String?,
     @ColumnInfo(name = "before_started_at")
@@ -176,6 +181,8 @@ public data class SessionCorrectionEntity(
     val beforeUpdatedAt: Instant?,
     @ColumnInfo(name = "after_subject_id")
     val afterSubjectId: String?,
+    @ColumnInfo(name = "after_task_id")
+    val afterTaskId: String? = null,
     @ColumnInfo(name = "after_note")
     val afterNote: String?,
     @ColumnInfo(name = "after_started_at")

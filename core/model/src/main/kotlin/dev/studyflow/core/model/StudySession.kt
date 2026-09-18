@@ -28,6 +28,7 @@ import kotlin.time.Instant
  */
 public data class StudySession(
     val id: String,
+    val taskId: String? = null,
     val subjectId: String?,
     val note: String?,
     val startedAt: Instant,

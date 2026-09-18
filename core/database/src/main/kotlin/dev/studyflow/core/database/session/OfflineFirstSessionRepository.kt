@@ -241,7 +241,13 @@ public class OfflineFirstSessionRepository(
     private fun TimerCommand.descriptorFor(active: SessionWithEvents?): SessionDescriptor =
         when (this) {
             is TimerCommand.Start -> {
-                SessionDescriptor(id = sessionId, deviceId = deviceId, subjectId = subjectId, note = note)
+                SessionDescriptor(
+                    id = sessionId,
+                    deviceId = deviceId,
+                    taskId = taskId,
+                    subjectId = subjectId,
+                    note = note,
+                )
             }
 
             else -> {

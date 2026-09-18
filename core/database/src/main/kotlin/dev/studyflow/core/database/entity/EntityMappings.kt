@@ -313,6 +313,7 @@ private fun StudyTaskEntity.asExternalRecurrenceEnd(): RecurrenceEnd =
 public fun StudySession.asEntity(): StudySessionEntity =
     StudySessionEntity(
         id = id,
+        taskId = taskId,
         subjectId = subjectId,
         note = note,
         status = status,
@@ -334,7 +335,14 @@ public fun StudySession.asEntity(): StudySessionEntity =
  * cache a second source of truth.
  */
 public fun StudySessionEntity.asDescriptor(): SessionDescriptor =
-    SessionDescriptor(id = id, deviceId = deviceId, subjectId = subjectId, note = note, deleted = deleted)
+    SessionDescriptor(
+        id = id,
+        deviceId = deviceId,
+        taskId = taskId,
+        subjectId = subjectId,
+        note = note,
+        deleted = deleted,
+    )
 
 /**
  * Re-derives the projection, from a correction's override fields when present, otherwise by
@@ -353,6 +361,7 @@ public fun SessionWithEvents.asExternalModel(): StudySession? =
 private fun StudySessionEntity.asOverriddenExternalModel(): StudySession =
     StudySession(
         id = id,
+        taskId = taskId,
         subjectId = subjectId,
         note = note,
         startedAt = startedAt,
@@ -397,6 +406,7 @@ public fun SessionCorrection.asEntities(idFor: (String) -> String): List<Session
             at = at,
             restoresCorrectionGroupId = restoresCorrectionId,
             beforeSubjectId = change.before?.subjectId,
+            beforeTaskId = change.before?.taskId,
             beforeNote = change.before?.note,
             beforeStartedAt = change.before?.startedAt,
             beforeEndedAt = change.before?.endedAt,
@@ -415,6 +425,7 @@ public fun SessionCorrection.asEntities(idFor: (String) -> String): List<Session
             beforeManualOverride = change.before?.manualOverride,
             beforeUpdatedAt = change.before?.updatedAt,
             afterSubjectId = change.after.subjectId,
+            afterTaskId = change.after.taskId,
             afterNote = change.after.note,
             afterStartedAt = change.after.startedAt,
             afterEndedAt = change.after.endedAt,
@@ -453,6 +464,7 @@ private fun SessionCorrectionEntity.asExternalModel(): SessionSnapshotChange =
         before = beforeSnapshotOrNull(),
         after =
             StudySessionSnapshot(
+                taskId = afterTaskId,
                 subjectId = afterSubjectId,
                 note = afterNote,
                 startedAt = afterStartedAt,
@@ -472,6 +484,7 @@ private fun SessionCorrectionEntity.asExternalModel(): SessionSnapshotChange =
 private fun SessionCorrectionEntity.beforeSnapshotOrNull(): StudySessionSnapshot? {
     val startedAt = beforeStartedAt ?: return null
     return StudySessionSnapshot(
+        taskId = beforeTaskId,
         subjectId = beforeSubjectId,
         note = beforeNote,
         startedAt = startedAt,

@@ -15,8 +15,13 @@ import dev.studyflow.core.domain.materials.DurationExtractor
 import dev.studyflow.core.domain.materials.ImportContentReader
 import dev.studyflow.core.domain.materials.MaterialImporter
 import dev.studyflow.core.domain.materials.MaterialRepository
+import dev.studyflow.core.domain.materials.thumbnails.ThumbnailCache
+import dev.studyflow.core.domain.materials.thumbnails.ThumbnailLoader
+import dev.studyflow.core.domain.materials.thumbnails.ThumbnailRenderer
 import dev.studyflow.feature.materials.data.AndroidDurationExtractor
 import dev.studyflow.feature.materials.data.AndroidImportContentReader
+import dev.studyflow.feature.materials.data.AndroidThumbnailRenderer
+import dev.studyflow.feature.materials.data.FileThumbnailCache
 import java.io.File
 import javax.inject.Singleton
 
@@ -67,5 +72,33 @@ public object MaterialsModule {
             durationExtractor = durationExtractor,
         )
 
+    @Provides
+    @Singleton
+    public fun thumbnailRenderer(dispatcherProvider: DispatcherProvider): ThumbnailRenderer =
+        AndroidThumbnailRenderer(dispatcherProvider)
+
+    @Provides
+    @Singleton
+    public fun thumbnailCache(
+        dispatcherProvider: DispatcherProvider,
+        @ApplicationContext context: Context,
+    ): ThumbnailCache =
+        FileThumbnailCache(
+            // `cacheDir`, not `filesDir`: every thumbnail can be rendered again from the original,
+            // so the platform is welcome to reclaim them under storage pressure (issue #42).
+            directory = { File(context.cacheDir, THUMBNAILS_DIRECTORY_NAME) },
+            dispatcherProvider = dispatcherProvider,
+            clock = SystemWallClock,
+        )
+
+    @Provides
+    @Singleton
+    public fun thumbnailLoader(
+        cache: ThumbnailCache,
+        renderer: ThumbnailRenderer,
+        dispatcherProvider: DispatcherProvider,
+    ): ThumbnailLoader = ThumbnailLoader(cache = cache, renderer = renderer, dispatcherProvider = dispatcherProvider)
+
     private const val MATERIALS_DIRECTORY_NAME = "materials"
+    private const val THUMBNAILS_DIRECTORY_NAME = "thumbnails"
 }
