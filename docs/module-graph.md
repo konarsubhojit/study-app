@@ -51,6 +51,7 @@ graph TD
     core_database --> core_domain
     core_database --> core_model
     core_datastore --> core_model
+    core_datastore --> core_network
     core_domain --> core_common
     core_domain --> core_model
     core_notifications --> core_common
@@ -71,6 +72,7 @@ graph TD
     feature_auth --> core_common
     feature_auth --> core_domain
     feature_auth --> core_model
+    feature_auth --> core_network
     feature_history --> core_common
     feature_history --> core_designsystem
     feature_history --> core_domain

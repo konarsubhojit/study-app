@@ -3,15 +3,16 @@ package dev.studyflow.app.di
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.app.BuildConfig
 import dev.studyflow.core.network.ApiConfig
 import dev.studyflow.core.network.KtorStudyFlowApi
 import dev.studyflow.core.network.StudyFlowApi
 import dev.studyflow.core.network.auth.HttpTokenRefresher
-import dev.studyflow.core.network.auth.InMemoryTokenStore
 import dev.studyflow.core.network.auth.TokenRefresher
 import dev.studyflow.core.network.auth.TokenStore
+import dev.studyflow.core.datastore.EncryptedTokenStore
 import dev.studyflow.core.network.http.studyFlowHttpClient
 import dev.studyflow.core.network.version.ClientVersion
 import io.ktor.client.HttpClient
@@ -48,11 +49,11 @@ object NetworkModule {
     @Singleton
     fun httpClientEngine(): HttpClientEngine = OkHttp.create()
 
-    // Tokens live in memory until the encrypted store of :core:datastore lands (issue #20); a
-    // signed-in session therefore survives a screen rotation but not a process death.
     @Provides
     @Singleton
-    fun tokenStore(): TokenStore = InMemoryTokenStore()
+    fun tokenStore(
+        @ApplicationContext context: android.content.Context,
+    ): TokenStore = EncryptedTokenStore(context)
 
     @Provides
     @Singleton

@@ -5,8 +5,10 @@ plugins {
 
 dependencies {
     implementation(projects.core.model)
+    implementation(projects.core.network)
     implementation(libs.androidx.datastore)
     implementation(libs.protobuf.javalite)
+    implementation(libs.security.crypto)
     testImplementation(libs.kotlinx.coroutines.test)
 }
 

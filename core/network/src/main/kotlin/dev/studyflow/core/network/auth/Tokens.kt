@@ -1,6 +1,9 @@
 package dev.studyflow.core.network.auth
 
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * The token pair the client holds on behalf of the signed-in user (issue #63).
@@ -27,6 +30,12 @@ public data class AuthTokens(
  * preferences or the keystore, which is `:core:datastore`'s problem and an Android one.
  */
 public interface TokenStore {
+    /**
+     * The sole app-wide authentication state. Features remain local-first and do not inspect
+     * credentials themselves.
+     */
+    public val authState: StateFlow<AuthState>
+
     /** The current tokens, or `null` when nobody is signed in. */
     public suspend fun tokens(): AuthTokens?
 
@@ -35,6 +44,15 @@ public interface TokenStore {
 
     /** Drops the tokens after a sign-out, or after a refresh the server rejected. */
     public suspend fun clear()
+}
+
+/** A student can use every local feature without creating an account. */
+public sealed interface AuthState {
+    /** Local content remains on this device and is not synchronized. */
+    public data object LocalOnly : AuthState
+
+    /** Tokens exist and remote synchronization may run for the current account. */
+    public data object SignedIn : AuthState
 }
 
 /**
@@ -61,14 +79,22 @@ public class InMemoryTokenStore(
     initial: AuthTokens? = null,
 ) : TokenStore {
     private val current = AtomicReference(initial)
+    private val mutableAuthState = MutableStateFlow(initial.toAuthState())
+
+    override val authState: StateFlow<AuthState> = mutableAuthState.asStateFlow()
 
     override suspend fun tokens(): AuthTokens? = current.get()
 
     override suspend fun update(tokens: AuthTokens) {
         current.set(tokens)
+        mutableAuthState.value = AuthState.SignedIn
     }
 
     override suspend fun clear() {
         current.set(null)
+        mutableAuthState.value = AuthState.LocalOnly
     }
 }
+
+private fun AuthTokens?.toAuthState(): AuthState =
+    if (this == null) AuthState.LocalOnly else AuthState.SignedIn
