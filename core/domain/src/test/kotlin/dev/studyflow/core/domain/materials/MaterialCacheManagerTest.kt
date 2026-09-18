@@ -44,7 +44,10 @@ class MaterialCacheManagerTest {
                 cached(material("old", "old.pdf", 70 * mib), accessed = "2026-01-01T00:00:00Z"),
                 cached(material("new", "new.pdf", 60 * mib), accessed = "2026-03-01T00:00:00Z"),
                 cached(material("pinned", "pin.pdf", 50 * mib, pinned = true), accessed = "2025-01-01T00:00:00Z"),
-                cached(material("unsynced", "draft.pdf", 50 * mib, sync = SyncState.Pending), accessed = "2025-02-01T00:00:00Z"),
+                cached(
+                    material("unsynced", "draft.pdf", 50 * mib, sync = SyncState.Pending),
+                    accessed = "2025-02-01T00:00:00Z",
+                ),
             )
 
         val plan = MaterialCacheManager.planQuotaCleanup(items, quotaBytes = 80 * mib)
