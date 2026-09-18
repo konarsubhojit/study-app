@@ -8,6 +8,7 @@ import dev.studyflow.core.testing.data.FakeMaterialRepository
 import dev.studyflow.core.testing.data.FakeSessionRepository
 import dev.studyflow.core.testing.data.FakeTaskRepository
 import dev.studyflow.core.testing.data.TEST_WALL_CLOCK
+import dev.studyflow.core.testing.data.testMaterial
 import dev.studyflow.core.testing.data.testStudySession
 import dev.studyflow.core.testing.data.testStudyTask
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -118,5 +119,32 @@ class HomeViewModelTest {
             advanceUntilIdle()
 
             assertEquals(1, viewModel.state.value.streakDays)
+        }
+
+    @Test
+    fun `active session and three newest non-deleted materials are surfaced`() =
+        runTest(mainDispatcher.dispatcher) {
+            val sessions = FakeSessionRepository()
+            val active = testStudySession(id = "active")
+            sessions.setSessions(listOf(active))
+            val materials = FakeMaterialRepository()
+            (1..4).forEach { index ->
+                materials.save(testMaterial(id = "material-$index", createdAt = TEST_WALL_CLOCK + index.minutes))
+            }
+            materials.save(testMaterial(id = "deleted").copy(deleted = true))
+
+            val viewModel =
+                HomeViewModel(
+                    SavedStateHandle(),
+                    sessions,
+                    FakeTaskRepository(),
+                    materials,
+                    Clock { TEST_WALL_CLOCK },
+                    TimeZoneProvider { TimeZone.UTC },
+                )
+            advanceUntilIdle()
+
+            assertEquals(active, viewModel.state.value.activeSession)
+            assertEquals(listOf("material-4", "material-3", "material-2"), viewModel.state.value.recentMaterials.map { it.id })
         }
 }
