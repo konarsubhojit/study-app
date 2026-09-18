@@ -15,6 +15,7 @@
 
     <application
         android:name=".StudyFlowApplication"
+        android:allowBackup="false"
         android:label="StudyFlow">
         <activity
             android:name=".MainActivity"
