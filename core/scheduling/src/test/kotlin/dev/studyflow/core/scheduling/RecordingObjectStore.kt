@@ -36,6 +36,7 @@ internal class RecordingObjectStore : ObjectStore {
 
     var failNextUploadPart: ObjectStoreException? = null
     var failCompleteUpload: ObjectStoreException? = null
+    var failDownloadUrl: ObjectStoreException? = null
 
     override suspend fun initUpload(request: UploadRequest): UploadSession {
         val plan = UploadPlanner.plan(request.sizeBytes, request.contentHash)
@@ -83,7 +84,10 @@ internal class RecordingObjectStore : ObjectStore {
     override suspend fun getDownloadUrl(
         key: ObjectKey,
         ttl: Duration,
-    ): PresignedUrl = PresignedUrl("${PresignedUrl.LOCAL_SCHEME}$key", Instant.parse(FIXED_INSTANT) + 15.minutes)
+    ): PresignedUrl {
+        failDownloadUrl?.let { throw it }
+        return PresignedUrl("${PresignedUrl.LOCAL_SCHEME}$key", Instant.parse(FIXED_INSTANT) + 15.minutes)
+    }
 
     override suspend fun delete(key: ObjectKey) {
         mutex.withLock { partsByKey.remove(key) }
