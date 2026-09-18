@@ -1,12 +1,16 @@
 package dev.studyflow.app.navigation
 
+import android.content.Intent
+import android.content.pm.PackageManager
 import androidx.core.net.toUri
 import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -29,6 +33,38 @@ class StudyFlowDeepLinksTest {
 
         routes.forEach { route ->
             assertEquals(route, StudyFlowDeepLinks.routeFor(StudyFlowDeepLinks.uriFor(route)))
+        }
+    }
+
+    /**
+     * A link the app can parse but the manifest does not advertise is unreachable from outside the
+     * app, which is exactly the half of a deep link that is easy to forget and impossible to notice
+     * from the Kotlin side alone.
+     */
+    @Test
+    fun `every deep link is routable from outside the app`() {
+        val packageManager = RuntimeEnvironment.getApplication().packageManager
+        val links =
+            listOf(
+                StudyFlowDeepLinks.uriFor(HomeRoute),
+                StudyFlowDeepLinks.uriFor(TimerRoute()),
+                StudyFlowDeepLinks.uriFor(TimerRoute(openRunningTimer = true)),
+                StudyFlowDeepLinks.uriFor(MaterialsRoute()),
+                StudyFlowDeepLinks.uriFor(MaterialsRoute(materialId = "material-42")),
+                StudyFlowDeepLinks.uriFor(TasksRoute()),
+                StudyFlowDeepLinks.uriFor(TasksRoute(taskId = "task-42")),
+                StudyFlowDeepLinks.uriFor(HistoryRoute),
+                StudyFlowDeepLinks.uriFor(SettingsRoute),
+            ) + WidgetAction.entries.map(StudyFlowDeepLinks::uriFor)
+
+        links.forEach { uri ->
+            val intent =
+                Intent(Intent.ACTION_VIEW, uri)
+                    .addCategory(Intent.CATEGORY_BROWSABLE)
+            assertNotNull(
+                "No activity declares an intent filter for $uri",
+                packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY),
+            )
         }
     }
 
