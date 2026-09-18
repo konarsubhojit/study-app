@@ -3,6 +3,7 @@ package dev.studyflow.feature.timer
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import app.cash.turbine.test
+import dev.studyflow.core.domain.session.RecoveredTimerAnchor
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionDescriptor
 import dev.studyflow.core.domain.session.SessionReducer
@@ -353,6 +354,7 @@ private class InMemorySessionRepository : SessionRepository {
     override suspend fun reconcile(
         eventId: String,
         now: TimeAnchor,
+        recoveredAnchor: RecoveredTimerAnchor?,
     ): SessionCommandResult {
         val activeId = activeSessionId() ?: return SessionCommandResult.Unchanged(TimerState.Idle)
         val state = TimerEngine.fold(logs.getValue(activeId))

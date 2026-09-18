@@ -1,6 +1,7 @@
 <resources>
     <string name="timer_notification_title">Study session</string>
     <string name="timer_notification_restoring">Restoring timer</string>
+    <string name="timer_notification_reboot_recovered">Device restarted. No time was added automatically; unlock to review this session.</string>
     <string name="timer_notification_running">Timer running</string>
     <string name="timer_notification_paused">Timer paused</string>
     <string name="timer_notification_action_pause">Pause</string>

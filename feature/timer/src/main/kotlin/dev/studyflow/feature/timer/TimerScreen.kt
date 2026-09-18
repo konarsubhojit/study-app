@@ -133,7 +133,7 @@ private fun TimerPhase.announcement(hasUnverifiedTime: Boolean): String =
     when (this) {
         TimerPhase.IDLE -> "Ready to start"
         TimerPhase.RUNNING -> "Running"
-        TimerPhase.PAUSED -> if (hasUnverifiedTime) "Paused — recovered after reboot" else "Paused"
+        TimerPhase.PAUSED -> if (hasUnverifiedTime) "Paused — recovered safely after restart" else "Paused"
     }
 
 /**
@@ -164,7 +164,9 @@ private fun ElapsedDisplay(elapsedSeconds: Long) {
 @Composable
 private fun UnverifiedTimeNotice() {
     Text(
-        text = "Part of this session happened while the device was off and could not be verified.",
+        text =
+            "Your device restarted while this session was running. No time was added automatically; " +
+                "stop when ready, then use History to keep, trim, or discard the uncertain gap.",
         style = MaterialTheme.typography.bodyMedium,
         textAlign = TextAlign.Center,
     )

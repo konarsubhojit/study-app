@@ -42,7 +42,7 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 
-private const val NOTIFICATION_ID = 33_003
+internal const val TIMER_NOTIFICATION_ID = 33_003
 private const val REQUEST_OPEN = 33_100
 private const val REQUEST_PAUSE = 33_101
 private const val REQUEST_RESUME = 33_102
@@ -117,21 +117,22 @@ internal class TimerForegroundService : Service() {
     }
 
     private suspend fun refresh(state: TimerState) {
+        val now = currentAnchor()
         when (state) {
             TimerState.Idle, is TimerState.Stopped -> {
                 stopTimerForeground()
             }
 
             is TimerState.Running -> {
-                activeTimerStore.set(state.activeTimer())
-                startTimerForeground(state)
+                activeTimerStore.set(state.activeTimer(now))
+                startTimerForeground(state, now)
             }
 
             is TimerState.Paused -> {
                 // Only a ticking interval has an anchor to recover; paused elapsed time is already
                 // settled in the event log.
                 activeTimerStore.clear()
-                startTimerForeground(state)
+                startTimerForeground(state, now)
             }
         }
     }
@@ -146,12 +147,14 @@ internal class TimerForegroundService : Service() {
                 contentIntent = openIntent(),
                 chronometer = ChronometerPresentation(usesChronometer = false),
             )
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
+        ServiceCompat.startForeground(this, TIMER_NOTIFICATION_ID, notification, timerForegroundServiceType)
     }
 
-    private fun startTimerForeground(state: TimerState.Active) {
+    private fun startTimerForeground(
+        state: TimerState.Active,
+        now: TimeAnchor = currentAnchor(),
+    ) {
         notificationChannelRegistrar.register()
-        val now = currentAnchor()
         val notification =
             notificationFactory.ongoingChronometer(
                 title = getString(R.string.timer_notification_title),
@@ -166,13 +169,13 @@ internal class TimerForegroundService : Service() {
                 actions = actionsFor(state),
                 chronometer = ChronometerPresentation(usesChronometer = state is TimerState.Running),
             )
-        ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, timerForegroundServiceType)
+        ServiceCompat.startForeground(this, TIMER_NOTIFICATION_ID, notification, timerForegroundServiceType)
         foregroundStarted.set(true)
     }
 
     private suspend fun stopTimerForeground() {
         activeTimerStore.clear()
-        notifier.cancel(NOTIFICATION_ID)
+        notifier.cancel(TIMER_NOTIFICATION_ID)
         stopForeground(STOP_FOREGROUND_REMOVE)
         foregroundStarted.set(false)
         stopSelf()
@@ -231,13 +234,19 @@ internal class TimerForegroundService : Service() {
             deepLink = StudyFlowDeepLinks.uriFor(TimerRoute(openRunningTimer = true)),
         )
 
-    private fun TimerState.Running.activeTimer(): ActiveTimer =
-        ActiveTimer(
+    private fun TimerState.Running.activeTimer(now: TimeAnchor): ActiveTimer {
+        val wallClock =
+            openedAt
+                .uptimeDurationTo(now)
+                ?.let { elapsedSinceOpen -> now.wallClock - elapsedSinceOpen }
+                ?: openedAt.wallClock
+        return ActiveTimer(
             sessionId = sessionId,
-            wallClockEpochMillis = openedAt.wallClock.toEpochMilliseconds(),
+            wallClockEpochMillis = wallClock.toEpochMilliseconds(),
             uptimeMillis = openedAt.uptime.inWholeMilliseconds,
             bootId = openedAt.bootId.value,
         )
+    }
 
     private fun currentAnchor(): TimeAnchor =
         TimeAnchor(
@@ -277,7 +286,7 @@ internal class TimerForegroundServiceController
     ) : SessionCommandObserver {
         override fun onSessionCommandApplied(result: SessionCommandResult.Applied) {
             if (result.state is TimerState.Stopped) {
-                notifier.cancel(NOTIFICATION_ID)
+                notifier.cancel(TIMER_NOTIFICATION_ID)
                 context.stopService(TimerForegroundService.refreshIntent(context))
             } else {
                 try {
