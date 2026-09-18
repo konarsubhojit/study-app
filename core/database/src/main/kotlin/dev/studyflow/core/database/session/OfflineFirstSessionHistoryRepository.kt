@@ -17,8 +17,11 @@ import dev.studyflow.core.domain.session.SessionHistoryCommandResult
 import dev.studyflow.core.domain.session.SessionHistoryEditor
 import dev.studyflow.core.domain.session.SessionHistoryFilter
 import dev.studyflow.core.domain.session.SessionHistoryRepository
+import dev.studyflow.core.domain.session.TaskStudyTime
 import dev.studyflow.core.model.StudySession
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.TimeZone
@@ -43,6 +46,24 @@ public class OfflineFirstSessionHistoryRepository(
      * corrections racing on the same session could otherwise both read the pre-correction state.
      */
     private val correctionLock = Mutex()
+
+    override fun observeTaskStudyTime(
+        taskId: String,
+        subjectId: String?,
+    ): Flow<TaskStudyTime> =
+        dao.observeAll().map { rows ->
+            val sessions = rows.mapNotNull(SessionWithEvents::asExternalModel).filterNot(StudySession::deleted)
+            TaskStudyTime(
+                task =
+                    sessions
+                        .filter { it.taskId == taskId }
+                        .fold(Duration.ZERO) { total, session -> total + session.elapsed.counted },
+                subject =
+                    sessions
+                        .filter { subjectId != null && it.subjectId == subjectId }
+                        .fold(Duration.ZERO) { total, session -> total + session.elapsed.counted },
+            )
+        }
 
     override fun historyPagingSource(filter: SessionHistoryFilter): PagingSource<Int, StudySession> =
         MappingPagingSource(dao.historyPaged(filter.subjectId, filter.from, filter.to)) { withEvents ->

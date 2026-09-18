@@ -216,6 +216,17 @@ public object DatabaseMigrations {
             }
         }
 
+    /** Version 10 adds optional task attribution to sessions and their correction snapshots. */
+    public val MIGRATION_9_10: Migration =
+        object : Migration(9, 10) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE study_sessions ADD COLUMN task_id TEXT")
+                connection.execSQL("CREATE INDEX index_study_sessions_task_id ON study_sessions(task_id)")
+                connection.execSQL("ALTER TABLE session_corrections ADD COLUMN before_task_id TEXT")
+                connection.execSQL("ALTER TABLE session_corrections ADD COLUMN after_task_id TEXT")
+            }
+        }
+
     public val ALL: Array<Migration>
         get() =
             arrayOf(
@@ -227,6 +238,7 @@ public object DatabaseMigrations {
                 MIGRATION_6_7,
                 MIGRATION_7_8,
                 MIGRATION_8_9,
+                MIGRATION_9_10,
             )
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null

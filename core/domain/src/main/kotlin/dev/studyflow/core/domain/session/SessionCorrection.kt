@@ -37,6 +37,7 @@ public enum class SessionCorrectionType {
  * reliable way to know that is to have recorded it.
  */
 public data class StudySessionSnapshot(
+    val taskId: String? = null,
     val subjectId: String?,
     val note: String?,
     val startedAt: Instant,
@@ -99,6 +100,7 @@ public data class SessionCorrection(
 /** Freezes the fields a correction can change. */
 public fun StudySession.asSnapshot(): StudySessionSnapshot =
     StudySessionSnapshot(
+        taskId = taskId,
         subjectId = subjectId,
         note = note,
         startedAt = startedAt,
@@ -113,6 +115,7 @@ public fun StudySession.asSnapshot(): StudySessionSnapshot =
 /** Applies a snapshot's fields on top of an existing row, preserving its identity and device. */
 public fun StudySession.withSnapshot(snapshot: StudySessionSnapshot): StudySession =
     copy(
+        taskId = snapshot.taskId,
         subjectId = snapshot.subjectId,
         note = snapshot.note,
         startedAt = snapshot.startedAt,

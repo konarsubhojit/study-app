@@ -12,6 +12,8 @@ internal data object HomeRoute : AppRoute
 @Serializable
 internal data class TimerRoute(
     val openRunningTimer: Boolean = false,
+    val taskId: String? = null,
+    val subjectId: String? = null,
 ) : AppRoute
 
 @Serializable

@@ -7,12 +7,14 @@ import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.subjects.SubjectRepository
+import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.domain.timer.TimerEngine
 import dev.studyflow.core.domain.timer.TimerRejection
 import dev.studyflow.core.domain.timer.TimerState
 import dev.studyflow.core.model.SessionStatus
 import dev.studyflow.core.model.StudySession
+import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subject
 import dev.studyflow.core.ui.mvi.MviViewModel
 import dev.studyflow.core.ui.mvi.UiEffect
@@ -62,6 +64,8 @@ public data class TimerUiState(
     /** True once a reboot (or other unbridgeable clock gap) forced part of this session unverified. */
     val hasUnverifiedTime: Boolean = false,
     val subjects: List<Subject> = emptyList(),
+    val selectedTask: StudyTask? = null,
+    val suggestedTask: StudyTask? = null,
     val selectedSubjectId: String? = null,
     val note: String = "",
     val keepScreenOn: Boolean = false,
@@ -72,6 +76,11 @@ public sealed interface TimerUiEvent : UiEvent {
     public data object Refresh : TimerUiEvent
 
     public data object StartRequested : TimerUiEvent
+
+    public data class StudyNowRequested(
+        val taskId: String,
+        val subjectId: String?,
+    ) : TimerUiEvent
 
     public data object PauseRequested : TimerUiEvent
 
@@ -117,6 +126,7 @@ public class TimerViewModel
         savedStateHandle: SavedStateHandle,
         private val sessionRepository: SessionRepository,
         subjectRepository: SubjectRepository,
+        taskRepository: TaskRepository,
         private val anchoredClock: AnchoredClock,
     ) : MviViewModel<TimerUiEvent, TimerUiEffect>(savedStateHandle) {
         // Refreshes are rendering invalidations; if several arrive together, one fresh re-read is enough.
@@ -126,6 +136,7 @@ public class TimerViewModel
                 onBufferOverflow = BufferOverflow.DROP_OLDEST,
             )
         private val draftSubjectId = MutableStateFlow<String?>(null)
+        private val draftTaskId = MutableStateFlow<String?>(null)
         private val draftNote = MutableStateFlow("")
         private val keepScreenOn = MutableStateFlow(false)
 
@@ -151,8 +162,21 @@ public class TimerViewModel
                     pulses.onStart { emit(Unit) }.map { sessionRepository.activeState() }
                 }
 
-        private val draft: Flow<Pair<String?, String>> =
-            combine(draftSubjectId, draftNote) { subjectId, note -> subjectId to note }
+        private val draft: Flow<TimerDraft> =
+            combine(
+                draftTaskId,
+                draftSubjectId,
+                draftNote,
+                taskRepository.observeTasks(),
+            ) { taskId, subjectId, note, tasks ->
+                TimerDraft(
+                    taskId = taskId,
+                    subjectId = subjectId,
+                    note = note,
+                    selectedTask = tasks.firstOrNull { it.id == taskId },
+                    suggestedTask = tasks.firstOrNull { !it.isCompleted && it.dueAtUtc != null },
+                )
+            }
 
         public val state: StateFlow<TimerUiState> =
             combine(
@@ -166,8 +190,7 @@ public class TimerViewModel
                     timerState = timerState,
                     session = session,
                     subjects = subjects,
-                    draftSubjectId = draft.first,
-                    draftNote = draft.second,
+                    draft = draft,
                     keepScreenOn = keepScreenOn,
                 )
             }.stateInViewModel(TimerUiState())
@@ -183,14 +206,43 @@ public class TimerViewModel
 
         override fun onEvent(event: TimerUiEvent) {
             when (event) {
-                TimerUiEvent.Refresh -> refreshes.tryEmit(Unit)
-                TimerUiEvent.StartRequested -> start()
-                TimerUiEvent.PauseRequested -> execute(TimerCommand.Pause)
-                TimerUiEvent.ResumeRequested -> execute(TimerCommand.Resume)
-                TimerUiEvent.StopRequested -> execute(TimerCommand.Stop)
-                is TimerUiEvent.SubjectSelected -> draftSubjectId.value = event.subjectId
-                is TimerUiEvent.NoteChanged -> draftNote.value = event.note
-                is TimerUiEvent.KeepScreenOnChanged -> keepScreenOn.value = event.keepScreenOn
+                TimerUiEvent.Refresh -> {
+                    refreshes.tryEmit(Unit)
+                }
+
+                TimerUiEvent.StartRequested -> {
+                    start()
+                }
+
+                is TimerUiEvent.StudyNowRequested -> {
+                    draftTaskId.value = event.taskId
+                    draftSubjectId.value = event.subjectId
+                    start()
+                }
+
+                TimerUiEvent.PauseRequested -> {
+                    execute(TimerCommand.Pause)
+                }
+
+                TimerUiEvent.ResumeRequested -> {
+                    execute(TimerCommand.Resume)
+                }
+
+                TimerUiEvent.StopRequested -> {
+                    execute(TimerCommand.Stop)
+                }
+
+                is TimerUiEvent.SubjectSelected -> {
+                    draftSubjectId.value = event.subjectId
+                }
+
+                is TimerUiEvent.NoteChanged -> {
+                    draftNote.value = event.note
+                }
+
+                is TimerUiEvent.KeepScreenOnChanged -> {
+                    keepScreenOn.value = event.keepScreenOn
+                }
             }
         }
 
@@ -198,6 +250,7 @@ public class TimerViewModel
             execute(
                 TimerCommand.Start(
                     sessionId = UUID.randomUUID().toString(),
+                    taskId = draftTaskId.value,
                     subjectId = draftSubjectId.value,
                     note = draftNote.value.trim().ifBlank { null },
                 ),
@@ -218,6 +271,7 @@ public class TimerViewModel
                 }
                 if (command is TimerCommand.Start) {
                     draftSubjectId.value = null
+                    draftTaskId.value = null
                     draftNote.value = ""
                 }
                 refreshes.tryEmit(Unit)
@@ -228,8 +282,7 @@ public class TimerViewModel
             timerState: TimerState,
             session: StudySession?,
             subjects: List<Subject>,
-            draftSubjectId: String?,
-            draftNote: String,
+            draft: TimerDraft,
             keepScreenOn: Boolean,
         ): TimerUiState {
             val elapsed = TimerEngine.elapsedAt(timerState, anchoredClock.anchor())
@@ -238,8 +291,10 @@ public class TimerViewModel
                 elapsedSeconds = elapsed.counted.inWholeSeconds,
                 hasUnverifiedTime = elapsed.hasUnverifiedTime,
                 subjects = subjects,
-                selectedSubjectId = session?.subjectId ?: draftSubjectId,
-                note = session?.note ?: draftNote,
+                selectedTask = draft.selectedTask?.takeIf { session == null || it.id == session.taskId },
+                suggestedTask = draft.suggestedTask,
+                selectedSubjectId = session?.subjectId ?: draft.subjectId,
+                note = session?.note ?: draft.note,
                 keepScreenOn = keepScreenOn,
             )
         }
@@ -251,5 +306,13 @@ public class TimerViewModel
                     is TimerState.Running -> TimerPhase.RUNNING
                     is TimerState.Paused -> TimerPhase.PAUSED
                 }
+
+            private data class TimerDraft(
+                val taskId: String?,
+                val subjectId: String?,
+                val note: String,
+                val selectedTask: StudyTask?,
+                val suggestedTask: StudyTask?,
+            )
         }
     }

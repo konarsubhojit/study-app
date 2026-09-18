@@ -17,7 +17,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
@@ -40,10 +44,19 @@ import dev.studyflow.core.model.Subject
  */
 @Composable
 public fun TimerRoute(
+    taskId: String? = null,
+    subjectId: String? = null,
     modifier: Modifier = Modifier,
     viewModel: TimerViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    var studyNowHandled by rememberSaveable(taskId) { mutableStateOf(false) }
+    LaunchedEffect(taskId, subjectId, studyNowHandled) {
+        if (taskId != null && !studyNowHandled) {
+            studyNowHandled = true
+            viewModel.onEvent(TimerUiEvent.StudyNowRequested(taskId, subjectId))
+        }
+    }
     TimerScreen(state = state, onEvent = viewModel::onEvent, modifier = modifier)
 }
 
@@ -79,11 +92,29 @@ public fun TimerScreen(
             if (state.hasUnverifiedTime) {
                 UnverifiedTimeNotice()
             }
+            StudyTaskContext(state = state, onEvent = onEvent)
             SubjectPicker(state = state, onEvent = onEvent)
             NotesField(state = state, onEvent = onEvent)
         }
 
         BottomControls(state = state, onEvent = onEvent)
+    }
+}
+
+@Composable
+private fun StudyTaskContext(
+    state: TimerUiState,
+    onEvent: (TimerUiEvent) -> Unit,
+) {
+    if (state.phase != TimerPhase.IDLE) return
+    state.selectedTask?.let {
+        Text(text = "Studying now: ${it.title}", style = MaterialTheme.typography.titleMedium)
+        return
+    }
+    state.suggestedTask?.let { task ->
+        Button(onClick = { onEvent(TimerUiEvent.StudyNowRequested(task.id, task.subjectId)) }) {
+            Text(text = "Study now: ${task.title}")
+        }
     }
 }
 

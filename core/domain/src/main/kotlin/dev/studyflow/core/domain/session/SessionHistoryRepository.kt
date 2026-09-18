@@ -3,6 +3,8 @@ package dev.studyflow.core.domain.session
 import androidx.paging.PagingSource
 import dev.studyflow.core.domain.result.DomainError
 import dev.studyflow.core.model.StudySession
+import kotlinx.coroutines.flow.Flow
+import kotlin.time.Duration
 import kotlin.time.Instant
 
 /**
@@ -30,6 +32,12 @@ public data class DailySubjectTotal(
     val day: String,
     val subjectId: String?,
     val totalCounted: kotlin.time.Duration,
+)
+
+/** Counted study time attributed to one task and its subject. */
+public data class TaskStudyTime(
+    val task: Duration = Duration.ZERO,
+    val subject: Duration = Duration.ZERO,
 )
 
 /** Outcome of a [SessionHistoryRepository] correction. */
@@ -62,6 +70,15 @@ public sealed interface SessionHistoryCommandResult {
  */
 @Suppress("TooManyFunctions")
 public interface SessionHistoryRepository {
+    /**
+     * Observes totals from session projections so timing edits, splits, merges and deletes
+     * automatically invalidate the result.
+     */
+    public fun observeTaskStudyTime(
+        taskId: String,
+        subjectId: String?,
+    ): Flow<TaskStudyTime>
+
     /**
      * A paging source over stopped, non-deleted sessions matching [filter], newest first.
      *
