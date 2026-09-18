@@ -18,20 +18,7 @@ import org.robolectric.annotation.Config
 class StudyFlowDeepLinksTest {
     @Test
     fun `every destination round trips through a deep link`() {
-        val routes =
-            listOf(
-                HomeRoute,
-                TimerRoute(),
-                TimerRoute(openRunningTimer = true),
-                MaterialsRoute(),
-                MaterialsRoute(materialId = "material / 42"),
-                TasksRoute(),
-                TasksRoute(taskId = "task / 42"),
-                HistoryRoute,
-                SettingsRoute,
-            )
-
-        routes.forEach { route ->
+        everyDestination.forEach { route ->
             assertEquals(route, StudyFlowDeepLinks.routeFor(StudyFlowDeepLinks.uriFor(route)))
         }
     }
@@ -45,17 +32,8 @@ class StudyFlowDeepLinksTest {
     fun `every deep link is routable from outside the app`() {
         val packageManager = RuntimeEnvironment.getApplication().packageManager
         val links =
-            listOf(
-                StudyFlowDeepLinks.uriFor(HomeRoute),
-                StudyFlowDeepLinks.uriFor(TimerRoute()),
-                StudyFlowDeepLinks.uriFor(TimerRoute(openRunningTimer = true)),
-                StudyFlowDeepLinks.uriFor(MaterialsRoute()),
-                StudyFlowDeepLinks.uriFor(MaterialsRoute(materialId = "material-42")),
-                StudyFlowDeepLinks.uriFor(TasksRoute()),
-                StudyFlowDeepLinks.uriFor(TasksRoute(taskId = "task-42")),
-                StudyFlowDeepLinks.uriFor(HistoryRoute),
-                StudyFlowDeepLinks.uriFor(SettingsRoute),
-            ) + WidgetAction.entries.map(StudyFlowDeepLinks::uriFor)
+            everyDestination.map(StudyFlowDeepLinks::uriFor) +
+                WidgetAction.entries.map(StudyFlowDeepLinks::uriFor)
 
         links.forEach { uri ->
             val intent =
@@ -113,6 +91,20 @@ class StudyFlowDeepLinksTest {
             StudyFlowDeepLinks.routeForNewIntent(incoming, consumed.toString()),
         )
     }
+
+    /** One link per destination shape, shared by the tests that must all see a new route. */
+    private val everyDestination =
+        listOf(
+            HomeRoute,
+            TimerRoute(),
+            TimerRoute(openRunningTimer = true),
+            MaterialsRoute(),
+            MaterialsRoute(materialId = "material / 42"),
+            TasksRoute(),
+            TasksRoute(taskId = "task / 42"),
+            HistoryRoute,
+            SettingsRoute,
+        )
 
     private val WidgetAction.expectedRoute: AppRoute
         get() =
