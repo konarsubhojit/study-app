@@ -2,6 +2,7 @@
 
 package dev.studyflow.core.datastore
 
+import android.annotation.SuppressLint
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
@@ -45,16 +46,22 @@ public class EncryptedTokenStore(
     override suspend fun tokens(): AuthTokens? = readTokens()
 
     override suspend fun update(tokens: AuthTokens) {
-        preferences.edit()
-            .putString(ACCESS_TOKEN_KEY, tokens.accessToken)
-            .putString(REFRESH_TOKEN_KEY, tokens.refreshToken)
-            .commit()
-            .also { check(it) { "Unable to persist authentication tokens" } }
+        // commit() is required (not apply()) so we synchronously verify the write succeeded.
+        @SuppressLint("ApplySharedPref")
+        val persisted =
+            preferences.edit()
+                .putString(ACCESS_TOKEN_KEY, tokens.accessToken)
+                .putString(REFRESH_TOKEN_KEY, tokens.refreshToken)
+                .commit()
+        check(persisted) { "Unable to persist authentication tokens" }
         mutableAuthState.value = AuthState.SignedIn
     }
 
     override suspend fun clear() {
-        preferences.edit().clear().commit().also { check(it) { "Unable to clear authentication tokens" } }
+        // commit() is required (not apply()) so we synchronously verify the write succeeded.
+        @SuppressLint("ApplySharedPref")
+        val cleared = preferences.edit().clear().commit()
+        check(cleared) { "Unable to clear authentication tokens" }
         mutableAuthState.value = AuthState.LocalOnly
     }
 

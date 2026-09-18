@@ -184,7 +184,8 @@ class SessionReducerTest {
         fun TimerCommand.isLegalIn(status: SessionStatus?): Boolean =
             when (this) {
                 is TimerCommand.Start -> status == null || status == SessionStatus.STOPPED
-                TimerCommand.Pause, TimerCommand.StartBreak, TimerCommand.ConfirmActivity -> status == SessionStatus.RUNNING
+                TimerCommand.Pause, TimerCommand.StartBreak, TimerCommand.ConfirmActivity ->
+                    status == SessionStatus.RUNNING
                 TimerCommand.Resume, TimerCommand.ResumeFocus -> status == SessionStatus.PAUSED
                 TimerCommand.Stop -> status == SessionStatus.RUNNING || status == SessionStatus.PAUSED
             }

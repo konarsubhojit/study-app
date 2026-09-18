@@ -1,6 +1,7 @@
 package dev.studyflow.core.scheduling
 
-import kotlinx.coroutines.Dispatchers
+import dev.studyflow.core.common.coroutines.DispatcherProvider
+import dev.studyflow.core.common.coroutines.StandardDispatcherProvider
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
@@ -8,19 +9,22 @@ import java.io.RandomAccessFile
 import java.net.HttpURLConnection
 import java.net.URL
 
-public class UrlConnectionDownloadTransport : DownloadTransport {
+public class UrlConnectionDownloadTransport(
+    private val dispatcherProvider: DispatcherProvider = StandardDispatcherProvider,
+) : DownloadTransport {
     override suspend fun download(
         request: DownloadRequest,
         onProgress: suspend (downloadedBytes: Long, totalBytes: Long?) -> Unit,
     ): DownloadResult =
-        withContext(Dispatchers.IO) {
+        withContext(dispatcherProvider.io) {
             val connection = openConnection(request)
             try {
                 val code = connection.responseCode
                 if (request.rangeStart > 0 && code != HttpURLConnection.HTTP_PARTIAL) {
                     throw IOException("server did not honour range request: HTTP $code")
                 }
-                if (request.rangeStart == 0L && code !in setOf(HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_PARTIAL)) {
+                val acceptableCodes = setOf(HttpURLConnection.HTTP_OK, HttpURLConnection.HTTP_PARTIAL)
+                if (request.rangeStart == 0L && code !in acceptableCodes) {
                     throw IOException("download failed: HTTP $code")
                 }
 

@@ -40,7 +40,8 @@ public object MaterialsModule {
 
     @Provides
     @Singleton
-    public fun materialRepository(dao: MaterialDao): MaterialRepository = OfflineFirstMaterialRepository(dao)
+    public fun materialRepository(dao: MaterialDao): MaterialRepository =
+        OfflineFirstMaterialRepository(dao, clock = SystemWallClock)
 
     @Provides
     @Singleton

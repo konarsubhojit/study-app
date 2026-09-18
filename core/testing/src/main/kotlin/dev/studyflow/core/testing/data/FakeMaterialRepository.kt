@@ -51,6 +51,9 @@ public class FakeMaterialRepository : MaterialRepository {
     }
 
     override suspend fun delete(id: String) {
-        materials.value = materials.value.map { material -> if (material.id == id) material.copy(deleted = true) else material }
+        materials.value =
+            materials.value.map { material ->
+                if (material.id == id) material.copy(deleted = true) else material
+            }
     }
 }

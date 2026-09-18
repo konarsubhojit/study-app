@@ -6,6 +6,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
@@ -59,6 +60,7 @@ import javax.inject.Singleton
  */
 @Module
 @InstallIn(SingletonComponent::class)
+@Suppress("TooManyFunctions")
 public object SchedulingModule {
     @Provides
     @Singleton
@@ -95,6 +97,7 @@ public object SchedulingModule {
 
     @Provides
     @Singleton
+    @Suppress("LongParameterList")
     public fun reminderDeliveryCoordinator(
         @ApplicationContext context: Context,
         taskRepository: TaskRepository,
@@ -185,7 +188,8 @@ public object SchedulingModule {
 
     @Provides
     @Singleton
-    public fun downloadTransport(): DownloadTransport = UrlConnectionDownloadTransport()
+    public fun downloadTransport(dispatcherProvider: DispatcherProvider): DownloadTransport =
+        UrlConnectionDownloadTransport(dispatcherProvider)
 
     @Provides
     @Singleton

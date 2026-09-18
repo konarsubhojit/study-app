@@ -18,7 +18,12 @@ public class SharedPreferencesDownloadProgressStore(
     override suspend fun save(progress: DownloadProgress) {
         preferences.edit {
             putLong(bytesKey(progress.materialId), progress.downloadedBytes)
-            progress.totalBytes?.let { putLong(totalKey(progress.materialId), it) } ?: remove(totalKey(progress.materialId))
+            val totalBytes = progress.totalBytes
+            if (totalBytes != null) {
+                putLong(totalKey(progress.materialId), totalBytes)
+            } else {
+                remove(totalKey(progress.materialId))
+            }
         }
     }
 

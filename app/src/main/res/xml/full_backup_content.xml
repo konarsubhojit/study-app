@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only consulted pre-Android 12 when android:allowBackup is true; kept in sync with
+     data_extraction_rules.xml for documentation purposes since allowBackup is false. -->
+<full-backup-content>
+    <exclude domain="root" />
+</full-backup-content>

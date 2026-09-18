@@ -6,6 +6,7 @@ import androidx.credentials.CustomCredential
 import androidx.credentials.GetCredentialRequest
 import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PublicKeyCredential
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 
@@ -35,7 +36,11 @@ public class CredentialManagerSignInClient(
                         .build(),
                 ),
             )
-        return credentialManager.getCredential(activity, request).credential.toSignInCredential()
+        return try {
+            credentialManager.getCredential(activity, request).credential.toSignInCredential()
+        } catch (noCredential: NoCredentialException) {
+            throw NoSignInCredentialAvailableException(noCredential)
+        }
     }
 
     public companion object {
@@ -43,6 +48,11 @@ public class CredentialManagerSignInClient(
             CredentialManagerSignInClient(CredentialManager.create(activity))
     }
 }
+
+/** Thrown when the system Credential Manager has no passkey or Google account to offer. */
+public class NoSignInCredentialAvailableException(
+    cause: NoCredentialException,
+) : Exception(cause)
 
 /** A server-verifiable proof. Its contents must never be logged. */
 public sealed interface SignInCredential {

@@ -231,8 +231,12 @@ public object DatabaseMigrations {
     public val MIGRATION_10_11: Migration =
         object : Migration(10, 11) {
             override fun migrate(connection: SQLiteConnection) {
-                connection.execSQL("ALTER TABLE materials ADD COLUMN preview_page_index INTEGER NOT NULL DEFAULT 0")
-                connection.execSQL("ALTER TABLE materials ADD COLUMN preview_position_millis INTEGER NOT NULL DEFAULT 0")
+                connection.execSQL(
+                    "ALTER TABLE materials ADD COLUMN preview_page_index INTEGER NOT NULL DEFAULT 0",
+                )
+                connection.execSQL(
+                    "ALTER TABLE materials ADD COLUMN preview_position_millis INTEGER NOT NULL DEFAULT 0",
+                )
                 connection.execSQL("ALTER TABLE materials ADD COLUMN playback_speed REAL NOT NULL DEFAULT 1")
             }
         }

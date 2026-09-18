@@ -1,5 +1,7 @@
 package dev.studyflow.core.database.repository
 
+import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.database.dao.MaterialDao
 import dev.studyflow.core.database.entity.MaterialEntity
 import dev.studyflow.core.database.entity.asEntity
@@ -9,7 +11,6 @@ import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
-import kotlin.time.Clock
 
 /**
  * The local database is the source of truth for the materials catalogue; nothing here waits on a
@@ -21,6 +22,7 @@ import kotlin.time.Clock
  */
 public class OfflineFirstMaterialRepository(
     private val dao: MaterialDao,
+    private val clock: Clock = SystemWallClock,
 ) : MaterialRepository {
     override fun observeAll(): Flow<List<Material>> = dao.observeAll().asExternalModels()
 
@@ -46,7 +48,7 @@ public class OfflineFirstMaterialRepository(
     }
 
     override suspend fun delete(id: String) {
-        dao.softDelete(id, Clock.System.now())
+        dao.softDelete(id, clock.now())
     }
 
     private fun Flow<List<MaterialEntity>>.asExternalModels(): Flow<List<Material>> =
