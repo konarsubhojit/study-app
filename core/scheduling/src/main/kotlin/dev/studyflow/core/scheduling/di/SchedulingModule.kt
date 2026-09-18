@@ -6,6 +6,7 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.DefaultAnchoredClock
@@ -28,6 +29,7 @@ import dev.studyflow.core.scheduling.AndroidReminderPlatformScheduler
 import dev.studyflow.core.scheduling.AndroidSchedulingCapabilitiesProvider
 import dev.studyflow.core.scheduling.ReminderActionExecutor
 import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
+import dev.studyflow.core.scheduling.ReminderIntegrityCoordinator
 import dev.studyflow.core.scheduling.ReminderPlatformScheduler
 import dev.studyflow.core.scheduling.ReminderSchedulingService
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
@@ -95,6 +97,7 @@ public object SchedulingModule {
         notificationFactory: StudyFlowNotificationFactory,
         settingsStore: UserSettingsStore,
         capabilitiesProvider: SchedulingCapabilitiesProvider,
+        clock: Clock,
     ): ReminderDeliveryCoordinator =
         ReminderDeliveryCoordinator(
             context = context,
@@ -104,6 +107,24 @@ public object SchedulingModule {
             notificationFactory = notificationFactory,
             digestEnabled = { settingsStore.data.first().digestEnabled },
             capabilitiesProvider = capabilitiesProvider,
+            clock = clock,
+        )
+
+    @Provides
+    @Singleton
+    public fun reminderIntegrityCoordinator(
+        taskRepository: TaskRepository,
+        schedulingService: ReminderSchedulingService,
+        deliveryCoordinator: ReminderDeliveryCoordinator,
+        clock: Clock,
+        logger: AppLogger,
+    ): ReminderIntegrityCoordinator =
+        ReminderIntegrityCoordinator(
+            taskRepository = taskRepository,
+            schedulingService = schedulingService,
+            deliveryCoordinator = deliveryCoordinator,
+            clock = clock,
+            logger = logger,
         )
 
     @Provides

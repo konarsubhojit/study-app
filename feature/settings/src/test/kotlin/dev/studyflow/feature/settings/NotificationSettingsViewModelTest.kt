@@ -40,6 +40,7 @@ class NotificationSettingsViewModelTest {
         runTest(mainDispatcher.dispatcher) {
             source.permission = granted(notificationsEnabled = true)
             source.channels = channels(groupBlocked = setOf(StudyFlowNotificationChannel.UPLOADS))
+            batteryDiagnostics.snapshot = batteryDiagnostics.snapshot.copy(batteryOptimised = true)
             val viewModel = viewModel()
 
             viewModel.onEvent(NotificationSettingsUiEvent.Refresh())
@@ -54,6 +55,7 @@ class NotificationSettingsViewModelTest {
                     listOf(StudyFlowNotificationChannel.UPLOADS),
                     state.channels.filterNot(NotificationChannelStatus::enabled).map { it.channel },
                 )
+                assertTrue(state.batteryDiagnostics.batteryOptimised)
                 cancelAndIgnoreRemainingEvents()
             }
         }
@@ -144,6 +146,21 @@ class NotificationSettingsViewModelTest {
         }
 
     @Test
+    fun `battery settings shortcut falls back to app settings`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel()
+
+            viewModel.effects.test {
+                viewModel.onEvent(NotificationSettingsUiEvent.OpenBatterySettings)
+
+                val effect = awaitItem() as NotificationSettingsUiEffect.OpenSystemSettings
+                assertSame(batteryDiagnostics.batteryIntent, effect.intent)
+                assertSame(batteryDiagnostics.appIntent, effect.fallbackIntent)
+                cancelAndIgnoreRemainingEvents()
+            }
+        }
+
+    @Test
     fun `granting the permission through the system dialog refreshes the screen`() =
         runTest(mainDispatcher.dispatcher) {
             source.permission =
@@ -191,7 +208,7 @@ class NotificationSettingsViewModelTest {
         }
 
     private fun viewModel(savedState: SavedStateHandle = SavedStateHandle()) =
-        NotificationSettingsViewModel(savedState, source, alarmRingtoneSettings)
+        NotificationSettingsViewModel(savedState, source, alarmRingtoneSettings, batteryDiagnostics)
 
     private fun granted(notificationsEnabled: Boolean) =
         NotificationPermissionState(NotificationPermissionStatus.GRANTED, notificationsEnabled)
@@ -248,5 +265,24 @@ class NotificationSettingsViewModelTest {
             lastPersisted = uri
             backing.value = uri
         }
+    }
+
+    private val batteryDiagnostics = FakeBatteryDiagnosticsSource()
+
+    private class FakeBatteryDiagnosticsSource : BatteryDiagnosticsSource {
+        var snapshot =
+            BatteryDiagnosticsSnapshot(
+                batteryOptimised = false,
+                standbyBucket = StandbyBucket.ACTIVE,
+                manufacturer = "Google",
+            )
+        val batteryIntent: Intent = Intent()
+        val appIntent: Intent = Intent()
+
+        override fun snapshot(): BatteryDiagnosticsSnapshot = snapshot
+
+        override fun batterySettingsIntent(): Intent = batteryIntent
+
+        override fun appSettingsIntent(): Intent = appIntent
     }
 }

@@ -17,16 +17,17 @@
             android:name="dev.studyflow.core.scheduling.ReminderActionReceiver"
             android:exported="false" />
 
-        <!-- Re-arms every reminder after a reboot or app update (issue #48); exported so the
-             system can deliver its own broadcasts, but restricted to those two actions and does
+        <!-- Re-arms every reminder after a reboot, app update, or clock change; exported so the
+             system can deliver its own broadcasts, but restricted to those actions and does
              nothing for anything else it might somehow receive. -->
         <receiver
             android:name="dev.studyflow.core.scheduling.BootRescheduleReceiver"
-            android:exported="true"
-            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.TIME_SET" />
+                <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
 

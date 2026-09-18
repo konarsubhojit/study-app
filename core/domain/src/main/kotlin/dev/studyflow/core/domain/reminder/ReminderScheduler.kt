@@ -60,14 +60,16 @@ public object ReminderScheduler {
         // the next occurrence of a repeating task is unaffected by the user hitting snooze once.
         val snoozedUntil = reminder.snooze?.until?.takeIf { it > now }
 
-        return ReminderPlan(
-            reminderId = reminder.id,
-            taskId = task.id,
-            occurrenceAt = anchor.occurrenceAt,
-            triggerAt = snoozedUntil ?: anchor.triggerAt,
-            delivery = deliveryFor(reminder, capabilities),
-            degradations = degradationsFor(reminder, capabilities),
-        )
+        val plan =
+            ReminderPlan(
+                reminderId = reminder.id,
+                taskId = task.id,
+                occurrenceAt = anchor.occurrenceAt,
+                triggerAt = snoozedUntil ?: anchor.triggerAt,
+                delivery = deliveryFor(reminder, capabilities),
+                degradations = degradationsFor(reminder, capabilities),
+            )
+        return plan.takeUnless { reminder.lastFiredAt?.let { firedAt -> firedAt >= it.triggerAt } == true }
     }
 
     /**

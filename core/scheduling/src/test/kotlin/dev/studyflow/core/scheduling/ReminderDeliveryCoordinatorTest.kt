@@ -1,6 +1,7 @@
 package dev.studyflow.core.scheduling
 
 import androidx.core.app.NotificationManagerCompat
+import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.ReminderPrecision
@@ -14,6 +15,7 @@ import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.testing.data.FakeSubjectRepository
 import dev.studyflow.core.testing.data.FakeTaskRepository
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
@@ -58,6 +60,7 @@ class ReminderDeliveryCoordinatorTest {
             notificationFactory = notificationFactory,
             digestEnabled = { digestEnabled },
             capabilitiesProvider = { SchedulingCapabilities(canUseFullScreenIntent = fullScreenIntentAllowed) },
+            clock = Clock { NOW },
         )
 
     @Test
@@ -77,6 +80,17 @@ class ReminderDeliveryCoordinatorTest {
             )
             assertEquals(SUBJECT_COLOR, notification.color)
             assertEquals(3, notification.actions.size)
+        }
+
+    @Test
+    fun `a posted reminder records that it fired`() =
+        runBlocking {
+            taskRepository.save(task())
+
+            coordinator.deliver("reminder-1", "task-1")
+
+            val updatedReminder = taskRepository.observeTask("task-1").first()!!.reminders.single()
+            assertEquals(NOW, updatedReminder.lastFiredAt)
         }
 
     @Test

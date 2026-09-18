@@ -7,6 +7,7 @@ import dev.studyflow.app.BuildConfig
 import dev.studyflow.app.logging.AndroidLogging
 import dev.studyflow.core.notifications.NotificationChannelRegistrar
 import dev.studyflow.core.scheduling.DigestScheduler
+import dev.studyflow.core.scheduling.ReminderIntegrityScheduler
 
 class AppStartupInitializer : Initializer<Unit> {
     override fun create(context: Context) {
@@ -18,6 +19,7 @@ class AppStartupInitializer : Initializer<Unit> {
         // `KEEP` inside the scheduler means calling this on every cold start is safe: it enqueues
         // the daily digest job once and leaves an already-running one alone (issue #47).
         DigestScheduler(context).ensureScheduled()
+        ReminderIntegrityScheduler(context).ensureScheduled()
 
         if (BuildConfig.DEBUG) {
             try {

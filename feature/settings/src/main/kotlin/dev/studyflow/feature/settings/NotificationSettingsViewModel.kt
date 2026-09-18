@@ -43,6 +43,12 @@ public data class NotificationSettingsUiState(
     val loaded: Boolean = false,
     /** Empty means "the device's default alarm sound" — see `settings.proto`'s field doc. */
     val alarmRingtoneUri: String = "",
+    val batteryDiagnostics: BatteryDiagnosticsSnapshot =
+        BatteryDiagnosticsSnapshot(
+            batteryOptimised = false,
+            standbyBucket = StandbyBucket.UNKNOWN,
+            manufacturer = "",
+        ),
 ) : UiState {
     val notificationsBlocked: Boolean
         get() = !permission.canPost
@@ -83,6 +89,8 @@ public sealed interface NotificationSettingsUiEvent : UiEvent {
 
     public data object OpenAppSettings : NotificationSettingsUiEvent
 
+    public data object OpenBatterySettings : NotificationSettingsUiEvent
+
     /** The user tapped "Choose alarm sound"; only [StudyFlowNotificationChannel.ALARMS] offers this. */
     public data object PickAlarmRingtone : NotificationSettingsUiEvent
 
@@ -114,6 +122,7 @@ public class NotificationSettingsViewModel
         savedStateHandle: SavedStateHandle,
         private val source: NotificationSettingsSource,
         private val settingsStore: AlarmRingtoneSettings,
+        private val batteryDiagnosticsSource: BatteryDiagnosticsSource,
     ) : MviViewModel<NotificationSettingsUiEvent, NotificationSettingsUiEffect>(savedStateHandle) {
         private val systemState = MutableStateFlow(NotificationSettingsUiState())
 
@@ -173,6 +182,15 @@ public class NotificationSettingsViewModel
                     emitEffect(NotificationSettingsUiEffect.OpenSystemSettings(source.appSettingsIntent()))
                 }
 
+                NotificationSettingsUiEvent.OpenBatterySettings -> {
+                    emitEffect(
+                        NotificationSettingsUiEffect.OpenSystemSettings(
+                            intent = batteryDiagnosticsSource.batterySettingsIntent(),
+                            fallbackIntent = batteryDiagnosticsSource.appSettingsIntent(),
+                        ),
+                    )
+                }
+
                 NotificationSettingsUiEvent.PickAlarmRingtone -> {
                     emitEffect(NotificationSettingsUiEffect.LaunchRingtonePicker(systemState.value.alarmRingtoneUri))
                 }
@@ -193,6 +211,7 @@ public class NotificationSettingsViewModel
                     channels = snapshot.channels,
                     degradation = NotificationPermissionPolicy.degradationFor(snapshot.permission, MOMENT),
                     loaded = true,
+                    batteryDiagnostics = batteryDiagnosticsSource.snapshot(),
                 )
         }
 
