@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <application>
         <receiver
@@ -46,6 +47,14 @@
             android:name="dev.studyflow.core.scheduling.AlarmPlaybackService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback"
+            tools:targetApi="29" />
+
+        <!-- WorkManager runs every foreground worker through this shared service; declaring the
+             type here satisfies the platform requirement for MaterialUploadWorker's dataSync
+             transfers (issue #38). -->
+        <service
+            android:name="androidx.work.impl.foreground.SystemForegroundService"
+            android:foregroundServiceType="dataSync"
             tools:targetApi="29" />
     </application>
 </manifest>

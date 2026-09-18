@@ -1,0 +1,4 @@
+<resources>
+    <string name="alarm_action_snooze">Snooze</string>
+    <string name="alarm_action_dismiss">Dismiss</string>
+</resources>

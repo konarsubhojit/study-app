@@ -1,5 +1,6 @@
 package dev.studyflow.core.notifications
 
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Intent
@@ -18,6 +19,7 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
+@SuppressLint("InlinedApi") // Test is pinned to API 34 via @Config(sdk = [34]).
 class StudyFlowNotificationFactoryTest {
     private val context = RuntimeEnvironment.getApplication()
     private val factory = StudyFlowNotificationFactory(context, SMALL_ICON)

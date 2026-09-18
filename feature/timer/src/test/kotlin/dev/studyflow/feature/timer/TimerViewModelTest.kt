@@ -26,18 +26,31 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.Timeout
 import org.junit.jupiter.api.extension.RegisterExtension
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
+/**
+ * [TimerViewModel.state] keeps a once-a-second ticker running for as long as its `viewModelScope`
+ * is alive (see the KDoc on [TimerViewModel]'s `ticker`). That ticker shares [mainDispatcher]'s
+ * virtual scheduler with `runTest`, so it must be cancelled — via [stopTickers] — before a test
+ * body returns; otherwise `runTest`'s own end-of-test `advanceUntilIdle()` keeps replaying the
+ * ticker's self-rescheduling `delay(1.seconds)` forever and the test (and therefore the whole
+ * suite) never finishes. Every test below runs its assertions in a `try` and calls [stopTickers]
+ * in a `finally` so a failed assertion can never skip that cleanup, and [Timeout] is a hard backstop
+ * in case a future change reintroduces an unbounded ticker some other way.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 @DisplayName("TimerViewModel")
+@Timeout(30)
 class TimerViewModelTest {
     @RegisterExtension
     val mainDispatcher = MainDispatcherExtension()
@@ -51,139 +64,180 @@ class TimerViewModelTest {
     @Test
     fun `initial state is idle with no elapsed time`() =
         runTest(mainDispatcher.dispatcher) {
-            val viewModel = viewModel()
+            try {
+                val viewModel = viewModel()
 
-            assertEquals(TimerPhase.IDLE, viewModel.state.value.phase)
-            assertEquals(0L, viewModel.state.value.elapsedSeconds)
+                assertEquals(TimerPhase.IDLE, viewModel.state.value.phase)
+                assertEquals(0L, viewModel.state.value.elapsedSeconds)
+            } finally {
+                stopTickers()
+            }
         }
 
     @Test
     fun `starting a session moves the phase to running and carries the chosen subject and note`() =
         runTest(mainDispatcher.dispatcher) {
-            subjectRepository.put(testSubject(id = "subject-1"))
-            val viewModel = viewModel()
+            try {
+                subjectRepository.put(testSubject(id = "subject-1"))
+                val viewModel = viewModel()
 
-            viewModel.state.test {
-                awaitItem() // initial idle state
-                viewModel.onEvent(TimerUiEvent.SubjectSelected("subject-1"))
-                assertEquals("subject-1", awaitItem().selectedSubjectId)
-                viewModel.onEvent(TimerUiEvent.NoteChanged("Chapter 4 exercises"))
-                assertEquals("Chapter 4 exercises", awaitItem().note)
+                viewModel.state.test {
+                    awaitItem() // initial idle state
+                    viewModel.onEvent(TimerUiEvent.SubjectSelected("subject-1"))
+                    assertEquals("subject-1", awaitItem().selectedSubjectId)
+                    viewModel.onEvent(TimerUiEvent.NoteChanged("Chapter 4 exercises"))
+                    assertEquals("Chapter 4 exercises", awaitItem().note)
 
-                viewModel.onEvent(TimerUiEvent.StartRequested)
-                val running = expectMostRecentItem()
-                assertEquals(TimerPhase.RUNNING, running.phase)
-                assertEquals("subject-1", running.selectedSubjectId)
-                assertEquals("Chapter 4 exercises", running.note)
-                cancelAndIgnoreRemainingEvents()
+                    viewModel.onEvent(TimerUiEvent.StartRequested)
+                    runCurrent()
+                    val running = expectMostRecentItem()
+                    assertEquals(TimerPhase.RUNNING, running.phase)
+                    assertEquals("subject-1", running.selectedSubjectId)
+                    assertEquals("Chapter 4 exercises", running.note)
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                stopTickers()
             }
-            stopTickers()
         }
 
     @Test
     fun `pause then resume round-trips back to running without losing settled time`() =
         runTest(mainDispatcher.dispatcher) {
-            val viewModel = viewModel()
-            viewModel.onEvent(TimerUiEvent.StartRequested)
+            try {
+                val viewModel = viewModel()
+                viewModel.onEvent(TimerUiEvent.StartRequested)
+                runCurrent()
 
-            viewModel.state.test {
-                awaitItem() // running, freshly started
+                viewModel.state.test {
+                    awaitItem() // running, freshly started
 
-                device.advance(5.minutes)
-                viewModel.onEvent(TimerUiEvent.PauseRequested)
-                val paused = expectMostRecentItem()
-                assertEquals(TimerPhase.PAUSED, paused.phase)
-                assertEquals(300L, paused.elapsedSeconds)
+                    device.advance(5.minutes)
+                    viewModel.onEvent(TimerUiEvent.PauseRequested)
+                    runCurrent()
+                    val paused = expectMostRecentItem()
+                    assertEquals(TimerPhase.PAUSED, paused.phase)
+                    assertEquals(300L, paused.elapsedSeconds)
 
-                device.advance(10.minutes) // must not count while paused
-                viewModel.onEvent(TimerUiEvent.ResumeRequested)
-                val resumed = expectMostRecentItem()
-                assertEquals(TimerPhase.RUNNING, resumed.phase)
-                assertEquals(300L, resumed.elapsedSeconds)
-                cancelAndIgnoreRemainingEvents()
+                    device.advance(10.minutes) // must not count while paused
+                    viewModel.onEvent(TimerUiEvent.ResumeRequested)
+                    runCurrent()
+                    val resumed = expectMostRecentItem()
+                    assertEquals(TimerPhase.RUNNING, resumed.phase)
+                    assertEquals(300L, resumed.elapsedSeconds)
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                stopTickers()
             }
-            stopTickers()
         }
 
     @Test
     fun `stopping a session returns to idle`() =
         runTest(mainDispatcher.dispatcher) {
-            val viewModel = viewModel()
-            viewModel.onEvent(TimerUiEvent.StartRequested)
+            try {
+                val viewModel = viewModel()
+                viewModel.onEvent(TimerUiEvent.StartRequested)
+                runCurrent()
 
-            viewModel.state.test {
-                awaitItem()
-                device.advance(2.minutes)
-                viewModel.onEvent(TimerUiEvent.StopRequested)
-                val stopped = expectMostRecentItem()
-                assertEquals(TimerPhase.IDLE, stopped.phase)
-                cancelAndIgnoreRemainingEvents()
+                viewModel.state.test {
+                    awaitItem()
+                    device.advance(2.minutes)
+                    viewModel.onEvent(TimerUiEvent.StopRequested)
+                    runCurrent()
+                    val stopped = expectMostRecentItem()
+                    assertEquals(TimerPhase.IDLE, stopped.phase)
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                stopTickers()
             }
-            stopTickers()
         }
 
     @Test
     fun `the running elapsed display ticks forward once a second without a manual refresh`() =
         runTest(mainDispatcher.dispatcher) {
-            val viewModel = viewModel()
-            viewModel.onEvent(TimerUiEvent.StartRequested)
+            try {
+                val viewModel = viewModel()
+                viewModel.onEvent(TimerUiEvent.StartRequested)
+                runCurrent()
 
-            viewModel.state.test {
-                awaitItem()
-                device.advance(1.seconds)
-                advanceTimeBy(1_100)
-                assertEquals(1L, expectMostRecentItem().elapsedSeconds)
-                cancelAndIgnoreRemainingEvents()
+                viewModel.state.test {
+                    awaitItem()
+                    device.advance(1.seconds)
+                    advanceTimeBy(1_100)
+                    runCurrent()
+                    assertEquals(1L, expectMostRecentItem().elapsedSeconds)
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                stopTickers()
             }
-            stopTickers()
         }
 
     @Test
     fun `a command the engine refuses is surfaced as an effect and leaves state untouched`() =
         runTest(mainDispatcher.dispatcher) {
-            val viewModel = viewModel()
+            try {
+                val viewModel = viewModel()
 
-            viewModel.effects.test {
-                viewModel.onEvent(TimerUiEvent.PauseRequested) // nothing is running yet
-                assertEquals(TimerRejection.NO_ACTIVE_SESSION, (awaitItem() as TimerUiEffect.CommandRejected).reason)
-                cancelAndIgnoreRemainingEvents()
+                viewModel.effects.test {
+                    viewModel.onEvent(TimerUiEvent.PauseRequested) // nothing is running yet
+                    assertEquals(
+                        TimerRejection.NO_ACTIVE_SESSION,
+                        (awaitItem() as TimerUiEffect.CommandRejected).reason,
+                    )
+                    cancelAndIgnoreRemainingEvents()
+                }
+                assertEquals(TimerPhase.IDLE, viewModel.state.value.phase)
+            } finally {
+                stopTickers()
             }
-            assertEquals(TimerPhase.IDLE, viewModel.state.value.phase)
-            stopTickers()
         }
 
     @Test
     fun `a reboot while running is recovered as paused with unverified time, not lost or silently counted`() =
         runTest(mainDispatcher.dispatcher) {
-            val viewModel = viewModel()
-            viewModel.onEvent(TimerUiEvent.StartRequested)
-            device.advance(5.minutes)
-            device.reboot(downtime = 20.minutes)
+            try {
+                val viewModel = viewModel()
+                viewModel.onEvent(TimerUiEvent.StartRequested)
+                runCurrent()
+                device.advance(5.minutes)
+                device.reboot(downtime = 20.minutes)
 
-            val recovered = viewModel().state
-            recovered.test {
-                val state = expectMostRecentItem()
-                assertEquals(TimerPhase.PAUSED, state.phase)
-                assertTrue(state.hasUnverifiedTime)
-                assertEquals(300L, state.elapsedSeconds) // settled time is untouched
-                cancelAndIgnoreRemainingEvents()
+                val recovered = viewModel().state
+                runCurrent()
+                recovered.test {
+                    val state = expectMostRecentItem()
+                    assertEquals(TimerPhase.PAUSED, state.phase)
+                    assertTrue(state.hasUnverifiedTime)
+                    // No prior pause/resume boundary exists, so the whole open interval (the running
+                    // time before the reboot plus the downtime) is unverified rather than counted —
+                    // see TimerEngineTest."a reboot while running produces an unverified gap...".
+                    assertEquals(0L, state.elapsedSeconds)
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                stopTickers()
             }
-            stopTickers()
         }
 
     @Test
     fun `keep-screen-on toggles independently of the timer's own state`() =
         runTest(mainDispatcher.dispatcher) {
-            val viewModel = viewModel()
-            assertFalse(viewModel.state.value.keepScreenOn)
+            try {
+                val viewModel = viewModel()
+                assertFalse(viewModel.state.value.keepScreenOn)
 
-            viewModel.state.test {
-                awaitItem() // initial state
-                viewModel.onEvent(TimerUiEvent.KeepScreenOnChanged(true))
-                assertTrue(awaitItem().keepScreenOn)
-                cancelAndIgnoreRemainingEvents()
+                viewModel.state.test {
+                    awaitItem() // initial state
+                    viewModel.onEvent(TimerUiEvent.KeepScreenOnChanged(true))
+                    assertTrue(awaitItem().keepScreenOn)
+                    cancelAndIgnoreRemainingEvents()
+                }
+            } finally {
+                stopTickers()
             }
-            stopTickers()
         }
 
     private fun viewModel(): TimerViewModel =
@@ -260,11 +314,24 @@ private class InMemorySessionRepository : SessionRepository {
         return SessionCommandResult.Applied(session, state)
     }
 
-    private fun activeSessionId(): String? = sessionsFlow.value.values.firstOrNull { it.isActive }?.id
+    private fun activeSessionId(): String? =
+        sessionsFlow.value.values
+            .firstOrNull { it.isActive }
+            ?.id
 
     private fun TimerCommand.descriptorFor(activeId: String?): SessionDescriptor =
         when (this) {
-            is TimerCommand.Start -> SessionDescriptor(id = sessionId, deviceId = "device-1", subjectId = subjectId, note = note)
-            else -> descriptors.getValue(requireNotNull(activeId) { "$this has no session to apply to" })
+            is TimerCommand.Start -> {
+                SessionDescriptor(
+                    id = sessionId,
+                    deviceId = "device-1",
+                    subjectId = subjectId,
+                    note = note,
+                )
+            }
+
+            else -> {
+                descriptors.getValue(requireNotNull(activeId) { "$this has no session to apply to" })
+            }
         }
 }

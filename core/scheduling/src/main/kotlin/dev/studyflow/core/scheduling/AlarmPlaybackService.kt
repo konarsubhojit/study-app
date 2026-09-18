@@ -202,8 +202,9 @@ public class AlarmPlaybackService : Service() {
         notificationId: Int,
     ) {
         taskRepository.observeTask(taskId).collect { task ->
-            val stillNeeded = task != null && !task.isCompleted && !task.deleted &&
-                task.reminders.any { it.id == reminderId }
+            val stillNeeded =
+                task != null && !task.isCompleted && !task.deleted &&
+                    task.reminders.any { it.id == reminderId }
             if (!stillNeeded) {
                 stopSession(notificationId)
             }

@@ -55,7 +55,11 @@ public class AlarmActivity : ComponentActivity() {
             return
         }
 
-        val titleView = TextView(this).apply { textSize = TITLE_TEXT_SIZE_SP; setTypeface(typeface, Typeface.BOLD) }
+        val titleView =
+            TextView(this).apply {
+                textSize = TITLE_TEXT_SIZE_SP
+                setTypeface(typeface, Typeface.BOLD)
+            }
         val dueView = TextView(this).apply { textSize = BODY_TEXT_SIZE_SP }
         setContentView(alarmLayout(titleView, dueView, reminderId, taskId))
 
@@ -125,7 +129,7 @@ public class AlarmActivity : ComponentActivity() {
 
             addView(
                 Button(this@AlarmActivity).apply {
-                    text = "Snooze"
+                    text = getString(R.string.alarm_action_snooze)
                     setOnClickListener {
                         dispatch(ReminderActionKind.SNOOZE, reminderId, taskId)
                         finish()
@@ -134,7 +138,7 @@ public class AlarmActivity : ComponentActivity() {
             )
             addView(
                 Button(this@AlarmActivity).apply {
-                    text = "Dismiss"
+                    text = getString(R.string.alarm_action_dismiss)
                     setOnClickListener {
                         dispatch(ReminderActionKind.DISMISS, reminderId, taskId)
                         finish()

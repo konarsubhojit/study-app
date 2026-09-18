@@ -1,6 +1,7 @@
 package dev.studyflow.feature.settings
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -30,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.core.app.ActivityCompat
+import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -46,6 +48,8 @@ import dev.studyflow.core.ui.state.LoadingState
  * the app look broken exactly when the user had just fixed something.
  */
 @Composable
+@SuppressLint("InlinedApi") // RequestPermission().launch is safe to call with POST_NOTIFICATIONS
+// below API 33; the system reports the permission as already granted on older platforms.
 public fun NotificationSettingsRoute(
     modifier: Modifier = Modifier,
     viewModel: NotificationSettingsViewModel = hiltViewModel(),
@@ -252,7 +256,7 @@ private fun ringtonePickerIntent(currentUri: String): Intent =
             RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
         )
         if (currentUri.isNotBlank()) {
-            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, android.net.Uri.parse(currentUri))
+            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri.toUri())
         }
     }
 

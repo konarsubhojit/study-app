@@ -347,6 +347,12 @@ public object DatabaseMigrations {
     }
 
     private fun SQLiteConnection.rebuildMaterialTables() {
+        replaceMaterialsTable()
+        createMaterialCatalogIndices()
+        rebuildMaterialTagsAndSearch()
+    }
+
+    private fun SQLiteConnection.replaceMaterialsTable() {
         // Dropping the old materials table can clear study_tasks.material_id through its SET NULL
         // foreign key, so keep the references and restore them after the replacement table exists.
         execSQL(
@@ -391,7 +397,9 @@ public object DatabaseMigrations {
             """.trimIndent(),
         )
         execSQL("DROP TABLE material_task_refs")
-        createMaterialCatalogIndices()
+    }
+
+    private fun SQLiteConnection.rebuildMaterialTagsAndSearch() {
         execSQL("CREATE TABLE IF NOT EXISTS `tags` (`name` TEXT NOT NULL, PRIMARY KEY(`name`))")
         execSQL(
             """

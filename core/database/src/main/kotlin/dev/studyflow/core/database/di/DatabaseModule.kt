@@ -1,7 +1,6 @@
 package dev.studyflow.core.database.di
 
 import android.content.Context
-import android.provider.Settings
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -79,22 +78,12 @@ public object DatabaseModule {
     @Singleton
     public fun sessionRepository(
         dao: SessionDao,
-        @ApplicationContext context: Context,
+        deviceIdProvider: DeviceIdProvider,
         observers: Set<@JvmSuppressWildcards SessionCommandObserver>,
-    ): SessionRepository = OfflineFirstSessionRepository(dao, deviceId(context), observers)
+    ): SessionRepository = OfflineFirstSessionRepository(dao, deviceIdProvider.current(), observers)
 
     @Provides
     @Singleton
     public fun sessionHistoryRepository(dao: SessionDao): SessionHistoryRepository =
         OfflineFirstSessionHistoryRepository(dao)
-
-    @Provides
-    @Singleton
-    public fun deviceIdProvider(
-        @ApplicationContext context: Context,
-    ): DeviceIdProvider = DeviceIdProvider { deviceId(context) }
-
-    /** A per-install, per-device identifier; stable without needing a persisted UUID of our own. */
-    private fun deviceId(context: Context): String =
-        Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown-device"
 }

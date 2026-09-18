@@ -38,8 +38,9 @@ public object AlarmPlaybackPolicy {
     /** The player's volume (both channels) at [elapsed] time since the alarm started ringing. */
     public fun volumeAt(elapsed: Duration): Float {
         if (elapsed >= ESCALATION_DURATION) return MAX_VOLUME_FRACTION
-        val fraction = (elapsed.inWholeMilliseconds.toFloat() / ESCALATION_DURATION.inWholeMilliseconds)
-            .coerceIn(0f, 1f)
+        val fraction =
+            (elapsed.inWholeMilliseconds.toFloat() / ESCALATION_DURATION.inWholeMilliseconds)
+                .coerceIn(0f, 1f)
         return MIN_VOLUME_FRACTION + (MAX_VOLUME_FRACTION - MIN_VOLUME_FRACTION) * fraction
     }
 

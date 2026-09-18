@@ -92,9 +92,9 @@ public fun StudyFlowTag(
 public fun StudyFlowDialog(
     title: String,
     onDismissRequest: () -> Unit,
+    confirmButton: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     text: String? = null,
-    confirmButton: @Composable () -> Unit,
     dismissButton: @Composable (() -> Unit)? = null,
 ) {
     AlertDialog(

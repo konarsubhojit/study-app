@@ -1,7 +1,9 @@
 package dev.studyflow.app.timer
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.provider.Settings
+import androidx.core.content.edit
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.studyflow.core.common.coroutines.ApplicationScope
 import dev.studyflow.core.common.logging.AppLogger
@@ -69,6 +71,7 @@ internal class TimerRecoveryCoordinator
          * short-lived boot-recovery processes agree within the same boot, and rotated when
          * elapsedRealtime moves backwards.
          */
+        @SuppressLint("ApplySharedPref")
         private suspend fun fallbackBootId(uptime: Duration): BootId =
             withContext(Dispatchers.IO) {
                 synchronized(fallbackBootIdLock) {
@@ -81,11 +84,12 @@ internal class TimerRecoveryCoordinator
                             ?.takeIf { it.isNotBlank() && storedUptimeMillis <= uptimeMillis }
                             ?: "unknown-${UUID.randomUUID()}"
 
-                    prefs
-                        .edit()
-                        .putString(KEY_BOOT_ID, bootId)
-                        .putLong(KEY_UPTIME_MILLIS, uptimeMillis)
-                        .commit()
+                    // commit() is intentional: this value must be durable before other short-lived
+                    // boot-recovery processes read it back within the same boot.
+                    prefs.edit(commit = true) {
+                        putString(KEY_BOOT_ID, bootId)
+                        putLong(KEY_UPTIME_MILLIS, uptimeMillis)
+                    }
                     BootId(bootId)
                 }
             }

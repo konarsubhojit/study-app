@@ -306,7 +306,15 @@ class OfflineFirstSessionRepositoryTest {
             val applied = repository.start()
 
             assertEquals(listOf(applied), observed)
-            assertEquals(SESSION_ID, database.sessionDao().observeSession(SESSION_ID).first()?.session?.id)
+            assertEquals(
+                SESSION_ID,
+                database
+                    .sessionDao()
+                    .observeSession(SESSION_ID)
+                    .first()
+                    ?.session
+                    ?.id,
+            )
         }
 
     @Test

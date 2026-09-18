@@ -66,7 +66,7 @@ class StudyFlowNotifierTest {
                 NotificationChannel(
                     StudyFlowNotificationChannel.UPLOADS.id,
                     "Uploads",
-                    NotificationManagerCompat.IMPORTANCE_NONE,
+                    NotificationManager.IMPORTANCE_NONE,
                 ),
             )
 
