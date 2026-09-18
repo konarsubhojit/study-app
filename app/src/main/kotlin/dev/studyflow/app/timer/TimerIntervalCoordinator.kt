@@ -6,6 +6,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import androidx.core.net.toUri
+import dagger.Lazy
 import dagger.hilt.android.AndroidEntryPoint
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dev.studyflow.app.R
@@ -44,7 +46,7 @@ internal class TimerIntervalCoordinator
     constructor(
         @ApplicationContext private val context: Context,
         private val alarmManager: AlarmManager,
-        private val sessionRepository: SessionRepository,
+        private val sessionRepository: Lazy<SessionRepository>,
         private val settings: FocusTimerSettings,
         private val clock: AnchoredClock,
         private val notificationFactory: StudyFlowNotificationFactory,
@@ -114,12 +116,12 @@ internal class TimerIntervalCoordinator
         }
 
         private suspend fun onFocusEnded(intent: Intent) {
-            val state = sessionRepository.activeState()
+            val state = sessionRepository.get().activeState()
             val triggerAt = intent.requiredAnchor(EXTRA_TRIGGER)
             if (state !is TimerState.Running || !state.matchesExpectedOpen(intent)) return
 
             val result =
-                sessionRepository.execute(
+                sessionRepository.get().execute(
                     command = TimerCommand.StartBreak,
                     eventId = UUID.randomUUID().toString(),
                     anchor = triggerAt,
@@ -147,40 +149,40 @@ internal class TimerIntervalCoordinator
         }
 
         private suspend fun onBreakEnded(intent: Intent) {
-            val state = sessionRepository.activeState()
+            val state = sessionRepository.get().activeState()
             if (state !is TimerState.Paused || !state.matchesExpectedSequence(intent)) return
             postBreakComplete(state)
         }
 
         private suspend fun onResumeFocus(intent: Intent) {
-            val state = sessionRepository.activeState()
+            val state = sessionRepository.get().activeState()
             if (state !is TimerState.Paused || state.sessionId != intent.getStringExtra(EXTRA_SESSION_ID)) return
-            sessionRepository.execute(TimerCommand.ResumeFocus, UUID.randomUUID().toString(), clock.anchor())
+            sessionRepository.get().execute(TimerCommand.ResumeFocus, UUID.randomUUID().toString(), clock.anchor())
         }
 
         private suspend fun onInactivityPrompt(intent: Intent) {
-            val state = sessionRepository.activeState()
+            val state = sessionRepository.get().activeState()
             if (state !is TimerState.Running || !state.matchesExpectedConfirmation(intent)) return
             postInactivityPrompt(state, intent.requiredAnchor(EXTRA_TRIGGER))
         }
 
         private suspend fun onConfirmActivity(intent: Intent) {
-            val state = sessionRepository.activeState()
+            val state = sessionRepository.get().activeState()
             if (state !is TimerState.Running || state.sessionId != intent.getStringExtra(EXTRA_SESSION_ID)) return
-            sessionRepository.execute(TimerCommand.ConfirmActivity, UUID.randomUUID().toString(), clock.anchor())
+            sessionRepository.get().execute(TimerCommand.ConfirmActivity, UUID.randomUUID().toString(), clock.anchor())
         }
 
         private suspend fun onStopAtPrompt(intent: Intent) {
-            val state = sessionRepository.activeState()
+            val state = sessionRepository.get().activeState()
             val promptAt = intent.requiredAnchor(EXTRA_PROMPT)
             if (state !is TimerState.Running || state.sessionId != intent.getStringExtra(EXTRA_SESSION_ID)) return
-            sessionRepository.execute(TimerCommand.Stop, UUID.randomUUID().toString(), promptAt)
+            sessionRepository.get().execute(TimerCommand.Stop, UUID.randomUUID().toString(), promptAt)
         }
 
         private suspend fun onRunawaySession(intent: Intent) {
-            val state = sessionRepository.activeState()
+            val state = sessionRepository.get().activeState()
             if (state !is TimerState.Running || !state.matchesExpectedOpen(intent)) return
-            val result = sessionRepository.reconcile(UUID.randomUUID().toString(), clock.anchor())
+            val result = sessionRepository.get().reconcile(UUID.randomUUID().toString(), clock.anchor())
             if (result is SessionCommandResult.Applied) postRunawayPaused(result.state)
         }
 
@@ -408,7 +410,7 @@ internal class TimerIntervalCoordinator
         private fun TimeAnchor.matches(other: TimeAnchor): Boolean =
             bootId == other.bootId && uptime == other.uptime && wallClock == other.wallClock
 
-        private fun timerActionUri(action: String): Uri = Uri.parse("studyflow://timer/interval/$action")
+        private fun timerActionUri(action: String): Uri = "studyflow://timer/interval/$action".toUri()
 
         private operator fun TimeAnchor.plus(duration: Duration): TimeAnchor =
             TimeAnchor(uptime = uptime + duration, wallClock = wallClock + duration, bootId = bootId)
