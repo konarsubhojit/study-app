@@ -144,6 +144,7 @@ public class TimerViewModel
         private val draftTaskId = MutableStateFlow<String?>(null)
         private val draftNote = MutableStateFlow("")
         private val keepScreenOn = MutableStateFlow(false)
+        private val tasks = taskRepository.observeTasks().stateInViewModel(emptyList())
 
         private val activeSession: Flow<StudySession?> = sessionRepository.observeActiveSession()
 
@@ -167,24 +168,31 @@ public class TimerViewModel
                     pulses.onStart { emit(Unit) }.map { sessionRepository.activeState() }
                 }
 
+        private val selectedTask: Flow<StudyTask?> =
+            combine(draftTaskId, tasks) { taskId, tasks -> tasks.firstOrNull { it.id == taskId } }
+
+        private val suggestedTask: Flow<StudyTask?> =
+            tasks
+                .map { tasks ->
+                    tasks
+                        .filterNot { it.isCompleted }
+                        .mapNotNull { task -> task.dueAtUtc?.let { dueAt -> dueAt to task } }
+                        .minByOrNull { it.first }
+                        ?.second
+                }.distinctUntilChanged()
+
         private val draft: Flow<TimerDraft> =
             combine(
-                draftTaskId,
+                selectedTask,
+                suggestedTask,
                 draftSubjectId,
                 draftNote,
-                taskRepository.observeTasks(),
-            ) { taskId, subjectId, note, tasks ->
+            ) { selectedTask, suggestedTask, subjectId, note ->
                 TimerDraft(
-                    taskId = taskId,
                     subjectId = subjectId,
                     note = note,
-                    selectedTask = tasks.firstOrNull { it.id == taskId },
-                    suggestedTask =
-                        tasks
-                            .filterNot { it.isCompleted }
-                            .mapNotNull { task -> task.dueAtUtc?.let { dueAt -> dueAt to task } }
-                            .minByOrNull { it.first }
-                            ?.second,
+                    selectedTask = selectedTask,
+                    suggestedTask = suggestedTask,
                 )
             }
 
@@ -353,7 +361,6 @@ public class TimerViewModel
                 }
 
             private data class TimerDraft(
-                val taskId: String?,
                 val subjectId: String?,
                 val note: String,
                 val selectedTask: StudyTask?,
