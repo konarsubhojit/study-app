@@ -72,6 +72,9 @@ public class OfflineFirstSessionRepository(
     override fun observeSession(sessionId: String): Flow<StudySession?> =
         dao.observeSession(sessionId).map { it?.asExternalModel() }
 
+    override fun observeSessions(): Flow<List<StudySession>> =
+        dao.observeAll().map { sessions -> sessions.mapNotNull(SessionWithEvents::asExternalModel) }
+
     override suspend fun activeState(): TimerState = activeSession()?.foldEvents() ?: TimerState.Idle
 
     override suspend fun execute(

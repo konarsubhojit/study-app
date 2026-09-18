@@ -271,6 +271,8 @@ private class InMemorySessionRepository : SessionRepository {
 
     override fun observeSession(sessionId: String): Flow<StudySession?> = sessionsFlow.map { it[sessionId] }
 
+    override fun observeSessions(): Flow<List<StudySession>> = sessionsFlow.map { it.values.toList() }
+
     override suspend fun activeState(): TimerState {
         val active = activeSessionId() ?: return TimerState.Idle
         return TimerEngine.fold(logs.getValue(active))

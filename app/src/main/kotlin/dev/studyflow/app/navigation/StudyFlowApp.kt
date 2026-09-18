@@ -2,23 +2,15 @@ package dev.studyflow.app.navigation
 
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
@@ -29,12 +21,12 @@ import androidx.navigation3.ui.NavDisplay
 import dev.studyflow.core.designsystem.layout.StudyFlowScaffold
 import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
-import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.feature.materials.MaterialDetailRoute
 import dev.studyflow.feature.settings.NotificationSettingsRoute
 import dev.studyflow.feature.tasks.TaskDetailRoute
 import dev.studyflow.feature.tasks.TasksListRoute
 import dev.studyflow.feature.history.HistoryRoute as HistoryScreenRoute
+import dev.studyflow.feature.home.HomeRoute as HomeScreenRoute
 import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
 import dev.studyflow.feature.timer.TimerRoute as TimerScreenRoute
 
@@ -90,7 +82,12 @@ private fun AppNavDisplay(
             entryProvider =
                 entryProvider {
                     entry<HomeRoute> {
-                        DestinationScreen("Home")
+                        HomeScreenRoute(
+                            onOpenTimer = { backStack.add(TimerRoute(openRunningTimer = true)) },
+                            onOpenTask = { taskId -> backStack.add(TasksRoute(taskId)) },
+                            onOpenMaterial = { materialId -> backStack.add(MaterialsRoute(materialId)) },
+                            onOpenHistory = { backStack.add(HistoryRoute) },
+                        )
                     }
                     entry<TimerRoute> {
                         TimerScreenRoute()
@@ -153,26 +150,6 @@ private fun MaterialsEntry(
         MaterialDetailRoute(
             materialId = route.materialId,
             onBack = { backStack.removeLastOrNull() },
-        )
-    }
-}
-
-@Composable
-private fun DestinationScreen(title: String) {
-    var restoredNote by rememberSaveable { mutableStateOf("") }
-
-    Column(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .padding(MaterialTheme.spacing.large),
-        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-    ) {
-        Text(text = title, style = MaterialTheme.typography.headlineMedium)
-        OutlinedTextField(
-            value = restoredNote,
-            onValueChange = { restoredNote = it },
-            label = { Text("Saved screen note") },
         )
     }
 }

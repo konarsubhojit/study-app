@@ -42,6 +42,7 @@ include(":feature:insights")
 include(":feature:settings")
 include(":feature:auth")
 include(":feature:history")
+include(":feature:home")
 include(":benchmark")
 
 // The installable application. Adding a module needs a line here and nothing else (issue #11).

@@ -10,6 +10,7 @@ import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.TimeAnchor
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlin.time.Duration
 
 /**
@@ -24,6 +25,8 @@ public class FakeSessionRepository : SessionRepository {
     override fun observeActiveSession(): Flow<StudySession?> = activeSession
 
     override fun observeSession(sessionId: String): Flow<StudySession?> = activeSession
+
+    override fun observeSessions(): Flow<List<StudySession>> = activeSession.map { listOfNotNull(it) }
 
     override suspend fun activeState(): TimerState = TimerState.Idle
 

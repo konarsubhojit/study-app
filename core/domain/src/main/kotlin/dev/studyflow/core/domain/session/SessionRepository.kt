@@ -27,6 +27,9 @@ public interface SessionRepository {
     /** One session by id, re-derived whenever its log changes; `null` while it does not exist. */
     public fun observeSession(sessionId: String): Flow<StudySession?>
 
+    /** All non-deleted local projections, for compact local summaries such as the home dashboard. */
+    public fun observeSessions(): Flow<List<StudySession>>
+
     /** The timer state of the active session, folded from its log; [TimerState.Idle] when none. */
     public suspend fun activeState(): TimerState
 
