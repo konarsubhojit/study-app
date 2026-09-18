@@ -27,6 +27,7 @@ import dev.studyflow.feature.tasks.TaskDetailRoute
 import dev.studyflow.feature.tasks.TasksListRoute
 import dev.studyflow.feature.history.HistoryRoute as HistoryScreenRoute
 import dev.studyflow.feature.home.HomeRoute as HomeScreenRoute
+import dev.studyflow.feature.insights.InsightsRoute as InsightsScreenRoute
 import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
 import dev.studyflow.feature.timer.TimerRoute as TimerScreenRoute
 
@@ -103,6 +104,9 @@ private fun AppNavDisplay(
                     }
                     entry<HistoryRoute> {
                         HistoryScreenRoute()
+                    }
+                    entry<InsightsRoute> {
+                        InsightsScreenRoute()
                     }
                 },
             modifier = modifier,
@@ -191,6 +195,7 @@ private val AppRoute.topLevelRoute: AppRoute
             is MaterialsRoute -> MaterialsRoute()
             is TasksRoute -> TasksRoute()
             HistoryRoute -> HistoryRoute
+            InsightsRoute -> InsightsRoute
             SettingsRoute -> SettingsRoute
         }
 
@@ -202,5 +207,6 @@ private val AppRoute.label: String
             is MaterialsRoute -> "Materials"
             is TasksRoute -> "Tasks"
             HistoryRoute -> "History"
+            InsightsRoute -> "Insights"
             SettingsRoute -> "Settings"
         }

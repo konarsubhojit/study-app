@@ -82,8 +82,10 @@ graph TD
     feature_home --> core_model
     feature_home --> core_ui
     feature_insights --> core_common
+    feature_insights --> core_designsystem
     feature_insights --> core_domain
     feature_insights --> core_model
+    feature_insights --> core_ui
     feature_materials --> core_common
     feature_materials --> core_designsystem
     feature_materials --> core_domain

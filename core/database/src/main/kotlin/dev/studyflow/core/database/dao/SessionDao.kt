@@ -154,6 +154,37 @@ public abstract class SessionDao {
     public abstract suspend fun findWithEvents(sessionId: String): SessionWithEvents?
 
     /**
+     * Stopped, non-deleted sessions started in `[startAtOrAfter, startBefore)`, for statistics
+     * aggregation (issue #60).
+     *
+     * Filtered identically to [historyPaged] (`deleted = 0`, optional subject) plus `status =
+     * 'STOPPED'`: an open session has no settled duration yet, and including it would make a daily
+     * total change every time the running clock ticks rather than only when a session closes. Not
+     * paged — statistics roll up a bounded date range rather than browsing indefinitely — and the
+     * roll-up itself (bucketing by day/week/month/hour-of-day, summing) is done by the repository
+     * once each row's [asExternalModel]-derived elapsed time is resolved, since that resolution
+     * requires replaying a variable-length event log or reading a correction's override columns,
+     * neither of which SQLite can express as a portable aggregate.
+     */
+    @Transaction
+    @Query(
+        """
+        SELECT * FROM study_sessions
+        WHERE deleted = 0
+            AND status = 'STOPPED'
+            AND (:subjectId IS NULL OR subject_id = :subjectId)
+            AND (:startAtOrAfter IS NULL OR started_at >= :startAtOrAfter)
+            AND (:startBefore IS NULL OR started_at < :startBefore)
+        ORDER BY started_at ASC, id ASC
+        """,
+    )
+    public abstract fun statsSessions(
+        subjectId: String?,
+        startAtOrAfter: Instant?,
+        startBefore: Instant?,
+    ): Flow<List<SessionWithEvents>>
+
+    /**
      * Commits a correction's session rewrites and its audit rows in one transaction, so a reader
      * never observes the new session state without the audit trail that explains it (or vice
      * versa).

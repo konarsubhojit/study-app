@@ -103,6 +103,7 @@ class StudyFlowDeepLinksTest {
             TasksRoute(),
             TasksRoute(taskId = "task / 42"),
             HistoryRoute,
+            InsightsRoute,
             SettingsRoute,
         )
 
@@ -114,6 +115,7 @@ class StudyFlowDeepLinksTest {
                 WidgetAction.MATERIALS -> MaterialsRoute()
                 WidgetAction.TASKS -> TasksRoute()
                 WidgetAction.HISTORY -> HistoryRoute
+                WidgetAction.INSIGHTS -> InsightsRoute
                 WidgetAction.SETTINGS -> SettingsRoute
             }
 }
