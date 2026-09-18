@@ -242,6 +242,36 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 10 to 11 preserves materials and defaults preview progress`() {
+        helper.createDatabase(DATABASE_NAME, 10).use { database ->
+            database.insertVersionTenMaterial()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                database
+                    .query(
+                        """
+                        SELECT id, preview_page_index, preview_position_millis, playback_speed
+                        FROM materials
+                        """.trimIndent(),
+                    ).use { cursor ->
+                        assertTrue(cursor.moveToFirst())
+                        assertEquals("legacy-material", cursor.getString(0))
+                        assertEquals(0, cursor.getInt(1))
+                        assertEquals(0L, cursor.getLong(2))
+                        assertEquals(1f, cursor.getFloat(3))
+                        assertFalse(cursor.moveToNext())
+                    }
+            }
+    }
+
+    @Test
     fun `migration 2 to 3 derives the session projection from the event log`() {
         helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
@@ -344,6 +374,23 @@ class DatabaseMigrationTest {
                 'legacy-material', NULL, NULL, 'Legacy.pdf', 'application/pdf', 1024,
                 '${"2".repeat(64)}', 1789601069317, 1789601069317, NULL, NULL, 'SYNCED', NULL,
                 NULL, NULL, NULL, '/legacy/material.pdf', 0, 0, 0
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionTenMaterial() {
+        execSQL(
+            """
+            INSERT INTO materials (
+                id, folder_id, subject_id, display_name, mime_type, size_bytes, content_hash,
+                created_at, updated_at, notes, remote_key, sync_state, uploaded_bytes,
+                upload_total_bytes, failure_reason, failure_retryable, local_path,
+                pinned_for_offline, encrypted, deleted, page_count, duration_millis
+            ) VALUES (
+                'legacy-material', NULL, NULL, 'Legacy.pdf', 'application/pdf', 1024,
+                '${"3".repeat(64)}', 1789601069317, 1789601069317, NULL, NULL, 'SYNCED', NULL,
+                NULL, NULL, NULL, '/legacy/material.pdf', 0, 0, 0, 12, NULL
             )
             """.trimIndent(),
         )

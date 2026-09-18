@@ -131,6 +131,22 @@ public abstract class MaterialDao {
         updatedAt: Instant,
     )
 
+    @Query(
+        """
+        UPDATE materials
+        SET preview_page_index = COALESCE(:pageIndex, preview_page_index),
+            preview_position_millis = COALESCE(:positionMillis, preview_position_millis),
+            playback_speed = COALESCE(:playbackSpeed, playback_speed)
+        WHERE id = :id
+        """,
+    )
+    public abstract suspend fun updatePreviewState(
+        id: String,
+        pageIndex: Int?,
+        positionMillis: Long?,
+        playbackSpeed: Float?,
+    )
+
     @Transaction
     public open suspend fun softDelete(
         id: String,

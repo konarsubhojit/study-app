@@ -166,6 +166,9 @@ public fun testMaterial(
     encrypted: Boolean = false,
     pageCount: Int? = null,
     duration: Duration? = null,
+    previewPageIndex: Int = 0,
+    previewPositionMillis: Long = 0,
+    playbackSpeed: Float = 1f,
 ): Material =
     Material(
         id = id,
@@ -183,6 +186,9 @@ public fun testMaterial(
         encrypted = encrypted,
         pageCount = pageCount,
         duration = duration,
+        previewPageIndex = previewPageIndex,
+        previewPositionMillis = previewPositionMillis,
+        playbackSpeed = playbackSpeed,
     )
 
 /**

@@ -25,6 +25,9 @@ import kotlin.time.Instant
  *   `null` for every other kind, and for a PDF the counter could not read with confidence.
  * @property duration media duration read from the container while streaming the import, for
  *   [MaterialKind.AUDIO] and [MaterialKind.VIDEO] only.
+ * @property previewPageIndex zero-based page restored when reopening a PDF preview.
+ * @property previewPositionMillis playback/read offset restored when reopening a media preview.
+ * @property playbackSpeed speed restored when reopening lecture recordings.
  */
 public data class Material(
     val id: String,
@@ -45,11 +48,19 @@ public data class Material(
     val deleted: Boolean = false,
     val pageCount: Int? = null,
     val duration: Duration? = null,
+    val previewPageIndex: Int = 0,
+    val previewPositionMillis: Long = 0,
+    val playbackSpeed: Float = 1f,
 ) {
     init {
         require(id.isNotBlank()) { "Material.id must not be blank" }
         require(displayName.isNotBlank()) { "Material.displayName must not be blank" }
         require(sizeBytes >= 0) { "Material.sizeBytes must not be negative, was $sizeBytes" }
+        require(previewPageIndex >= 0) { "Material.previewPageIndex must not be negative, was $previewPageIndex" }
+        require(previewPositionMillis >= 0) {
+            "Material.previewPositionMillis must not be negative, was $previewPositionMillis"
+        }
+        require(playbackSpeed > 0f) { "Material.playbackSpeed must be positive, was $playbackSpeed" }
     }
 
     /** Coarse category used to choose a previewer and an icon. */

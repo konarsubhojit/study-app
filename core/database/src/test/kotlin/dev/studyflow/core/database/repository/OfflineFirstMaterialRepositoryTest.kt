@@ -80,6 +80,34 @@ class OfflineFirstMaterialRepositoryTest {
         }
 
     @Test
+    fun `preview progress round-trips without replacing material metadata`() =
+        runBlocking {
+            repository.save(
+                testMaterial(
+                    id = "lecture",
+                    displayName = "lecture.mp4",
+                    contentHash = testContentHash("lecture"),
+                    previewPageIndex = 4,
+                    previewPositionMillis = 1_000,
+                    playbackSpeed = 1.25f,
+                ),
+            )
+
+            repository.updatePreviewState(
+                id = "lecture",
+                pageIndex = null,
+                positionMillis = 600_000,
+                playbackSpeed = 1.5f,
+            )
+
+            val material = repository.observeById("lecture").first()
+            assertEquals("lecture.mp4", material?.displayName)
+            assertEquals(4, material?.previewPageIndex)
+            assertEquals(600_000L, material?.previewPositionMillis)
+            assertEquals(1.5f, material?.playbackSpeed)
+        }
+
+    @Test
     fun `finding by content hash is how a duplicate import is detected`() =
         runBlocking {
             val hash = testContentHash("shared-bytes")

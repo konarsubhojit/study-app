@@ -9,6 +9,7 @@ import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlin.time.Clock
 
 /**
  * The local database is the source of truth for the materials catalogue; nothing here waits on a
@@ -33,6 +34,19 @@ public class OfflineFirstMaterialRepository(
 
     override suspend fun save(material: Material) {
         dao.save(material.asEntity())
+    }
+
+    override suspend fun updatePreviewState(
+        id: String,
+        pageIndex: Int?,
+        positionMillis: Long?,
+        playbackSpeed: Float?,
+    ) {
+        dao.updatePreviewState(id, pageIndex, positionMillis, playbackSpeed)
+    }
+
+    override suspend fun delete(id: String) {
+        dao.softDelete(id, Clock.System.now())
     }
 
     private fun Flow<List<MaterialEntity>>.asExternalModels(): Flow<List<Material>> =
