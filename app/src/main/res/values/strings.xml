@@ -8,4 +8,14 @@
     <string name="timer_notification_action_resume">Resume</string>
     <string name="timer_notification_action_stop">Stop</string>
     <string name="timer_notification_action_open">Open</string>
+    <string name="timer_focus_complete_title">Focus interval complete</string>
+    <string name="timer_focus_complete_text">Time for a break. The timer has paused so the break is recorded.</string>
+    <string name="timer_break_complete_title">Break complete</string>
+    <string name="timer_break_complete_text">Ready to start the next focus interval?</string>
+    <string name="timer_still_studying_title">Still studying?</string>
+    <string name="timer_still_studying_text">Confirm to keep this session running, or stop it at this prompt.</string>
+    <string name="timer_action_still_studying">Still studying</string>
+    <string name="timer_action_stop_at_prompt">Stop at prompt</string>
+    <string name="timer_runaway_paused_title">Timer stopped for review</string>
+    <string name="timer_runaway_paused_text">This session hit your maximum duration and was stopped at the limit. You can correct it from history.</string>
 </resources>

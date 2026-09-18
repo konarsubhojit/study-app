@@ -219,6 +219,9 @@ public class OfflineFirstSessionRepository(
             is TimerCommand.Start -> SessionEventType.STARTED
             TimerCommand.Pause -> SessionEventType.PAUSED
             TimerCommand.Resume -> SessionEventType.RESUMED
+            TimerCommand.StartBreak -> SessionEventType.BREAK_STARTED
+            TimerCommand.ResumeFocus -> SessionEventType.FOCUS_RESUMED
+            TimerCommand.ConfirmActivity -> SessionEventType.ACTIVITY_CONFIRMED
             TimerCommand.Stop -> SessionEventType.STOPPED
         }
 

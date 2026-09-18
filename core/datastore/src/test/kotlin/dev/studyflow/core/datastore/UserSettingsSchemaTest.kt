@@ -22,6 +22,8 @@ class UserSettingsSchemaTest {
         assertEquals(1_073_741_824L, settings.storageQuotaBytes)
         assertEquals(SyncMode.SYNC_MODE_WIFI_ONLY, settings.syncMode)
         assertEquals(false, settings.digestEnabled)
+        assertEquals(480, settings.maximumSessionMinutes)
+        assertEquals(120, settings.inactivityPromptMinutes)
     }
 
     @Test

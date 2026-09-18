@@ -184,15 +184,19 @@ class SessionReducerTest {
         fun TimerCommand.isLegalIn(status: SessionStatus?): Boolean =
             when (this) {
                 is TimerCommand.Start -> status == null || status == SessionStatus.STOPPED
-                TimerCommand.Pause -> status == SessionStatus.RUNNING
-                TimerCommand.Resume -> status == SessionStatus.PAUSED
+                TimerCommand.Pause, TimerCommand.StartBreak, TimerCommand.ConfirmActivity -> status == SessionStatus.RUNNING
+                TimerCommand.Resume, TimerCommand.ResumeFocus -> status == SessionStatus.PAUSED
                 TimerCommand.Stop -> status == SessionStatus.RUNNING || status == SessionStatus.PAUSED
             }
 
         fun TimerCommand.appliedTo(status: SessionStatus?): SessionStatus =
             when (this) {
-                is TimerCommand.Start, TimerCommand.Resume -> SessionStatus.RUNNING
-                TimerCommand.Pause -> SessionStatus.PAUSED
+                is TimerCommand.Start,
+                TimerCommand.Resume,
+                TimerCommand.ResumeFocus,
+                TimerCommand.ConfirmActivity,
+                -> SessionStatus.RUNNING
+                TimerCommand.Pause, TimerCommand.StartBreak -> SessionStatus.PAUSED
                 TimerCommand.Stop -> SessionStatus.STOPPED
             }.also { check(isLegalIn(status)) { "$this is not legal in $status" } }
 
@@ -203,6 +207,9 @@ class SessionReducerTest {
                     TimerCommand.Start(SESSION_ID),
                     TimerCommand.Pause,
                     TimerCommand.Resume,
+                    TimerCommand.StartBreak,
+                    TimerCommand.ResumeFocus,
+                    TimerCommand.ConfirmActivity,
                     TimerCommand.Stop,
                 )
             var sequences = alphabet.map(::listOf)

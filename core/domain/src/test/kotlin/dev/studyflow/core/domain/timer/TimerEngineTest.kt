@@ -102,6 +102,44 @@ class TimerEngineTest {
 
             assertEquals(8.hours, log.elapsed().counted)
         }
+
+        @Test
+        fun `focus break transitions record break time without counting it`() {
+            val device = FakeDevice()
+            val log = Log(device)
+
+            log.start()
+            device.advance(25.minutes)
+            log.startBreak()
+            device.advance(5.minutes)
+            log.resumeFocus()
+            device.advance(10.minutes)
+
+            assertEquals(
+                listOf(
+                    SessionEventType.STARTED,
+                    SessionEventType.BREAK_STARTED,
+                    SessionEventType.FOCUS_RESUMED,
+                ),
+                log.events.map { it.type },
+            )
+            assertEquals(35.minutes, log.elapsed().counted)
+        }
+
+        @Test
+        fun `confirming activity records a heartbeat without restarting the interval`() {
+            val device = FakeDevice()
+            val log = Log(device)
+
+            log.start()
+            device.advance(2.hours)
+            log.confirmActivity()
+            device.advance(30.minutes)
+
+            val state = assertIs<TimerState.Running>(log.state())
+            assertEquals(log.events.last().anchor, state.lastConfirmedAt)
+            assertEquals(2.hours + 30.minutes, log.elapsed().counted)
+        }
     }
 
     @Nested
@@ -443,6 +481,12 @@ class TimerEngineTest {
         fun pause() = execute(TimerCommand.Pause)
 
         fun resume() = execute(TimerCommand.Resume)
+
+        fun startBreak() = execute(TimerCommand.StartBreak)
+
+        fun resumeFocus() = execute(TimerCommand.ResumeFocus)
+
+        fun confirmActivity() = execute(TimerCommand.ConfirmActivity)
 
         fun stop() = execute(TimerCommand.Stop)
 

@@ -85,6 +85,10 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".timer.TimerIntervalReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.startup.InitializationProvider"
             android:authorities="${applicationId}.androidx-startup"
