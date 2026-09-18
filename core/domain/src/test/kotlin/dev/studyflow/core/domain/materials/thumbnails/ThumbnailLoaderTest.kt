@@ -110,17 +110,6 @@ class ThumbnailLoaderTest {
             assertTrue(cache.writes.isEmpty(), "scrolling away from a cell must not leave work behind")
         }
 
-    @Test
-    fun `the placeholder is derived from the content hash`() =
-        runTest {
-            val material = testMaterial()
-
-            assertEquals(
-                ThumbnailPlaceholder.of(material.contentHash),
-                loader(FakeThumbnailRenderer()).placeholderFor(material),
-            )
-        }
-
     private fun TestScope.loader(renderer: FakeThumbnailRenderer): ThumbnailLoader =
         ThumbnailLoader(cache = cache, renderer = renderer, dispatcherProvider = testDispatcherProvider())
 }

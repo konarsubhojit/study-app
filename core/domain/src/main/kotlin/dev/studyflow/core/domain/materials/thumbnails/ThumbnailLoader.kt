@@ -14,7 +14,7 @@ import kotlinx.coroutines.withContext
  * 1. **Browsing never downloads an original.** The only inputs are the cache and a *local* file, so
  *    a catalogue of hundred-megabyte recordings costs a few kilobytes per cell to browse. A
  *    material with no local copy resolves to `null` and the caller draws
- *    [ThumbnailPlaceholder]; fetching a remote thumbnail for it is issue #7's job, not a silent
+ *    [ThumbnailPlaceholder.of] instead; fetching a remote thumbnail for it is issue #7's job, not a silent
  *    download of the original.
  * 2. **Rendering happens off the main thread.** Every call is wrapped in [DispatcherProvider.io] —
  *    decoding a PDF page on the UI thread is a dropped frame at best.
