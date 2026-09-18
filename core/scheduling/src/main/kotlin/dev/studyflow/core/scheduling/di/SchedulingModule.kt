@@ -14,6 +14,8 @@ import dev.studyflow.core.database.dao.MaterialUploadPartDao
 import dev.studyflow.core.database.repository.RoomUploadProgressStore
 import dev.studyflow.core.datastore.UserSettingsStore
 import dev.studyflow.core.datastore.userSettingsStore
+import dev.studyflow.core.domain.materials.DownloadProgressStore
+import dev.studyflow.core.domain.materials.MaterialDownloadCoordinator
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
 import dev.studyflow.core.domain.materials.UploadProgressStore
@@ -26,11 +28,15 @@ import dev.studyflow.core.scheduling.AndroidBootIdProvider
 import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import dev.studyflow.core.scheduling.AndroidReminderPlatformScheduler
 import dev.studyflow.core.scheduling.AndroidSchedulingCapabilitiesProvider
+import dev.studyflow.core.scheduling.DownloadTransport
 import dev.studyflow.core.scheduling.ReminderActionExecutor
 import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
 import dev.studyflow.core.scheduling.ReminderPlatformScheduler
 import dev.studyflow.core.scheduling.ReminderSchedulingService
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
+import dev.studyflow.core.scheduling.SharedPreferencesDownloadProgressStore
+import dev.studyflow.core.scheduling.UrlConnectionDownloadTransport
+import dev.studyflow.core.scheduling.WorkManagerMaterialDownloadCoordinator
 import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
 import kotlinx.coroutines.flow.first
 import javax.inject.Singleton
@@ -146,4 +152,23 @@ public object SchedulingModule {
         materialRepository: MaterialRepository,
         settingsStore: UserSettingsStore,
     ): MaterialUploadCoordinator = WorkManagerMaterialUploadCoordinator(context, materialRepository, settingsStore)
+
+    @Provides
+    @Singleton
+    public fun downloadProgressStore(
+        @ApplicationContext context: Context,
+    ): DownloadProgressStore =
+        SharedPreferencesDownloadProgressStore(
+            context.getSharedPreferences("studyflow-download-progress", Context.MODE_PRIVATE),
+        )
+
+    @Provides
+    @Singleton
+    public fun downloadTransport(): DownloadTransport = UrlConnectionDownloadTransport()
+
+    @Provides
+    @Singleton
+    public fun materialDownloadCoordinator(
+        @ApplicationContext context: Context,
+    ): MaterialDownloadCoordinator = WorkManagerMaterialDownloadCoordinator(context)
 }
