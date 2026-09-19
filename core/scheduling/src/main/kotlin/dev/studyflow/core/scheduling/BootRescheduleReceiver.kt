@@ -21,6 +21,10 @@ import kotlinx.coroutines.launch
  * `ALARM_CLOCK`-precision reminder set for tomorrow would never fire if the device rebooted
  * tonight and the app was never opened again before then — exactly the "locked, screen off, app
  * never opened since reboot" scenario the acceptance criteria call out.
+ *
+ * The weekly summary is re-armed here too (issue #63). Its `WorkManager` request already survives
+ * a reboot and an app update on its own, but a timezone or clock change moves the wall-clock time
+ * the user chose without moving the queued work, so it is recomputed alongside the reminders.
  */
 public class BootRescheduleReceiver : BroadcastReceiver() {
     override fun onReceive(
@@ -37,6 +41,7 @@ public class BootRescheduleReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + entryPoint.dispatcherProvider().default).launch {
             try {
                 entryPoint.reminderIntegrityCoordinator().reconcile(entryPoint.taskRepository().observeTasks().first())
+                entryPoint.weeklySummaryScheduling().sync()
             } finally {
                 pendingResult.finish()
             }

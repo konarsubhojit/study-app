@@ -4,6 +4,7 @@ import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.common.coroutines.DispatcherProvider
+import dev.studyflow.core.domain.stats.WeeklySummaryScheduling
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.scheduling.ReminderActionExecutor
 import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
@@ -35,6 +36,13 @@ public interface SchedulingEntryPoint {
 
     /** Used by [BootRescheduleReceiver][dev.studyflow.core.scheduling.BootRescheduleReceiver]. */
     public fun taskRepository(): TaskRepository
+
+    /**
+     * Used by [BootRescheduleReceiver][dev.studyflow.core.scheduling.BootRescheduleReceiver]: a
+     * timezone or clock change moves the weekly summary's wall-clock target even though the
+     * already-queued work did not move with it (issue #63).
+     */
+    public fun weeklySummaryScheduling(): WeeklySummaryScheduling
 
     /** So the `goAsync()` coroutine launched by each receiver runs on an injectable dispatcher. */
     public fun dispatcherProvider(): DispatcherProvider

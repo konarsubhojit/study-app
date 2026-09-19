@@ -8,6 +8,7 @@ import dev.studyflow.core.common.time.TimeZoneProvider
 import dev.studyflow.core.database.dao.SessionDao
 import dev.studyflow.core.database.session.OfflineFirstStatsRepository
 import dev.studyflow.core.domain.stats.StatsRepository
+import dev.studyflow.core.domain.stats.WeeklySummaryProvider
 import javax.inject.Singleton
 
 /**
@@ -25,4 +26,15 @@ public object StatsModule {
         dao: SessionDao,
         timeZoneProvider: TimeZoneProvider,
     ): StatsRepository = OfflineFirstStatsRepository(dao, timeZoneProvider)
+
+    /**
+     * The weekly recap reads the same aggregates as the insights screen (issue #63), so it is
+     * bound next to them rather than next to the worker that happens to deliver it.
+     */
+    @Provides
+    @Singleton
+    public fun weeklySummaryProvider(
+        statsRepository: StatsRepository,
+        timeZoneProvider: TimeZoneProvider,
+    ): WeeklySummaryProvider = WeeklySummaryProvider(statsRepository, timeZoneProvider)
 }

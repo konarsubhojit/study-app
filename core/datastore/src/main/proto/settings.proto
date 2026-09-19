@@ -46,4 +46,19 @@ message UserSettings {
   // Pomodoro/session-safety defaults used by the timer's scheduled alarms (issue #34).
   optional uint32 maximum_session_minutes = 18 [default = 480];
   optional uint32 inactivity_prompt_minutes = 19 [default = 120];
+
+  // The once-a-week recap of the past seven days (issue #63). Opt-in, like every other
+  // notification this app can send: the default is off, so an upgrade never starts notifying a
+  // user who never asked for it.
+  optional bool weekly_summary_enabled = 20 [default = false];
+  // ISO-8601 numbering, 1 = Monday … 7 = Sunday, so the stored value matches
+  // `kotlinx.datetime.DayOfWeek.isoDayNumber` without a lookup table. Sunday evening by default:
+  // the week is over and the next one has not started.
+  optional uint32 weekly_summary_day_of_week = 21 [default = 7];
+  optional uint32 weekly_summary_hour = 22 [default = 18];
+  optional uint32 weekly_summary_minute = 23 [default = 0];
+  // Local epoch day of the week whose summary was last delivered, or -1 when none ever was. This
+  // is what makes "delivered once" true even if WorkManager runs the worker twice (a retry, a
+  // re-enqueue after a settings change) inside the same week.
+  optional int64 weekly_summary_last_sent_week_start = 24 [default = -1];
 }

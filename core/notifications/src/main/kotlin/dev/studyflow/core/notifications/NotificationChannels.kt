@@ -30,7 +30,7 @@ public enum class StudyFlowChannelGroup(
  * than a channel id string. Importance is the app's opening offer only — once a channel exists the
  * user owns it, which is why [NotificationChannelRegistrar] never rewrites an existing channel.
  *
- * The four channels differ in what interrupting the user is worth:
+ * The channels differ in what interrupting the user is worth:
  *
  * | Channel | Importance | Why |
  * |---|---|---|
@@ -39,6 +39,7 @@ public enum class StudyFlowChannelGroup(
  * | [TASK_REMINDERS] | default | the user asked to be told; a heads-up peek is proportionate |
  * | [ALARMS] | high | "wake me for the exam" — full-screen, vibrating, allowed to be loud |
  * | [UPLOADS] | min | progress the user can watch if they care, silent and badge-free if they do not |
+ * | [WEEKLY_SUMMARY] | default | a recap the user opted into, once a week, at a time they picked |
  */
 public enum class StudyFlowNotificationChannel(
     public val id: String,
@@ -92,6 +93,14 @@ public enum class StudyFlowNotificationChannel(
         description = "Progress for material uploads running in the background.",
         importance = NotificationManagerCompat.IMPORTANCE_MIN,
         showsBadge = false,
+    ),
+
+    WEEKLY_SUMMARY(
+        id = "studyflow.channel.weekly_summary",
+        group = StudyFlowChannelGroup.REMINDERS,
+        channelName = "Weekly summary",
+        description = "Your weekly recap: hours studied, top subjects, streak and goal progress.",
+        importance = NotificationManagerCompat.IMPORTANCE_DEFAULT,
     ),
 
     ;

@@ -5,16 +5,22 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
+import androidx.work.WorkManager
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.common.time.TimeZoneProvider
 import dev.studyflow.core.common.time.DefaultAnchoredClock
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.dao.MaterialUploadPartDao
 import dev.studyflow.core.database.repository.RoomUploadProgressStore
 import dev.studyflow.core.datastore.UserSettingsStore
+import dev.studyflow.core.datastore.UserSettingsWeeklySummaryDeliveryLog
+import dev.studyflow.core.datastore.UserSettingsWeeklySummarySettings
+import dev.studyflow.core.datastore.WeeklySummaryDeliveryLog
+import dev.studyflow.core.datastore.WeeklySummarySettings
 import dev.studyflow.core.datastore.userSettingsStore
 import dev.studyflow.core.domain.materials.DownloadProgressStore
 import dev.studyflow.core.domain.materials.MaterialDownloadCoordinator
@@ -22,6 +28,8 @@ import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
 import dev.studyflow.core.domain.materials.UploadProgressStore
 import dev.studyflow.core.domain.session.SessionRepository
+import dev.studyflow.core.domain.stats.WeeklySummaryProvider
+import dev.studyflow.core.domain.stats.WeeklySummaryScheduling
 import dev.studyflow.core.domain.subjects.SubjectRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
@@ -39,6 +47,8 @@ import dev.studyflow.core.scheduling.ReminderSchedulingService
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
 import dev.studyflow.core.scheduling.SharedPreferencesDownloadProgressStore
 import dev.studyflow.core.scheduling.UrlConnectionDownloadTransport
+import dev.studyflow.core.scheduling.WeeklySummaryDelivery
+import dev.studyflow.core.scheduling.WeeklySummaryScheduler
 import dev.studyflow.core.scheduling.WorkManagerMaterialDownloadCoordinator
 import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
 import kotlinx.coroutines.flow.first
@@ -155,6 +165,60 @@ public object SchedulingModule {
             notifier = notifier,
             deliveryCoordinator = deliveryCoordinator,
             wallClock = clock,
+        )
+
+    /**
+     * The weekly summary opt-in (issue #63). Bound here, beside [UserSettingsStore], because both
+     * the settings screen that writes the schedule and [WeeklySummaryScheduler] that acts on it
+     * need the same narrow view of it.
+     */
+    @Provides
+    @Singleton
+    public fun weeklySummarySettings(store: UserSettingsStore): WeeklySummarySettings =
+        UserSettingsWeeklySummarySettings(store)
+
+    @Provides
+    @Singleton
+    public fun weeklySummaryDeliveryLog(store: UserSettingsStore): WeeklySummaryDeliveryLog =
+        UserSettingsWeeklySummaryDeliveryLog(store)
+
+    @Provides
+    @Singleton
+    public fun weeklySummaryScheduling(
+        @ApplicationContext context: Context,
+        settings: WeeklySummarySettings,
+        clock: Clock,
+        timeZoneProvider: TimeZoneProvider,
+    ): WeeklySummaryScheduling =
+        WeeklySummaryScheduler(
+            settings = settings,
+            workManager = WorkManager.getInstance(context),
+            clock = clock,
+            timeZoneProvider = timeZoneProvider,
+        )
+
+    @Provides
+    @Singleton
+    @Suppress("LongParameterList")
+    public fun weeklySummaryDelivery(
+        @ApplicationContext context: Context,
+        settings: WeeklySummarySettings,
+        deliveryLog: WeeklySummaryDeliveryLog,
+        summaryProvider: WeeklySummaryProvider,
+        subjectRepository: SubjectRepository,
+        notifier: StudyFlowNotifier,
+        notificationFactory: StudyFlowNotificationFactory,
+        clock: Clock,
+    ): WeeklySummaryDelivery =
+        WeeklySummaryDelivery(
+            context = context,
+            settings = settings,
+            deliveryLog = deliveryLog,
+            summaryProvider = summaryProvider,
+            subjectRepository = subjectRepository,
+            notifier = notifier,
+            notificationFactory = notificationFactory,
+            clock = clock,
         )
 
     @Provides
