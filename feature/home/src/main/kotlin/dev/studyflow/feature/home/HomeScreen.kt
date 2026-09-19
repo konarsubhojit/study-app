@@ -74,12 +74,7 @@ public fun HomeScreen(
         state.activeSession?.let { session ->
             item {
                 SummaryCard(
-                    title =
-                        if (session.elapsed.hasUnverifiedTime) {
-                            "Session recovered after reboot"
-                        } else {
-                            "Session in progress"
-                        },
+                    title = activeSessionTitle(session.elapsed.hasUnverifiedTime),
                     detail = session.note ?: "Tap to continue",
                     onClick = actions.onOpenTimer,
                 )
@@ -105,6 +100,9 @@ public fun HomeScreen(
         }
     }
 }
+
+private fun activeSessionTitle(hasUnverifiedTime: Boolean): String =
+    if (hasUnverifiedTime) "Session recovered after reboot" else "Session in progress"
 
 @Composable
 private fun SummaryCard(
