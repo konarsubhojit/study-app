@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(35);
+select plan(40);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -195,6 +195,33 @@ select lives_ok(
   'bob can insert his own subject'
 );
 select is((select count(*) from public.subjects)::int, 1, 'bob now sees exactly his own subject');
+
+-- Storage service internals are never exposed through PostgREST. All access goes through the Edge
+-- Function, which derives object keys from its verified JWT rather than trusting a client prefix.
+select ok(
+  not has_table_privilege('authenticated', 'public.storage_accounts', 'select'),
+  'clients cannot inspect account quota records'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.storage_uploads', 'select'),
+  'clients cannot inspect provider upload handles'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.storage_url_audit', 'select'),
+  'clients cannot inspect URL issuance audit records'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.storage_rate_events', 'insert'),
+  'clients cannot bypass rate limiting by changing counters'
+);
+select ok(
+  not has_function_privilege(
+    'authenticated',
+    'public.storage_reserve_upload(uuid,text,text,text,bigint,jsonb,timestamptz)',
+    'execute'
+  ),
+  'clients cannot reserve arbitrary object keys through the quota function'
+);
 
 -- The storage-key/owner check constraint independently blocks a materials row from pointing at
 -- someone else's object prefix, even for a service-role write.
