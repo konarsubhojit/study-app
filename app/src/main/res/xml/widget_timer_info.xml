@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  updatePeriodMillis is deliberately 0: the widget is pushed a new rendering when a session command
+  is committed, and the elapsed seconds are drawn by the launcher's own Chronometer. A periodic
+  update would wake the app on a device where nothing is happening, which is the one thing a timer
+  widget must not do (issue #61).
+-->
+<appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:description="@string/widget_timer_description"
+    android:initialLayout="@layout/glance_default_loading_layout"
+    android:minHeight="70dp"
+    android:minWidth="110dp"
+    android:resizeMode="horizontal|vertical"
+    android:targetCellHeight="1"
+    android:targetCellWidth="2"
+    android:updatePeriodMillis="0"
+    android:widgetCategory="home_screen"
+    tools:ignore="UnusedAttribute" />

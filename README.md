@@ -77,6 +77,7 @@ prompt deferred to a moment of value, and denials that are reported rather than 
 
 → [ADR 0004](docs/adr/0004-reminder-scheduling.md) ·
 [Notifications guide](docs/notifications.md) ·
+[Widgets guide](docs/widgets.md) ·
 [`ReminderScheduler`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/ReminderScheduler.kt) ·
 [`RecurrenceCalculator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/RecurrenceCalculator.kt)
 
@@ -245,6 +246,7 @@ tokens or repository secrets only; no secrets are committed to this repository.
 | `:core:scheduling` — AlarmManager reminders, alarm playback, elapsed-realtime source | done |
 | `:core:storage` — provider-agnostic `ObjectStore` over presigned URLs | done |
 | Feature slices — timer, tasks and reminders, materials, history, notification settings | done |
+| Glance home-screen widgets and the Quick Settings tile | done |
 | `:feature:auth`, `:feature:insights` — cloud sign-in and the dashboard | not yet |
 
 The domain core remains Android-free, so building it first proved the riskiest logic before any UI
