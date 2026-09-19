@@ -20,6 +20,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,6 +60,7 @@ import kotlin.time.Instant
  */
 @Composable
 public fun InsightsRoute(
+    onOpenWeeklySummary: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: InsightsViewModel = hiltViewModel(),
 ) {
@@ -80,19 +82,28 @@ public fun InsightsRoute(
         }
     }
 
-    InsightsScreen(state = state, onEvent = viewModel::onEvent, modifier = modifier)
+    InsightsScreen(
+        state = state,
+        onEvent = viewModel::onEvent,
+        onOpenWeeklySummary = onOpenWeeklySummary,
+        modifier = modifier,
+    )
 }
 
 @Composable
 public fun InsightsScreen(
     state: InsightsUiState,
     onEvent: (InsightsUiEvent) -> Unit,
+    onOpenWeeklySummary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         StudyFlowTopAppBar(
             title = "Insights",
             actions = {
+                TextButton(onClick = onOpenWeeklySummary) {
+                    Text("This week")
+                }
                 Button(onClick = { onEvent(InsightsUiEvent.ExportRequested) }) {
                     Text("Export CSV")
                 }

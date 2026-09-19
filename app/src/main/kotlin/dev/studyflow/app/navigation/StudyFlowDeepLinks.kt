@@ -22,6 +22,7 @@ internal object StudyFlowDeepLinks {
     private const val TASKS = "tasks"
     private const val HISTORY = "history"
     private const val INSIGHTS = "insights"
+    private const val SUMMARY = "summary"
     private const val SETTINGS = "settings"
     private const val WIDGET = "widget"
     private const val RUNNING = "running"
@@ -34,6 +35,7 @@ internal object StudyFlowDeepLinks {
             is TasksRoute -> uri(TASKS, route.taskId)
             HistoryRoute -> uri(HISTORY)
             InsightsRoute -> uri(INSIGHTS)
+            WeeklySummaryRoute -> uri(SUMMARY)
             SettingsRoute -> uri(SETTINGS)
         }
 
@@ -59,6 +61,7 @@ internal object StudyFlowDeepLinks {
             TASKS -> identifier(segments)?.let(::TasksRoute) ?: TasksRoute().takeIf { segments.isEmpty() }
             HISTORY -> HistoryRoute.takeIf { segments.isEmpty() }
             INSIGHTS -> InsightsRoute.takeIf { segments.isEmpty() }
+            SUMMARY -> WeeklySummaryRoute.takeIf { segments.isEmpty() }
             SETTINGS -> SettingsRoute.takeIf { segments.isEmpty() }
             WIDGET -> widgetRoute(segments)
             else -> null

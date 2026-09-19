@@ -29,6 +29,11 @@ class UserSettingsSchemaTest {
         assertEquals(false, settings.nudgesEnabled)
         assertEquals(false, settings.endOfDaySummaryEnabled)
         assertEquals(false, settings.goalAlmostReachedEnabled)
+        assertEquals(false, settings.weeklySummaryEnabled)
+        assertEquals(7, settings.weeklySummaryDayOfWeek)
+        assertEquals(18, settings.weeklySummaryHour)
+        assertEquals(0, settings.weeklySummaryMinute)
+        assertEquals(-1, settings.weeklySummaryLastSentWeekStart)
     }
 
     @Test
