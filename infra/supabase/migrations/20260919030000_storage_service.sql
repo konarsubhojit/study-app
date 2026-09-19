@@ -37,6 +37,7 @@ create table public.storage_uploads (
   state text not null default 'pending'
     check (state in ('pending', 'completing', 'ready', 'failed', 'reaping', 'deleted')),
   expires_at timestamptz not null,
+  reaping_at timestamptz,
   completed_at timestamptz,
   created_at timestamptz not null default now(),
   constraint storage_uploads_key_scoped_to_owner
@@ -47,6 +48,8 @@ create table public.storage_uploads (
 create index storage_uploads_user_state_idx on public.storage_uploads (user_id, state);
 create index storage_uploads_expired_idx on public.storage_uploads (expires_at)
   where state in ('pending', 'completing');
+create unique index storage_uploads_active_key_idx on public.storage_uploads (object_key)
+  where state in ('pending', 'completing', 'ready', 'reaping');
 
 create table public.storage_url_audit (
   id bigint generated always as identity primary key,
@@ -154,7 +157,12 @@ create or replace function public.storage_reserve_upload(
   p_size_bytes bigint,
   p_part_checksums jsonb,
   p_expires_at timestamptz
-) returns uuid
+) returns table (
+  upload_id uuid,
+  created boolean,
+  expires_at timestamptz,
+  provider_upload_id text
+)
 language plpgsql
 security definer
 set search_path = ''
@@ -164,6 +172,36 @@ declare
   reserved_id uuid;
 begin
   perform pg_advisory_xact_lock(hashtextextended(p_user_id::text || ':storage-quota', 0));
+  update public.storage_uploads as stale
+    set state = 'failed'
+    where stale.user_id = p_user_id
+      and stale.object_key = p_object_key
+      and stale.state = 'pending'
+      and stale.expires_at < now();
+
+  return query
+    select existing.id, false, existing.expires_at, existing.provider_upload_id
+    from public.storage_uploads existing
+    where existing.user_id = p_user_id
+      and existing.object_key = p_object_key
+      and existing.state = 'pending'
+      and existing.size_bytes = p_size_bytes
+      and existing.content_type = p_content_type
+      and existing.part_checksums = p_part_checksums
+    limit 1;
+  if found then
+    return;
+  end if;
+
+  if exists (
+    select 1 from public.storage_uploads existing
+    where existing.user_id = p_user_id
+      and existing.object_key = p_object_key
+      and existing.state in ('completing', 'ready', 'reaping')
+  ) then
+    raise exception using errcode = 'P0001', message = 'object_already_exists';
+  end if;
+
   available := public.storage_remaining_quota(p_user_id);
   if p_size_bytes > available then
     raise exception using errcode = 'P0001', message = 'quota_exceeded',
@@ -175,7 +213,7 @@ begin
   ) values (
     p_user_id, p_object_key, p_content_hash, p_content_type, p_size_bytes, p_part_checksums, p_expires_at
   ) returning id into reserved_id;
-  return reserved_id;
+  return query select reserved_id, true, p_expires_at, null::text;
 end;
 $$;
 
@@ -190,17 +228,46 @@ begin
     with claimed as (
       select candidate.id
       from public.storage_uploads candidate
-      where candidate.state in ('pending', 'completing')
-        and candidate.expires_at < now()
+      where (
+          candidate.state in ('pending', 'completing')
+          and candidate.expires_at < now()
+        ) or (
+          candidate.state = 'reaping'
+          and candidate.reaping_at < now() - interval '15 minutes'
+        )
       order by candidate.expires_at
       for update skip locked
       limit least(greatest(p_limit, 1), 500)
     )
     update public.storage_uploads upload
-      set state = 'reaping'
+      set state = 'reaping', reaping_at = now()
       from claimed
       where upload.id = claimed.id
       returning upload.id, upload.provider_upload_id, upload.object_key;
+end;
+$$;
+
+create or replace function public.storage_finalize_upload(p_upload_id uuid, p_user_id uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  finalized public.storage_uploads;
+begin
+  update public.storage_uploads
+    set state = 'ready', completed_at = now()
+    where id = p_upload_id and user_id = p_user_id and state = 'completing'
+    returning * into finalized;
+  if not found then
+    return false;
+  end if;
+
+  insert into public.thumbnail_generation_queue (upload_id, user_id, object_key)
+    values (finalized.id, finalized.user_id, finalized.object_key)
+    on conflict (upload_id) do nothing;
+  return true;
 end;
 $$;
 
@@ -210,8 +277,10 @@ revoke all on function public.storage_remaining_quota(uuid) from public, anon, a
 revoke all on function public.storage_reserve_upload(uuid, text, text, text, bigint, jsonb, timestamptz)
   from public, anon, authenticated;
 revoke all on function public.storage_claim_expired_uploads(integer) from public, anon, authenticated;
+revoke all on function public.storage_finalize_upload(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.storage_consume_rate_limit(uuid, text, integer, integer) to service_role;
 grant execute on function public.storage_remaining_quota(uuid) to service_role;
 grant execute on function public.storage_reserve_upload(uuid, text, text, text, bigint, jsonb, timestamptz)
   to service_role;
 grant execute on function public.storage_claim_expired_uploads(integer) to service_role;
+grant execute on function public.storage_finalize_upload(uuid, uuid) to service_role;

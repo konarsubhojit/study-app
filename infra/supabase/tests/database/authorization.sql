@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(40);
+select plan(46);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -237,6 +237,55 @@ select throws_ok(
   '23514',
   null,
   'a material row cannot claim another user''s storage-key prefix'
+);
+
+insert into public.storage_accounts (user_id, quota_bytes)
+  values ('11111111-1111-1111-1111-111111111111', 100);
+select lives_ok(
+  $$ select * from public.storage_reserve_upload(
+       '11111111-1111-1111-1111-111111111111',
+       '11111111-1111-1111-1111-111111111111/' || repeat('c', 64),
+       repeat('c', 64), 'application/pdf', 60, '["checksum"]'::jsonb, now() + interval '1 hour'
+     ) $$,
+  'an upload inside the remaining quota is reserved'
+);
+select lives_ok(
+  $$ select * from public.storage_reserve_upload(
+       '11111111-1111-1111-1111-111111111111',
+       '11111111-1111-1111-1111-111111111111/' || repeat('c', 64),
+       repeat('c', 64), 'application/pdf', 60, '["checksum"]'::jsonb, now() + interval '1 hour'
+     ) $$,
+  'retrying the same upload reuses its reservation'
+);
+select is(
+  (select count(*) from public.storage_uploads where content_hash = repeat('c', 64))::int,
+  1,
+  'an upload retry does not double-count quota'
+);
+select throws_ok(
+  $$ select * from public.storage_reserve_upload(
+       '11111111-1111-1111-1111-111111111111',
+       '11111111-1111-1111-1111-111111111111/' || repeat('d', 64),
+       repeat('d', 64), 'application/pdf', 50, '["checksum"]'::jsonb, now() + interval '1 hour'
+     ) $$,
+  'P0001',
+  'quota_exceeded',
+  'a reservation over the remaining quota is rejected'
+);
+update public.storage_uploads
+  set expires_at = now() - interval '1 minute', provider_upload_id = 'provider-upload'
+  where content_hash = repeat('c', 64);
+select is(
+  (select count(*) from public.storage_claim_expired_uploads(100))::int,
+  1,
+  'the reaper claims an expired upload'
+);
+update public.storage_uploads set reaping_at = now() - interval '20 minutes'
+  where content_hash = repeat('c', 64);
+select is(
+  (select count(*) from public.storage_claim_expired_uploads(100))::int,
+  1,
+  'a stale reaping claim is recovered after a worker crash'
 );
 reset role;
 

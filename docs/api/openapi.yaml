@@ -385,7 +385,7 @@ components:
 
     SignedPart:
       type: object
-      required: [number, offset, size, url, expiresAt]
+      required: [number, offset, size, url, expiresAt, requiredHeaders]
       properties:
         number:
           type: integer
@@ -402,6 +402,11 @@ components:
         expiresAt:
           type: string
           format: date-time
+        requiredHeaders:
+          type: object
+          description: Headers covered by the URL signature and required on the part PUT.
+          additionalProperties:
+            type: string
 
     CompleteUploadRequest:
       type: object
