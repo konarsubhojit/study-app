@@ -100,8 +100,7 @@ public object StatsAggregator {
      * the [Instant] directly: a day is not always 86,400 seconds and a week is not always seven of
      * those seconds exactly once DST is involved, but the calendar concepts of "this day", "this
      * week" and "this month" are unaffected by the clock shifting underneath them.
-     */
-    /**
+     *
      * Visible to [dev.studyflow.core.domain.goals.GoalProgressCalculator] (issue #73) so a goal's
      * "today"/"this week" window is resolved with the exact same bucketing rule the statistics
      * screen uses, rather than a second implementation that could quietly drift from this one.
