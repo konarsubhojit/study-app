@@ -106,14 +106,15 @@ public interface FocusTimerSettings {
 public class UserSettingsFocusTimerSettings(
     private val store: UserSettingsStore,
 ) : FocusTimerSettings {
-    override val config: Flow<FocusTimerConfig> = store.data.map { settings ->
-        FocusTimerConfig(
-            focusInterval = settings.defaultFocusMinutes.toPositiveMinutes(),
-            breakInterval = settings.defaultBreakMinutes.toPositiveMinutes(),
-            maximumSessionDuration = settings.maximumSessionMinutes.toPositiveMinutes(),
-            inactivityPromptAfter = settings.inactivityPromptMinutes.toPositiveMinutes(),
-        )
-    }
+    override val config: Flow<FocusTimerConfig> =
+        store.data.map { settings ->
+            FocusTimerConfig(
+                focusInterval = settings.defaultFocusMinutes.toPositiveMinutes(),
+                breakInterval = settings.defaultBreakMinutes.toPositiveMinutes(),
+                maximumSessionDuration = settings.maximumSessionMinutes.toPositiveMinutes(),
+                inactivityPromptAfter = settings.inactivityPromptMinutes.toPositiveMinutes(),
+            )
+        }
 
     override suspend fun setFocusIntervalMinutes(minutes: Int) {
         require(minutes > 0) { "minutes must be positive" }

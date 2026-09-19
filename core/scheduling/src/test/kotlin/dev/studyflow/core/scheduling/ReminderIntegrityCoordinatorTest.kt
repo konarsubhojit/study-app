@@ -1,6 +1,7 @@
 package dev.studyflow.core.scheduling
 
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.domain.reminder.ReminderPlan
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.ReminderPrecision
@@ -75,9 +76,8 @@ class ReminderIntegrityCoordinatorTest {
             assertTrue(report.hasAnomaly)
         }
 
-    private suspend fun ReminderIntegrityCoordinator.check(): ReminderIntegrityReport {
-        return reconcile(taskRepository.observeTasks().first())
-    }
+    private suspend fun ReminderIntegrityCoordinator.check(): ReminderIntegrityReport =
+        reconcile(taskRepository.observeTasks().first())
 
     private fun task(
         id: String,
@@ -105,17 +105,17 @@ class ReminderIntegrityCoordinatorTest {
     private class RecordingPlatformScheduler : ReminderPlatformScheduler {
         val calls = mutableListOf<String>()
 
-        override fun scheduleInexact(plan: dev.studyflow.core.domain.reminder.ReminderPlan): PlatformScheduleOutcome {
+        override fun scheduleInexact(plan: ReminderPlan): PlatformScheduleOutcome {
             calls += "inexact:${plan.reminderId}"
             return PlatformScheduleOutcome.SCHEDULED
         }
 
-        override fun scheduleExact(plan: dev.studyflow.core.domain.reminder.ReminderPlan): PlatformScheduleOutcome {
+        override fun scheduleExact(plan: ReminderPlan): PlatformScheduleOutcome {
             calls += "exact:${plan.reminderId}"
             return PlatformScheduleOutcome.SCHEDULED
         }
 
-        override fun scheduleAlarmClock(plan: dev.studyflow.core.domain.reminder.ReminderPlan): PlatformScheduleOutcome {
+        override fun scheduleAlarmClock(plan: ReminderPlan): PlatformScheduleOutcome {
             calls += "alarm:${plan.reminderId}"
             return PlatformScheduleOutcome.SCHEDULED
         }

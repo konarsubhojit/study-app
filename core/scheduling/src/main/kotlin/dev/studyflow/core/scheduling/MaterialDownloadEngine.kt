@@ -42,45 +42,13 @@ public class MaterialDownloadEngine(
     private val transport: DownloadTransport,
 ) {
     public suspend fun download(materialId: String): DownloadOutcome {
-        val material = materialRepository.observeByIdOnce(materialId) ?: return DownloadOutcome.MaterialMissing
-        material.localPath?.let { return DownloadOutcome.Cached(it) }
-
-        val remoteKey = material.remoteKey
-        if (remoteKey.isNullOrBlank()) {
-            return DownloadOutcome.Permanent("material has no remote object to download")
-        }
+        val material = materialRepository.observeByIdOnce(materialId)
+        earlyOutcome(material)?.let { return it }
+        checkNotNull(material)
+        val verifiedRemoteKey = requireNotNull(material.remoteKey) { "remoteKey was validated as non-blank above" }
 
         return try {
-            val progress = downloadProgressStore.progress(materialId)
-            val startAt = progress?.downloadedBytes ?: 0L
-            val totalBytes = progress?.totalBytes ?: material.sizeBytes
-            val url = objectStore.getDownloadUrl(ObjectKey(remoteKey))
-            val localPath = destinationPath(material)
-            val result =
-                transport.download(
-                    request =
-                        DownloadRequest(
-                            url = url,
-                            localPath = localPath,
-                            rangeStart = startAt,
-                            expectedTotalBytes = totalBytes,
-                        ),
-                ) { downloadedBytes, reportedTotalBytes ->
-                    downloadProgressStore.save(
-                        DownloadProgress(
-                            materialId = materialId,
-                            downloadedBytes = downloadedBytes,
-                            totalBytes = reportedTotalBytes ?: totalBytes,
-                        ),
-                    )
-                }
-            val completedBytes = result.downloadedBytes
-            if (completedBytes != material.sizeBytes) {
-                return DownloadOutcome.Permanent("downloaded $completedBytes bytes but expected ${material.sizeBytes}")
-            }
-            materialRepository.save(material.copy(localPath = localPath))
-            downloadProgressStore.clear(materialId)
-            DownloadOutcome.Cached(localPath)
+            downloadAndPersist(materialId, material, verifiedRemoteKey)
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: ObjectStoreException) {
@@ -89,6 +57,54 @@ public class MaterialDownloadEngine(
         } catch (exception: IOException) {
             DownloadOutcome.Retryable("download interrupted: ${exception.message}")
         }
+    }
+
+    /** Returns a terminal outcome when the material is missing or already resolved, else null. */
+    private fun earlyOutcome(material: Material?): DownloadOutcome? {
+        val cachedLocalPath = material?.localPath
+        return when {
+            material == null -> DownloadOutcome.MaterialMissing
+            cachedLocalPath != null -> DownloadOutcome.Cached(cachedLocalPath)
+            material.remoteKey.isNullOrBlank() -> DownloadOutcome.Permanent("material has no remote object to download")
+            else -> null
+        }
+    }
+
+    private suspend fun downloadAndPersist(
+        materialId: String,
+        material: Material,
+        remoteKey: String,
+    ): DownloadOutcome {
+        val progress = downloadProgressStore.progress(materialId)
+        val startAt = progress?.downloadedBytes ?: 0L
+        val totalBytes = progress?.totalBytes ?: material.sizeBytes
+        val url = objectStore.getDownloadUrl(ObjectKey(remoteKey))
+        val localPath = destinationPath(material)
+        val result =
+            transport.download(
+                request =
+                    DownloadRequest(
+                        url = url,
+                        localPath = localPath,
+                        rangeStart = startAt,
+                        expectedTotalBytes = totalBytes,
+                    ),
+            ) { downloadedBytes, reportedTotalBytes ->
+                downloadProgressStore.save(
+                    DownloadProgress(
+                        materialId = materialId,
+                        downloadedBytes = downloadedBytes,
+                        totalBytes = reportedTotalBytes ?: totalBytes,
+                    ),
+                )
+            }
+        val completedBytes = result.downloadedBytes
+        if (completedBytes != material.sizeBytes) {
+            return DownloadOutcome.Permanent("downloaded $completedBytes bytes but expected ${material.sizeBytes}")
+        }
+        materialRepository.save(material.copy(localPath = localPath))
+        downloadProgressStore.clear(materialId)
+        return DownloadOutcome.Cached(localPath)
     }
 }
 
@@ -124,5 +140,4 @@ public fun interface DownloadTransport {
     ): DownloadResult
 }
 
-private suspend fun MaterialRepository.observeByIdOnce(materialId: String): Material? =
-    observeById(materialId).first()
+private suspend fun MaterialRepository.observeByIdOnce(materialId: String): Material? = observeById(materialId).first()

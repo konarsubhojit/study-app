@@ -6,13 +6,13 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.app.BuildConfig
+import dev.studyflow.core.datastore.EncryptedTokenStore
 import dev.studyflow.core.network.ApiConfig
 import dev.studyflow.core.network.KtorStudyFlowApi
 import dev.studyflow.core.network.StudyFlowApi
 import dev.studyflow.core.network.auth.HttpTokenRefresher
 import dev.studyflow.core.network.auth.TokenRefresher
 import dev.studyflow.core.network.auth.TokenStore
-import dev.studyflow.core.datastore.EncryptedTokenStore
 import dev.studyflow.core.network.http.studyFlowHttpClient
 import dev.studyflow.core.network.version.ClientVersion
 import io.ktor.client.HttpClient

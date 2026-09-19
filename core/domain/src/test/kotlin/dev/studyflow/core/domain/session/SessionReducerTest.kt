@@ -183,10 +183,21 @@ class SessionReducerTest {
         /** The reference state machine, written independently of [TimerEngine]. */
         fun TimerCommand.isLegalIn(status: SessionStatus?): Boolean =
             when (this) {
-                is TimerCommand.Start -> status == null || status == SessionStatus.STOPPED
-                TimerCommand.Pause, TimerCommand.StartBreak, TimerCommand.ConfirmActivity -> status == SessionStatus.RUNNING
-                TimerCommand.Resume, TimerCommand.ResumeFocus -> status == SessionStatus.PAUSED
-                TimerCommand.Stop -> status == SessionStatus.RUNNING || status == SessionStatus.PAUSED
+                is TimerCommand.Start -> {
+                    status == null || status == SessionStatus.STOPPED
+                }
+
+                TimerCommand.Pause, TimerCommand.StartBreak, TimerCommand.ConfirmActivity -> {
+                    status == SessionStatus.RUNNING
+                }
+
+                TimerCommand.Resume, TimerCommand.ResumeFocus -> {
+                    status == SessionStatus.PAUSED
+                }
+
+                TimerCommand.Stop -> {
+                    status == SessionStatus.RUNNING || status == SessionStatus.PAUSED
+                }
             }
 
         fun TimerCommand.appliedTo(status: SessionStatus?): SessionStatus =
@@ -196,7 +207,9 @@ class SessionReducerTest {
                 TimerCommand.ResumeFocus,
                 TimerCommand.ConfirmActivity,
                 -> SessionStatus.RUNNING
+
                 TimerCommand.Pause, TimerCommand.StartBreak -> SessionStatus.PAUSED
+
                 TimerCommand.Stop -> SessionStatus.STOPPED
             }.also { check(isLegalIn(status)) { "$this is not legal in $status" } }
 

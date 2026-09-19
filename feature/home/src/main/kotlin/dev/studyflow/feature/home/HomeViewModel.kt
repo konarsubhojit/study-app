@@ -68,7 +68,8 @@ public class HomeViewModel
                                     ?.let { dueAt -> task to dueAt }
                             }.minByOrNull { (_, dueAt) -> dueAt }
                             ?.first,
-                    recentMaterials = materials.filterNot(Material::deleted).sortedByDescending(Material::createdAt).take(3),
+                    recentMaterials =
+                        materials.filterNot(Material::deleted).sortedByDescending(Material::createdAt).take(3),
                 )
             }.stateInViewModel(HomeUiState())
 

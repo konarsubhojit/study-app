@@ -3,6 +3,8 @@ package dev.studyflow.feature.home
 import androidx.lifecycle.SavedStateHandle
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.TimeZoneProvider
+import dev.studyflow.core.model.SessionElapsed
+import dev.studyflow.core.model.SessionStatus
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.data.FakeMaterialRepository
 import dev.studyflow.core.testing.data.FakeSessionRepository
@@ -16,13 +18,11 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.datetime.LocalDateTime
 import kotlinx.datetime.TimeZone
-import dev.studyflow.core.model.SessionElapsed
-import dev.studyflow.core.model.SessionStatus
-import kotlin.time.Instant
-import kotlin.time.Duration.Companion.minutes
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.RegisterExtension
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Instant
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
@@ -37,7 +37,11 @@ class HomeViewModelTest {
                 listOf(
                     testStudyTask(id = "later", dueAt = LocalDateTime(2026, 3, 1, 17, 0)),
                     testStudyTask(id = "next", dueAt = LocalDateTime(2026, 3, 1, 10, 0)),
-                    testStudyTask(id = "complete", dueAt = LocalDateTime(2026, 3, 1, 9, 0), completedAt = TEST_WALL_CLOCK),
+                    testStudyTask(
+                        id = "complete",
+                        dueAt = LocalDateTime(2026, 3, 1, 9, 0),
+                        completedAt = TEST_WALL_CLOCK,
+                    ),
                 ),
             )
 
@@ -52,7 +56,11 @@ class HomeViewModelTest {
                 )
             advanceUntilIdle()
 
-            assertEquals("next", viewModel.state.value.nextTask?.id)
+            assertEquals(
+                "next",
+                viewModel.state.value.nextTask
+                    ?.id,
+            )
         }
 
     @Test
@@ -145,6 +153,10 @@ class HomeViewModelTest {
             advanceUntilIdle()
 
             assertEquals(active, viewModel.state.value.activeSession)
-            assertEquals(listOf("material-4", "material-3", "material-2"), viewModel.state.value.recentMaterials.map { it.id })
+            assertEquals(
+                listOf("material-4", "material-3", "material-2"),
+                viewModel.state.value.recentMaterials
+                    .map { it.id },
+            )
         }
 }

@@ -89,7 +89,12 @@ class ReminderDeliveryCoordinatorTest {
 
             coordinator.deliver("reminder-1", "task-1")
 
-            val updatedReminder = taskRepository.observeTask("task-1").first()!!.reminders.single()
+            val updatedReminder =
+                taskRepository
+                    .observeTask("task-1")
+                    .first()!!
+                    .reminders
+                    .single()
             assertEquals(NOW, updatedReminder.lastFiredAt)
         }
 

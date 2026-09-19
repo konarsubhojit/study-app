@@ -1,9 +1,9 @@
 package dev.studyflow.core.network.auth
 
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * The token pair the client holds on behalf of the signed-in user (issue #63).
@@ -96,5 +96,4 @@ public class InMemoryTokenStore(
     }
 }
 
-private fun AuthTokens?.toAuthState(): AuthState =
-    if (this == null) AuthState.LocalOnly else AuthState.SignedIn
+private fun AuthTokens?.toAuthState(): AuthState = if (this == null) AuthState.LocalOnly else AuthState.SignedIn

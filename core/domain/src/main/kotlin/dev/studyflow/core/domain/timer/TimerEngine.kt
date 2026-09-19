@@ -60,53 +60,76 @@ public object TimerEngine {
             "fold() expects the log of a single session, found ${ordered.map { it.sessionId }.distinct()}"
         }
 
-        var settled = Duration.ZERO
-        var unverified = Duration.ZERO
-        var openedAt: TimeAnchor? = null
-        var lastConfirmedAt: TimeAnchor? = null
-        var stopped = false
-
+        var fold = FoldState()
         for (event in ordered) {
-            when (event.type) {
-                SessionEventType.STARTED, SessionEventType.RESUMED, SessionEventType.FOCUS_RESUMED -> {
-                    if (openedAt == null && !stopped) {
-                        openedAt = event.anchor
-                        lastConfirmedAt = event.anchor
-                    }
-                }
-
-                SessionEventType.ACTIVITY_CONFIRMED -> {
-                    if (openedAt != null && !stopped) lastConfirmedAt = event.anchor
-                }
-
-                SessionEventType.PAUSED, SessionEventType.STOPPED, SessionEventType.BREAK_STARTED -> {
-                    openedAt?.let { open ->
-                        val interval = measure(open, event.anchor)
-                        settled += interval.counted
-                        unverified += interval.unverified
-                    }
-                    openedAt = null
-                    if (event.type == SessionEventType.STOPPED) stopped = true
-                }
-            }
+            fold = applyEvent(fold, event)
         }
 
         val lastSequence = ordered.last().sequence
         return when {
-            stopped -> TimerState.Stopped(sessionId, settled, unverified, lastSequence)
-            openedAt != null -> {
+            fold.stopped -> {
+                TimerState.Stopped(sessionId, fold.settled, fold.unverified, lastSequence)
+            }
+
+            fold.openedAt != null -> {
                 TimerState.Running(
                     sessionId = sessionId,
-                    settled = settled,
-                    unverified = unverified,
+                    settled = fold.settled,
+                    unverified = fold.unverified,
                     lastSequence = lastSequence,
-                    openedAt = openedAt,
-                    lastConfirmedAt = lastConfirmedAt ?: openedAt,
+                    openedAt = fold.openedAt,
+                    lastConfirmedAt = fold.lastConfirmedAt ?: fold.openedAt,
                 )
             }
-            else -> TimerState.Paused(sessionId, settled, unverified, lastSequence)
+
+            else -> {
+                TimerState.Paused(sessionId, fold.settled, fold.unverified, lastSequence)
+            }
         }
     }
+
+    /** Accumulated state while replaying a session's event log inside [fold]. */
+    private data class FoldState(
+        val settled: Duration = Duration.ZERO,
+        val unverified: Duration = Duration.ZERO,
+        val openedAt: TimeAnchor? = null,
+        val lastConfirmedAt: TimeAnchor? = null,
+        val stopped: Boolean = false,
+    )
+
+    /** Applies a single event to [state], returning the updated fold state. */
+    private fun applyEvent(
+        state: FoldState,
+        event: SessionEvent,
+    ): FoldState =
+        when (event.type) {
+            SessionEventType.STARTED, SessionEventType.RESUMED, SessionEventType.FOCUS_RESUMED -> {
+                if (state.openedAt == null && !state.stopped) {
+                    state.copy(openedAt = event.anchor, lastConfirmedAt = event.anchor)
+                } else {
+                    state
+                }
+            }
+
+            SessionEventType.ACTIVITY_CONFIRMED -> {
+                if (state.openedAt != null && !state.stopped) {
+                    state.copy(lastConfirmedAt = event.anchor)
+                } else {
+                    state
+                }
+            }
+
+            SessionEventType.PAUSED, SessionEventType.STOPPED, SessionEventType.BREAK_STARTED -> {
+                val open = state.openedAt
+                val interval = open?.let { measure(it, event.anchor) }
+                state.copy(
+                    settled = state.settled + (interval?.counted ?: Duration.ZERO),
+                    unverified = state.unverified + (interval?.unverified ?: Duration.ZERO),
+                    openedAt = null,
+                    stopped = state.stopped || event.type == SessionEventType.STOPPED,
+                )
+            }
+        }
 
     /**
      * Elapsed time as of [now], including the currently open interval.
@@ -268,30 +291,28 @@ public object TimerEngine {
                 }
             }
 
-            TimerCommand.Pause -> {
-                requireActive(state) ?: (TimerRejection.NOT_RUNNING.takeIf { state !is TimerState.Running })
+            TimerCommand.Pause, TimerCommand.StartBreak, TimerCommand.ConfirmActivity -> {
+                activeRejection(state, requiresRunning = true, rejection = TimerRejection.NOT_RUNNING)
             }
 
-            TimerCommand.Resume -> {
-                requireActive(state) ?: (TimerRejection.NOT_PAUSED.takeIf { state !is TimerState.Paused })
-            }
-
-            TimerCommand.StartBreak -> {
-                requireActive(state) ?: (TimerRejection.NOT_RUNNING.takeIf { state !is TimerState.Running })
-            }
-
-            TimerCommand.ResumeFocus -> {
-                requireActive(state) ?: (TimerRejection.NOT_PAUSED.takeIf { state !is TimerState.Paused })
-            }
-
-            TimerCommand.ConfirmActivity -> {
-                requireActive(state) ?: (TimerRejection.NOT_RUNNING.takeIf { state !is TimerState.Running })
+            TimerCommand.Resume, TimerCommand.ResumeFocus -> {
+                activeRejection(state, requiresRunning = false, rejection = TimerRejection.NOT_PAUSED)
             }
 
             TimerCommand.Stop -> {
                 requireActive(state)
             }
         }
+
+    /** Combines the [requireActive] check with a rejection for the wrong active sub-state. */
+    private fun activeRejection(
+        state: TimerState,
+        requiresRunning: Boolean,
+        rejection: TimerRejection,
+    ): TimerRejection? {
+        val isWrongSubState = if (requiresRunning) state !is TimerState.Running else state !is TimerState.Paused
+        return requireActive(state) ?: rejection.takeIf { isWrongSubState }
+    }
 
     private fun requireActive(state: TimerState): TimerRejection? =
         when (state) {

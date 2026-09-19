@@ -38,8 +38,8 @@ public class MaterialDownloadWorker
                     downloadProgressStore = downloadProgressStore,
                     objectStore = objectStore,
                     destinationPath = { material ->
-                        File(File(applicationContext.filesDir, MATERIALS_DIRECTORY_NAME), materialDownloadCacheFileName(material))
-                            .absolutePath
+                        val cacheDirectory = File(applicationContext.filesDir, MATERIALS_DIRECTORY_NAME)
+                        File(cacheDirectory, materialDownloadCacheFileName(material)).absolutePath
                     },
                     transport = transport,
                 )

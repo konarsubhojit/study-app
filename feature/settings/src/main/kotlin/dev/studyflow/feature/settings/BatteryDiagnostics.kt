@@ -92,13 +92,16 @@ internal fun BatteryDiagnosticsSnapshot.impactText(): String =
                 "reminders may be delayed while the phone is idle."
         }
 
-        else -> "No battery restriction detected. Reminder reliability looks normal on this device."
+        else -> {
+            "No battery restriction detected. Reminder reliability looks normal on this device."
+        }
     }
 
 internal fun BatteryDiagnosticsSnapshot.oemGuidance(): String =
     when (manufacturer.lowercase()) {
         "xiaomi", "redmi", "poco" -> {
-            "On Xiaomi, Redmi and Poco phones, also check Security > Battery > App battery saver and set StudyFlow to No restrictions."
+            "On Xiaomi, Redmi and Poco phones, also check Security > Battery > App battery saver " +
+                "and set StudyFlow to No restrictions."
         }
 
         "oppo", "realme", "oneplus" -> {
@@ -113,5 +116,7 @@ internal fun BatteryDiagnosticsSnapshot.oemGuidance(): String =
             "On Huawei and Honor phones, also allow StudyFlow to launch and run in the background."
         }
 
-        else -> "If your phone has an extra battery manager, allow StudyFlow to run in the background."
+        else -> {
+            "If your phone has an extra battery manager, allow StudyFlow to run in the background."
+        }
     }

@@ -2,17 +2,17 @@ package dev.studyflow.feature.materials
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
-import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
-import dev.studyflow.core.testing.data.FakeMaterialRepository
-import dev.studyflow.core.testing.data.testMaterial
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStore
 import dev.studyflow.core.storage.PresignedUrl
+import dev.studyflow.core.storage.SignedPart
 import dev.studyflow.core.storage.StoredObject
 import dev.studyflow.core.storage.UploadRequest
 import dev.studyflow.core.storage.UploadSession
-import dev.studyflow.core.storage.SignedPart
 import dev.studyflow.core.storage.UploadedPart
+import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
+import dev.studyflow.core.testing.data.FakeMaterialRepository
+import dev.studyflow.core.testing.data.testMaterial
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -97,7 +97,10 @@ class MaterialDetailViewModelTest {
             viewModel.onEvent(MaterialDetailUiEvent.Load("material-1"))
             advanceUntilIdle()
 
-            assertEquals(MaterialPreviewSource.Remote("https://cdn.example.test/material"), viewModel.state.value.previewSource)
+            assertEquals(
+                MaterialPreviewSource.Remote("https://cdn.example.test/material"),
+                viewModel.state.value.previewSource,
+            )
             assertEquals(listOf(ObjectKey("materials/remote")), objectStore.requestedKeys)
         }
 
@@ -135,7 +138,8 @@ class MaterialDetailViewModelTest {
             }
         }
 
-    private fun viewModel(): MaterialDetailViewModel = MaterialDetailViewModel(SavedStateHandle(), repository, objectStore)
+    private fun viewModel(): MaterialDetailViewModel =
+        MaterialDetailViewModel(SavedStateHandle(), repository, objectStore)
 
     private class FakeObjectStore : ObjectStore {
         val urls = mutableMapOf<ObjectKey, String>()

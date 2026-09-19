@@ -29,8 +29,8 @@ import dev.studyflow.core.notifications.StudyFlowNotificationChannel
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.notifications.StudyFlowPendingIntents
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -63,7 +63,10 @@ internal class TimerIntervalCoordinator
             }
         }
 
-        fun handle(intent: Intent, onComplete: () -> Unit) {
+        fun handle(
+            intent: Intent,
+            onComplete: () -> Unit,
+        ) {
             applicationScope.launch {
                 try {
                     when (intent.action) {
@@ -126,8 +129,7 @@ internal class TimerIntervalCoordinator
                     eventId = UUID.randomUUID().toString(),
                     anchor = triggerAt,
                 )
-            if (result !is SessionCommandResult.Applied) return
-            val pausedState = result.state as? TimerState.Paused ?: return
+            val pausedState = (result as? SessionCommandResult.Applied)?.state as? TimerState.Paused ?: return
 
             postFocusComplete(pausedState)
             scheduleBreakEnd(pausedState, triggerAt, settings.config.first().breakInterval)
@@ -251,7 +253,12 @@ internal class TimerIntervalCoordinator
                                 NotificationAction(
                                     title = context.getString(R.string.timer_action_still_studying),
                                     icon = R.drawable.ic_notification,
-                                    intent = actionIntent(ACTION_CONFIRM_ACTIVITY, REQUEST_CONFIRM_ACTIVITY, state.sessionId),
+                                    intent =
+                                        actionIntent(
+                                            ACTION_CONFIRM_ACTIVITY,
+                                            REQUEST_CONFIRM_ACTIVITY,
+                                            state.sessionId,
+                                        ),
                                 ),
                                 NotificationAction(
                                     title = context.getString(R.string.timer_action_stop_at_prompt),
@@ -303,9 +310,14 @@ internal class TimerIntervalCoordinator
                     .withAnchor(EXTRA_EXPECTED, expectedAnchor)
                     .withAnchor(EXTRA_TRIGGER, triggerAt)
             val operation = StudyFlowPendingIntents.broadcast(context, requestCode, intent)
-            val triggerUptimeMillis = maxOf(clock.anchor().uptime.inWholeMilliseconds, triggerAt.uptime.inWholeMilliseconds)
+            val triggerUptimeMillis =
+                maxOf(clock.anchor().uptime.inWholeMilliseconds, triggerAt.uptime.inWholeMilliseconds)
             try {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerUptimeMillis, operation)
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                    triggerUptimeMillis,
+                    operation,
+                )
             } catch (denied: SecurityException) {
                 logger.warning(TAG, "Exact timer interval alarm denied; falling back to alarm clock", denied)
                 alarmManager.setAlarmClock(
@@ -383,7 +395,8 @@ internal class TimerIntervalCoordinator
             )
 
         private fun TimerState.Running.matchesExpectedOpen(intent: Intent): Boolean =
-            sessionId == intent.getStringExtra(EXTRA_SESSION_ID) && openedAt.matches(intent.requiredAnchor(EXTRA_EXPECTED))
+            sessionId == intent.getStringExtra(EXTRA_SESSION_ID) &&
+                openedAt.matches(intent.requiredAnchor(EXTRA_EXPECTED))
 
         private fun TimerState.Running.matchesExpectedConfirmation(intent: Intent): Boolean =
             sessionId == intent.getStringExtra(EXTRA_SESSION_ID) &&
