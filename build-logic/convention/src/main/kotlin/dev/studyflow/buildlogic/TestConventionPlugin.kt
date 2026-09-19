@@ -22,6 +22,12 @@ private const val FLAKY_TAG = "flaky"
 /** `-Pstudyflow.quarantine=true` flips a test task from "skip the flakes" to "run only the flakes". */
 private const val QUARANTINE_PROPERTY = "studyflow.quarantine"
 
+/** `-Pstudyflow.soak=true` runs only long-running soak coverage from the scheduled workflow. */
+private const val SOAK_PROPERTY = "studyflow.soak"
+
+/** JUnit tag for scheduled soak tests that must not run on pull requests. */
+private const val SOAK_TAG = "soak"
+
 /** AGP's own JaCoCo report over the debug unit tests, created by `enableUnitTestCoverage`. */
 private const val ANDROID_UNIT_TEST_COVERAGE_TASK = "createDebugUnitTestCoverageReport"
 
@@ -32,12 +38,14 @@ private const val ANDROID_UNIT_TEST_COVERAGE_TASK = "createDebugUnitTestCoverage
  * additionally get `includeAndroidResources`, which is what lets a unit test read resources, and
  * Robolectric for the logic that genuinely needs a platform implementation rather than a stub.
  *
- * Two policies are enforced here rather than left to discipline:
+ * Three policies are enforced here rather than left to discipline:
  *
  * - **Quarantine.** Tests tagged [FLAKY_TAG] never run in the default suite, so a known flake can
  *   neither block a pull request nor teach the team that a red build is nothing to worry about.
  *   `-P[QUARANTINE_PROPERTY]` inverts the filter, which is how the nightly slow suite keeps
  *   watching them. An empty quarantine is the goal, so the inverted run tolerates finding nothing.
+ * - **Soak.** Tests tagged [SOAK_TAG] model long-running behaviour and run only when the scheduled
+ *   workflow passes `-P[SOAK_PROPERTY]`, keeping pull requests fast while still exercising them.
  * - **Coverage.** Reports fall out of `check` in XML, so a pull request can be annotated with the
  *   coverage of the lines it changed. Coverage is a signal, not a target — see CONTRIBUTING.md.
  */
@@ -47,13 +55,21 @@ public class TestConventionPlugin : Plugin<Project> {
             val quarantineOnly = providers.gradleProperty(QUARANTINE_PROPERTY)
                 .map(String::toBoolean)
                 .orElse(false)
+            val soakOnly = providers.gradleProperty(SOAK_PROPERTY)
+                .map(String::toBoolean)
+                .orElse(false)
 
             tasks.withType<Test>().configureEach {
                 val runQuarantinedTests = quarantineOnly.get()
+                val runSoakTests = soakOnly.get()
                 useJUnitPlatform {
-                    if (runQuarantinedTests) includeTags(FLAKY_TAG) else excludeTags(FLAKY_TAG)
+                    when {
+                        runQuarantinedTests -> includeTags(FLAKY_TAG)
+                        runSoakTests -> includeTags(SOAK_TAG)
+                        else -> excludeTags(FLAKY_TAG, SOAK_TAG)
+                    }
                 }
-                if (runQuarantinedTests) {
+                if (runQuarantinedTests || runSoakTests) {
                     failOnNoDiscoveredTests.set(false)
                 }
                 testLogging {
@@ -100,7 +116,7 @@ public class TestConventionPlugin : Plugin<Project> {
                 // It is an error for that task to find no coverage data, so it only joins `check`
                 // for a module that has unit tests, and never when the run is filtered down to the
                 // quarantine, which is empty by design.
-                if (file("src/test").isDirectory && !quarantineOnly.get()) {
+                if (file("src/test").isDirectory && !quarantineOnly.get() && !soakOnly.get()) {
                     tasks.named("check") {
                         dependsOn(tasks.matching { it.name == ANDROID_UNIT_TEST_COVERAGE_TASK })
                     }
