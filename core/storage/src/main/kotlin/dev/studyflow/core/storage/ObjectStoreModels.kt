@@ -176,6 +176,7 @@ public data class UploadSession(
 public data class SignedPart(
     val part: UploadPart,
     val url: PresignedUrl,
+    val requiredHeaders: Map<String, String> = emptyMap(),
 ) {
     /** 1-based index of this part within the upload. */
     public val number: Int get() = part.number

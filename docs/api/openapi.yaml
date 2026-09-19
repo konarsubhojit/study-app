@@ -134,6 +134,98 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /v1/storage/initUpload:
+    post:
+      operationId: initUpload
+      summary: Validate and open a multipart upload
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitUploadRequest'
+      responses:
+        '200':
+          description: Short-lived URLs for every checksummed part
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSession'
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/storage/completeUpload:
+    post:
+      operationId: completeUpload
+      summary: Verify and finalize an owned multipart upload
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteUploadRequest'
+      responses:
+        '200':
+          description: Verified object metadata; thumbnail generation has been queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredObject'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/storage/getDownloadUrl:
+    post:
+      operationId: getDownloadUrl
+      summary: Issue a short-lived URL for an owned, visible object
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObjectRequest'
+      responses:
+        '200':
+          description: A ten-minute download URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignedUrl'
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/storage/delete:
+    post:
+      operationId: deleteObject
+      summary: Delete an owned object
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObjectRequest'
+      responses:
+        '204':
+          description: Deleted, or the object was already absent
+        default:
+          $ref: '#/components/responses/Error'
+
   /v1/sync/sessions:
     get:
       operationId: pullSessionChanges
@@ -325,6 +417,115 @@ components:
           type: integer
           format: int64
 
+    InitUploadRequest:
+      type: object
+      required: [contentHash, contentType, sizeBytes, partChecksums]
+      properties:
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 52428800
+        partChecksums:
+          type: array
+          description: Base64 SHA-256 for each 8 MiB part, in order.
+          items:
+            type: string
+
+    UploadSession:
+      type: object
+      required: [uploadId, expiresAt, parts]
+      properties:
+        uploadId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignedPart'
+
+    SignedPart:
+      type: object
+      required: [number, offset, size, url, expiresAt, requiredHeaders]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+        requiredHeaders:
+          type: object
+          description: Headers covered by the URL signature and required on the part PUT.
+          additionalProperties:
+            type: string
+
+    CompleteUploadRequest:
+      type: object
+      required: [uploadId, parts]
+      properties:
+        uploadId:
+          type: string
+          format: uuid
+        parts:
+          type: array
+          items:
+            type: object
+            required: [number, etag]
+            properties:
+              number:
+                type: integer
+                minimum: 1
+              etag:
+                type: string
+
+    ObjectRequest:
+      type: object
+      required: [contentHash]
+      properties:
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    StoredObject:
+      type: object
+      required: [contentHash, contentType, sizeBytes]
+      properties:
+        contentHash:
+          type: string
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+
+    PresignedUrl:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
     SyncSession:
       type: object
       required: [id, deviceId, updatedAt, startedAt, status]

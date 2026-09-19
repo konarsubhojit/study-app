@@ -50,7 +50,10 @@ public class PresignedObjectStore(
 
         val response =
             try {
-                client.put(part.url.url) { setBody(bytes) }
+                client.put(part.url.url) {
+                    part.requiredHeaders.forEach { (name, value) -> headers.append(name, value) }
+                    setBody(bytes)
+                }
             } catch (cancellation: CancellationException) {
                 throw cancellation
             } catch (failure: Throwable) {

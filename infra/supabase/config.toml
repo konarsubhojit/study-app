@@ -381,6 +381,11 @@ inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
 
+# JWT verification happens inside the function so the scheduled orphan reaper can use its separate,
+# narrowly-scoped token. User-facing operations still reject absent or invalid Supabase JWTs.
+[functions.storage]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
