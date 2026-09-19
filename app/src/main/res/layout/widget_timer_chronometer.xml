@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The counting face of the timer widget.
+
+  A Chronometer is drawn and ticked by the launcher, which is what lets a running session keep
+  counting on the home screen while StudyFlow's own process is dead — the alternative, a periodic
+  widget update, would wake the app once a second for a number the platform can produce for free.
+  Size and colour are set from the design system at bind time, so nothing is hard-coded here.
+-->
+<Chronometer xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_timer_chronometer"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:textStyle="bold" />

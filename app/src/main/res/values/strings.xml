@@ -18,4 +18,24 @@
     <string name="timer_action_stop_at_prompt">Stop at prompt</string>
     <string name="timer_runaway_paused_title">Timer stopped for review</string>
     <string name="timer_runaway_paused_text">This session hit your maximum duration and was stopped at the limit. You can correct it from history.</string>
+    <!-- Home-screen widgets and the Quick Settings tile (issue #61). -->
+    <string name="widget_timer_name">Study timer</string>
+    <string name="widget_timer_description">Start, pause and stop a study session from the home screen.</string>
+    <string name="widget_timer_idle">No session</string>
+    <string name="widget_timer_running">Studying</string>
+    <string name="widget_timer_paused">Paused</string>
+    <string name="widget_timer_start">Start</string>
+    <string name="widget_timer_pause">Pause</string>
+    <string name="widget_timer_resume">Resume</string>
+    <string name="widget_timer_stop">Stop</string>
+    <string name="widget_timer_unverified">Includes time this device could not verify</string>
+    <string name="widget_tasks_name">Due today</string>
+    <string name="widget_tasks_description">What is due today, with complete and snooze.</string>
+    <string name="widget_tasks_title">Due today (%1$d)</string>
+    <string name="widget_tasks_empty">Nothing due today</string>
+    <string name="widget_tasks_complete">Done</string>
+    <string name="widget_tasks_snooze">Snooze</string>
+    <string name="tile_timer_label">Study timer</string>
+    <string name="tile_timer_start">Start a study session</string>
+    <string name="tile_timer_stop">Stop the study session</string>
 </resources>
