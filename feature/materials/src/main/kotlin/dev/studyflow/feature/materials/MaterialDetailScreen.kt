@@ -1,5 +1,6 @@
 package dev.studyflow.feature.materials
 
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -7,10 +8,12 @@ import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.view.ViewGroup
+import android.webkit.MimeTypeMap
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +24,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -47,6 +53,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.FileProvider
 import androidx.core.graphics.createBitmap
@@ -209,6 +216,8 @@ private fun MaterialDetailContent(
             onPlaybackChange = { position, speed ->
                 onEvent(MaterialDetailUiEvent.PlaybackChanged(position, speed))
             },
+            onExtractArchiveEntry = { path -> onEvent(MaterialDetailUiEvent.ExtractArchiveEntry(path)) },
+            onCancelArchiveExtraction = { path -> onEvent(MaterialDetailUiEvent.CancelArchiveExtraction(path)) },
             modifier = Modifier.weight(1f),
         )
     }
@@ -247,6 +256,8 @@ private fun MaterialPreview(
     state: MaterialDetailUiState,
     onPdfPageChange: (Int) -> Unit,
     onPlaybackChange: (Long, Float) -> Unit,
+    onExtractArchiveEntry: (String) -> Unit,
+    onCancelArchiveExtraction: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val material = state.material
@@ -276,9 +287,23 @@ private fun MaterialPreview(
             PdfPreview(material = material, source = source, onPageChange = onPdfPageChange, modifier = modifier)
         }
 
+        material.kind == MaterialKind.ARCHIVE -> {
+            ArchivePreview(
+                archivePreview = state.archivePreview,
+                onExtract = onExtractArchiveEntry,
+                onCancel = onCancelArchiveExtraction,
+                modifier = modifier,
+            )
+        }
+
+        material.kind == MaterialKind.TEXT -> {
+            TextPreview(source = source, modifier = modifier)
+        }
+
         else -> {
-            val message = "This file type is saved in your library, but has no in-app preview yet."
-            EmptyState(message = message, modifier = modifier)
+            // DOCUMENT, SPREADSHEET, PRESENTATION and OTHER: no bundled renderer, so the only
+            // in-app affordance is handing the file to whatever the device already has installed.
+            OpenExternallyPreview(material = material, source = source, modifier = modifier)
         }
     }
 }
@@ -579,6 +604,323 @@ private data class PdfDocument(
     }
 }
 
+/**
+ * The archive branch of the preview (issue #40): a read-only listing of what
+ * [ArchiveEntryUiState] already knows is safe, with per-entry extraction and a plain-language
+ * explanation whenever [ArchivePreviewUiState.message] says something was refused.
+ */
+@Composable
+private fun ArchivePreview(
+    archivePreview: ArchivePreviewUiState?,
+    onExtract: (String) -> Unit,
+    onCancel: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    when {
+        archivePreview == null || archivePreview.loading -> {
+            LoadingState(modifier = modifier.fillMaxSize())
+        }
+
+        archivePreview.entries.isEmpty() -> {
+            EmptyState(
+                message = archivePreview.message ?: "This archive has nothing safe to show.",
+                modifier = modifier.fillMaxSize(),
+            )
+        }
+
+        else -> {
+            Column(
+                modifier = modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            ) {
+                archivePreview.message?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = MaterialTheme.spacing.medium),
+                    )
+                }
+                LazyColumn(
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    items(archivePreview.entries, key = { it.path }) { entry ->
+                        ArchiveEntryRow(
+                            entry = entry,
+                            onExtract = { onExtract(entry.path) },
+                            onCancel = { onCancel(entry.path) },
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ArchiveEntryRow(
+    entry: ArchiveEntryUiState,
+    onExtract: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = MaterialTheme.spacing.medium)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = entry.name, style = MaterialTheme.typography.bodyLarge)
+                Text(text = formatSize(entry.sizeBytes), style = MaterialTheme.typography.bodySmall)
+            }
+            ArchiveEntryAction(entry = entry, onExtract = onExtract, onCancel = onCancel)
+        }
+        (entry.extraction as? ArchiveExtractionUiState.Failed)?.let { failed ->
+            Text(
+                text = failed.message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ArchiveEntryAction(
+    entry: ArchiveEntryUiState,
+    onExtract: () -> Unit,
+    onCancel: () -> Unit,
+) {
+    val context = LocalContext.current
+    when (val extraction = entry.extraction) {
+        ArchiveExtractionUiState.Idle -> {
+            TextButton(onClick = onExtract) { Text(text = "Extract") }
+        }
+
+        ArchiveExtractionUiState.Extracting -> {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = "Extracting…", style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = onCancel) { Text(text = "Cancel") }
+            }
+        }
+
+        is ArchiveExtractionUiState.Done -> {
+            TextButton(
+                onClick = { context.openLocalFile(File(extraction.localPath), guessMimeType(entry.name)) },
+            ) {
+                Text(text = "Open")
+            }
+        }
+
+        is ArchiveExtractionUiState.Failed -> {
+            TextButton(onClick = onExtract) { Text(text = "Retry") }
+        }
+    }
+}
+
+/**
+ * The fallback preview for kinds with no bundled renderer — [MaterialKind.DOCUMENT],
+ * [MaterialKind.SPREADSHEET], [MaterialKind.PRESENTATION] and [MaterialKind.OTHER] (issue #40).
+ *
+ * "Open" hands the cached file to whatever the device already has installed instead of shipping a
+ * document engine. When nothing can open it, [ActivityNotFoundException] is caught rather than
+ * left to crash the screen, and the existing Share/Export actions in [PreviewActions] stay usable
+ * either way.
+ */
+@Composable
+private fun OpenExternallyPreview(
+    material: Material,
+    source: MaterialPreviewSource?,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    var noViewerAvailable by remember(material.id) { mutableStateOf(false) }
+
+    Column(
+        modifier = modifier.fillMaxSize().padding(MaterialTheme.spacing.medium),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+    ) {
+        Text(
+            text = "This file type is saved in your library, but has no in-app preview yet.",
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        if (noViewerAvailable) {
+            Text(
+                text = "No app on this device can open this file. You can still share or export it below.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.error,
+            )
+        }
+        Button(
+            onClick = {
+                noViewerAvailable =
+                    source !is MaterialPreviewSource.Local ||
+                    !context.openLocalFile(File(source.uri), material.mimeType)
+            },
+            enabled = source is MaterialPreviewSource.Local,
+        ) {
+            Text(text = "Open")
+        }
+    }
+}
+
+/**
+ * The [MaterialKind.TEXT] branch: plain text, Markdown or code read straight off the cached file
+ * (issue #40). Reading happens off the main thread and stops well short of the whole file for
+ * anything large, since a multi-hundred-megabyte log should never be loaded into memory just to
+ * show a preview.
+ */
+@Composable
+private fun TextPreview(
+    source: MaterialPreviewSource,
+    modifier: Modifier = Modifier,
+    dispatcherProvider: DispatcherProvider = StandardDispatcherProvider,
+) {
+    if (source !is MaterialPreviewSource.Local) {
+        EmptyState(
+            message = "Download this file for offline use before previewing it.",
+            modifier = modifier.fillMaxSize(),
+        )
+        return
+    }
+
+    var wrap by remember { mutableStateOf(true) }
+    val previewState by produceState<TextPreviewState>(initialValue = TextPreviewState.Loading, source.uri) {
+        value =
+            withContext(dispatcherProvider.io) {
+                readTextPreview(File(source.uri))?.let(TextPreviewState::Loaded) ?: TextPreviewState.Failed
+            }
+    }
+
+    when (val current = previewState) {
+        TextPreviewState.Loading -> {
+            LoadingState(modifier = modifier.fillMaxSize())
+        }
+
+        TextPreviewState.Failed -> {
+            EmptyState(message = "This file could not be opened.", modifier = modifier.fillMaxSize())
+        }
+
+        is TextPreviewState.Loaded -> {
+            Column(
+                modifier = modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+            ) {
+                TextButton(onClick = { wrap = !wrap }) {
+                    Text(text = if (wrap) "Turn off wrap" else "Wrap text")
+                }
+                TextPreviewBody(content = current.content, wrap = wrap, modifier = Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun TextPreviewBody(
+    content: TextPreviewContent,
+    wrap: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxSize()) {
+        if (content.truncated) {
+            Text(
+                text = "Truncated — showing the first ${content.readBytes} of ${content.totalBytes} bytes.",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(horizontal = MaterialTheme.spacing.medium),
+            )
+        }
+        val verticalScroll = rememberScrollState()
+        SelectionContainer(modifier = Modifier.weight(1f).verticalScroll(verticalScroll)) {
+            if (wrap) {
+                Text(
+                    text = content.text,
+                    fontFamily = FontFamily.Monospace,
+                    modifier = Modifier.fillMaxWidth().padding(MaterialTheme.spacing.medium),
+                )
+            } else {
+                val horizontalScroll = rememberScrollState()
+                Text(
+                    text = content.text,
+                    fontFamily = FontFamily.Monospace,
+                    softWrap = false,
+                    modifier =
+                        Modifier
+                            .horizontalScroll(horizontalScroll)
+                            .padding(MaterialTheme.spacing.medium),
+                )
+            }
+        }
+    }
+}
+
+private sealed interface TextPreviewState {
+    data object Loading : TextPreviewState
+
+    data object Failed : TextPreviewState
+
+    data class Loaded(
+        val content: TextPreviewContent,
+    ) : TextPreviewState
+}
+
+private data class TextPreviewContent(
+    val text: String,
+    val readBytes: Int,
+    val totalBytes: Long,
+) {
+    val truncated: Boolean get() = readBytes < totalBytes
+}
+
+/** Reads up to [maxBytes] of [file] as UTF-8 text, or `null` when the file cannot be read at all. */
+private fun readTextPreview(
+    file: File,
+    maxBytes: Int = TEXT_PREVIEW_MAX_BYTES,
+): TextPreviewContent? =
+    runCatching {
+        val totalBytes = file.length()
+        val buffer = ByteArray(minOf(maxBytes.toLong(), totalBytes).coerceAtLeast(0).toInt())
+        var read = 0
+        file.inputStream().use { input ->
+            while (read < buffer.size) {
+                val count = input.read(buffer, read, buffer.size - read)
+                if (count == -1) break
+                read += count
+            }
+        }
+        TextPreviewContent(text = String(buffer, 0, read, Charsets.UTF_8), readBytes = read, totalBytes = totalBytes)
+    }.getOrNull()
+
+/** Guesses a MIME type from a filename extension; falls back to a wildcard when unknown or absent. */
+private fun guessMimeType(fileName: String): String {
+    val extension = fileName.substringAfterLast('.', missingDelimiterValue = "").lowercase()
+    return MimeTypeMap.getSingleton().getMimeTypeFromExtension(extension) ?: ALL_MIME_TYPES
+}
+
+/** Opens [file] with an installed viewer via [FileProvider], never a raw `file://` Uri. */
+private fun Context.openLocalFile(
+    file: File,
+    mimeType: String,
+): Boolean {
+    val uri = FileProvider.getUriForFile(this, "$packageName.files", file)
+    val intent =
+        Intent(Intent.ACTION_VIEW)
+            .setDataAndType(uri, mimeType.ifBlank { ALL_MIME_TYPES })
+            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    return start(intent)
+}
+
+/** Starts [intent], tolerating a device with nothing installed to handle it. */
+private fun Context.start(intent: Intent): Boolean =
+    try {
+        startActivity(intent)
+        true
+    } catch (_: ActivityNotFoundException) {
+        false
+    }
+
 private fun MaterialPreviewSource.previewModel(): Any =
     when (this) {
         is MaterialPreviewSource.Local -> File(uri)
@@ -611,3 +953,7 @@ private const val MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
 private const val IMAGE_ZOOM_MIN_SCALE = 1f
 private const val IMAGE_ZOOM_MAX_SCALE = 5f
 private val PLAYBACK_SPEEDS = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
+private const val ALL_MIME_TYPES = "*/*"
+
+/** ~300 KB of characters — generous for notes or code, far short of loading a huge log whole. */
+private const val TEXT_PREVIEW_MAX_BYTES = 300_000

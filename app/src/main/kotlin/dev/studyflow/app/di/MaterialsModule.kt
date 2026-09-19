@@ -11,6 +11,7 @@ import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.dao.MaterialDao
 import dev.studyflow.core.database.repository.OfflineFirstMaterialRepository
+import dev.studyflow.core.domain.materials.ArchiveReader
 import dev.studyflow.core.domain.materials.DurationExtractor
 import dev.studyflow.core.domain.materials.ImportContentReader
 import dev.studyflow.core.domain.materials.MaterialImporter
@@ -21,6 +22,7 @@ import dev.studyflow.core.domain.materials.thumbnails.ThumbnailRenderer
 import dev.studyflow.feature.materials.data.AndroidDurationExtractor
 import dev.studyflow.feature.materials.data.AndroidImportContentReader
 import dev.studyflow.feature.materials.data.AndroidThumbnailRenderer
+import dev.studyflow.feature.materials.data.ArchiveEntryExtractor
 import dev.studyflow.feature.materials.data.FileThumbnailCache
 import java.io.File
 import javax.inject.Singleton
@@ -100,6 +102,21 @@ public object MaterialsModule {
         dispatcherProvider: DispatcherProvider,
     ): ThumbnailLoader = ThumbnailLoader(cache = cache, renderer = renderer, dispatcherProvider = dispatcherProvider)
 
+    @Provides
+    @Singleton
+    public fun archiveEntryExtractor(
+        dispatcherProvider: DispatcherProvider,
+        @ApplicationContext context: Context,
+    ): ArchiveEntryExtractor =
+        ArchiveEntryExtractor(
+            reader = ArchiveReader(dispatcherProvider),
+            // A subfolder of `materials/`, never a material id directly: an import's destination
+            // file already owns that name, and an extracted entry's destination directory must
+            // not collide with it.
+            archivesDirectory = { File(context.filesDir, "$MATERIALS_DIRECTORY_NAME/$ARCHIVES_DIRECTORY_NAME") },
+        )
+
     private const val MATERIALS_DIRECTORY_NAME = "materials"
     private const val THUMBNAILS_DIRECTORY_NAME = "thumbnails"
+    private const val ARCHIVES_DIRECTORY_NAME = "archives"
 }
