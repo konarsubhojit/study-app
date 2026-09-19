@@ -17,6 +17,9 @@ import dev.studyflow.core.datastore.ActiveTimerStore
 import dev.studyflow.core.domain.session.RecoveredTimerAnchor
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionRepository
+import dev.studyflow.core.domain.timer.TimerAccuracyReporter
+import dev.studyflow.core.domain.timer.TimerAccuracySample
+import dev.studyflow.core.domain.timer.TimerAccuracySource
 import dev.studyflow.core.domain.timer.TimerState
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.TimeAnchor
@@ -51,6 +54,7 @@ internal class TimerRecoveryCoordinator
         private val notifier: StudyFlowNotifier,
         @ApplicationScope private val applicationScope: CoroutineScope,
         private val logger: AppLogger,
+        private val accuracyReporter: TimerAccuracyReporter,
     ) {
         private val fallbackBootIdLock = Any()
 
@@ -69,6 +73,7 @@ internal class TimerRecoveryCoordinator
                             recoveredAnchor = timer?.previousBootAnchor(now),
                         )
                     updateForegroundAfterRecovery(result)
+                    reportRecoveryAccuracy(result, timer, now)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
                 } catch (
@@ -157,6 +162,26 @@ internal class TimerRecoveryCoordinator
                     return
                 }
             }
+        }
+
+        private fun reportRecoveryAccuracy(
+            result: SessionCommandResult,
+            timer: ActiveTimer?,
+            now: TimeAnchor,
+        ) {
+            val applied = result as? SessionCommandResult.Applied ?: return
+            timer ?: return
+            if (timer.bootId == now.bootId.value) return
+            val measuredGap =
+                (now.wallClock - Instant.fromEpochMilliseconds(timer.wallClockEpochMillis)).coerceAtLeast(Duration.ZERO)
+            accuracyReporter.report(
+                TimerAccuracySample(
+                    sessionId = applied.session.id,
+                    source = TimerAccuracySource.REBOOT_RECOVERY,
+                    expectedElapsed = Duration.ZERO,
+                    measuredElapsed = measuredGap,
+                ),
+            )
         }
 
         private fun refreshTimerForegroundService() {

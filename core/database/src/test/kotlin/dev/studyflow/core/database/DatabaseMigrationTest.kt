@@ -272,6 +272,40 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 11 to 12 adds an empty sync queue rather than queueing existing history`() {
+        helper.createDatabase(DATABASE_NAME, 11).use { database ->
+            database.insertVersionElevenStoppedSession()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                // Deliberately empty: back-filling every session ever recorded would turn the
+                // first launch after an update into a full-history upload on the user's data, for
+                // sessions the server may well already have. New mutations queue from now on, and
+                // the first delta pull reconciles the rest.
+                database.query("SELECT COUNT(*) FROM sync_queue").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(0, cursor.getInt(0))
+                }
+                // No cursor either, so the first pull asks for the whole history rather than
+                // silently skipping everything recorded before the update.
+                database.query("SELECT COUNT(*) FROM sync_state").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(0, cursor.getInt(0))
+                }
+                database.query("SELECT COUNT(*) FROM study_sessions").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(1, cursor.getInt(0))
+                }
+            }
+    }
+
+    @Test
     fun `migration 2 to 3 derives the session projection from the event log`() {
         helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
@@ -374,6 +408,21 @@ class DatabaseMigrationTest {
                 'legacy-material', NULL, NULL, 'Legacy.pdf', 'application/pdf', 1024,
                 '${"2".repeat(64)}', 1789601069317, 1789601069317, NULL, NULL, 'SYNCED', NULL,
                 NULL, NULL, NULL, '/legacy/material.pdf', 0, 0, 0
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionElevenStoppedSession() {
+        execSQL(
+            """
+            INSERT INTO study_sessions (
+                id, task_id, subject_id, note, status, started_at, ended_at, device_id,
+                updated_at, deleted, manual_override, override_counted_millis,
+                override_unverified_millis
+            ) VALUES (
+                'legacy-session', NULL, NULL, NULL, 'STOPPED', 1789601069317, 1789601169317,
+                'legacy-device', 1789601169317, 0, 0, NULL, NULL
             )
             """.trimIndent(),
         )

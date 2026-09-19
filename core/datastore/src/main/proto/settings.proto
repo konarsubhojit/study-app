@@ -46,4 +46,18 @@ message UserSettings {
   // Pomodoro/session-safety defaults used by the timer's scheduled alarms (issue #34).
   optional uint32 maximum_session_minutes = 18 [default = 480];
   optional uint32 inactivity_prompt_minutes = 19 [default = 120];
+
+  // Overall daily/weekly study targets for goal progress rings (issue #73). `0` means "no goal
+  // set" rather than a sentinel elsewhere: a freshly installed app has no target and no progress
+  // ring to show, without needing a separate "has a goal" flag that could disagree with the value.
+  optional uint32 daily_goal_minutes = 20 [default = 0];
+  optional uint32 weekly_goal_minutes = 21 [default = 0];
+
+  // Opt-in, rate-limited nudges (issue #73). `nudges_enabled` is the single master switch every
+  // nudge type is gated behind — turning it off silences all of them at once, regardless of the
+  // per-type toggles below, satisfying "easy to turn off entirely". All default to `false`: a
+  // fresh install sends zero nudges until the user opts in, matching "defaults are conservative".
+  optional bool nudges_enabled = 22 [default = false];
+  optional bool end_of_day_summary_enabled = 23 [default = false];
+  optional bool goal_almost_reached_enabled = 24 [default = false];
 }

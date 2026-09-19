@@ -13,6 +13,9 @@ import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.model.StudyFlowJson
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
+import dev.studyflow.core.network.model.SyncDeltaDto
+import dev.studyflow.core.network.model.SyncPushRequestDto
+import dev.studyflow.core.network.model.SyncPushResponseDto
 import dev.studyflow.core.network.model.TaskDto
 import dev.studyflow.core.network.retry.RetryPolicy
 import dev.studyflow.core.network.version.ClientVersion
@@ -25,6 +28,7 @@ import io.ktor.client.request.HttpResponseData
 import io.ktor.http.ContentType
 import io.ktor.http.Headers
 import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -55,6 +59,15 @@ public class FakeStudyFlowBackend(
 
     /** Requested paths, so a test can assert that a repository did — or did not — call out. */
     public val requestedPaths: MutableList<String> = mutableListOf()
+
+    /** Push bodies received on `POST /v1/sync/sessions`, in order. */
+    public val pushedSyncChanges: MutableList<SyncPushRequestDto> = mutableListOf()
+
+    /** Ids the next push accepts; `null` accepts everything it is sent. */
+    public var acceptedSyncIds: Set<String>? = null
+
+    /** What the next `GET /v1/sync/sessions` answers with. */
+    public var syncDelta: SyncDeltaDto = SyncDeltaDto()
 
     private val config =
         ApiConfig(
@@ -95,6 +108,24 @@ public class FakeStudyFlowBackend(
                 val subjectId = request.url.parameters["subjectId"]
                 val matching = tasks.filter { subjectId == null || it.subjectId == subjectId }
                 respondJson(StudyFlowJson.encodeToString(matching))
+            }
+
+            ApiEndpoint.PullSessionChanges.path -> {
+                if (request.method == HttpMethod.Post) {
+                    val body = request.body.toByteArray().decodeToString()
+                    val push = StudyFlowJson.decodeFromString<SyncPushRequestDto>(body)
+                    pushedSyncChanges += push
+                    val sentIds = push.changes.map { it.id }
+                    val accepted = acceptedSyncIds?.let { allowed -> sentIds.filter(allowed::contains) } ?: sentIds
+                    val response =
+                        SyncPushResponseDto(
+                            acceptedIds = accepted,
+                            rejectedIds = sentIds - accepted.toSet(),
+                        )
+                    respondJson(StudyFlowJson.encodeToString(response))
+                } else {
+                    respondJson(StudyFlowJson.encodeToString(syncDelta))
+                }
             }
 
             ApiEndpoint.UploadSession.path -> {

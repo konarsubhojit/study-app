@@ -1,5 +1,6 @@
 package dev.studyflow.core.designsystem.theme
 
+import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
@@ -116,3 +117,20 @@ internal val BrandDarkColorScheme =
         inverseOnSurface = BrandPalette.Neutral20,
         inversePrimary = BrandPalette.Indigo40,
     )
+
+/**
+ * The brand palette, for surfaces that cannot compose [StudyFlowTheme].
+ *
+ * A Glance home-screen widget runs in the launcher's process and resolves its colours through
+ * `GlanceTheme` rather than `MaterialTheme`, so it needs the schemes themselves rather than the
+ * composition local they normally arrive in. Everything drawn inside the app keeps using
+ * [StudyFlowTheme]; this is the one documented way out, and it still hands back the same tokens
+ * instead of letting a caller invent its own.
+ */
+public object StudyFlowColorSchemes {
+    /** Used when the platform cannot supply wallpaper colours and the host is in light mode. */
+    public val light: ColorScheme get() = BrandLightColorScheme
+
+    /** Used when the platform cannot supply wallpaper colours and the host is in dark mode. */
+    public val dark: ColorScheme get() = BrandDarkColorScheme
+}
