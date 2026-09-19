@@ -35,5 +35,9 @@ internal data object HistoryRoute : AppRoute
 @Serializable
 internal data object InsightsRoute : AppRoute
 
+/** The weekly recap the summary notification opens (issue #63); reachable from insights too. */
+@Serializable
+internal data object WeeklySummaryRoute : AppRoute
+
 internal val topLevelRoutes: List<AppRoute> =
     listOf(HomeRoute, TimerRoute(), MaterialsRoute(), TasksRoute(), HistoryRoute, InsightsRoute, SettingsRoute)

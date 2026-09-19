@@ -28,6 +28,7 @@ import dev.studyflow.feature.tasks.TasksListRoute
 import dev.studyflow.feature.history.HistoryRoute as HistoryScreenRoute
 import dev.studyflow.feature.home.HomeRoute as HomeScreenRoute
 import dev.studyflow.feature.insights.InsightsRoute as InsightsScreenRoute
+import dev.studyflow.feature.insights.WeeklySummaryRoute as WeeklySummaryScreenRoute
 import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
 import dev.studyflow.feature.timer.TimerRoute as TimerScreenRoute
 
@@ -106,7 +107,10 @@ private fun AppNavDisplay(
                         HistoryScreenRoute()
                     }
                     entry<InsightsRoute> {
-                        InsightsScreenRoute()
+                        InsightsScreenRoute(onOpenWeeklySummary = { backStack.add(WeeklySummaryRoute) })
+                    }
+                    entry<WeeklySummaryRoute> {
+                        WeeklySummaryScreenRoute()
                     }
                 },
             modifier = modifier,
@@ -197,6 +201,9 @@ private val AppRoute.topLevelRoute: AppRoute
             is TasksRoute -> TasksRoute()
             HistoryRoute -> HistoryRoute
             InsightsRoute -> InsightsRoute
+            // The weekly recap is a detail of the statistics it is computed from, so the bottom bar
+            // keeps Insights selected while it is open.
+            WeeklySummaryRoute -> InsightsRoute
             SettingsRoute -> SettingsRoute
         }
 
@@ -209,5 +216,6 @@ private val AppRoute.label: String
             is TasksRoute -> "Tasks"
             HistoryRoute -> "History"
             InsightsRoute -> "Insights"
+            WeeklySummaryRoute -> "Weekly summary"
             SettingsRoute -> "Settings"
         }
