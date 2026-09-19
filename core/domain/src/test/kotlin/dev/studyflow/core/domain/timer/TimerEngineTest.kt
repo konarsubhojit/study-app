@@ -4,6 +4,7 @@ import dev.studyflow.core.model.SessionElapsed
 import dev.studyflow.core.model.SessionEvent
 import dev.studyflow.core.model.SessionEventType
 import dev.studyflow.core.testing.time.FakeDevice
+import kotlinx.datetime.TimeZone
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -11,6 +12,7 @@ import org.junit.jupiter.api.Nested
 import org.junit.jupiter.api.Test
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
@@ -220,6 +222,37 @@ class TimerEngineTest {
 
             assertEquals(45.minutes, TimerEngine.wallClockSkew(log.state(), device.anchor()))
             assertEquals(10.minutes, log.elapsed().counted)
+        }
+
+        @Test
+        fun `sub-second wall-clock drift stays below the documented same-boot tolerance`() {
+            val device = FakeDevice()
+            val log = Log(device)
+
+            log.start()
+            device.advance(10.minutes)
+            device.adjustWallClock(500.milliseconds)
+
+            assertEquals(500.milliseconds, TimerEngine.wallClockSkew(log.state(), device.anchor()))
+            assertTrue(
+                TimerEngine.wallClockSkew(log.state(), device.anchor())!! < 1.seconds,
+                "same-boot drift tolerance is explicitly sub-second",
+            )
+            assertEquals(10.minutes, log.elapsed().counted)
+        }
+
+        @Test
+        fun `timezone and DST changes do not change elapsed time`() {
+            val device = FakeDevice(startTimeZone = TimeZone.of("America/New_York"))
+            val log = Log(device)
+
+            log.start()
+            device.advance(30.minutes)
+            device.moveTo(TimeZone.of("Europe/Berlin"))
+            device.adjustWallClock(1.hours)
+            device.advance(30.minutes)
+
+            assertEquals(1.hours, log.elapsed().counted)
         }
     }
 
@@ -462,6 +495,35 @@ class TimerEngineTest {
             log.pause()
 
             assertEquals(20.minutes, log.elapsed().counted)
+        }
+
+        @Test
+        fun `duplicate pause events do not count paused time twice`() {
+            val device = FakeDevice()
+            val log = Log(device)
+
+            log.start()
+            device.advance(10.minutes)
+            log.pause()
+            device.advance(5.minutes)
+            log.append(SessionEventType.PAUSED)
+
+            assertEquals(10.minutes, log.elapsed().counted)
+        }
+
+        @Test
+        fun `duplicate stop events do not reopen or extend a stopped session`() {
+            val device = FakeDevice()
+            val log = Log(device)
+
+            log.start()
+            device.advance(10.minutes)
+            log.stop()
+            device.advance(5.minutes)
+            log.append(SessionEventType.STOPPED)
+
+            assertEquals(10.minutes, log.elapsed().counted)
+            assertTrue(log.state() is TimerState.Stopped)
         }
     }
 
