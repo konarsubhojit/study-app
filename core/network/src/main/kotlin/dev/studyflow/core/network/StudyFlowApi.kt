@@ -2,6 +2,9 @@ package dev.studyflow.core.network
 
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
+import dev.studyflow.core.network.model.SyncDeltaDto
+import dev.studyflow.core.network.model.SyncPushRequestDto
+import dev.studyflow.core.network.model.SyncPushResponseDto
 import dev.studyflow.core.network.model.TaskDto
 
 /**
@@ -24,4 +27,24 @@ public interface StudyFlowApi {
 
     /** `POST /v1/sessions` — uploads a finished study session and returns the stored copy. */
     public suspend fun uploadSession(session: StudySessionDto): ApiResult<StudySessionDto>
+
+    /**
+     * `POST /v1/sync/sessions` — sends a batch of local session changes (issue #55).
+     *
+     * Idempotent by contract: the server resolves each change by last-write-wins, so replaying a
+     * batch it already applied changes nothing. That is what lets a client acknowledge its queue
+     * only after the response arrives, without risking a duplicate session if it never does.
+     */
+    public suspend fun pushSessionChanges(request: SyncPushRequestDto): ApiResult<SyncPushResponseDto>
+
+    /**
+     * `GET /v1/sync/sessions` — the session changes recorded after [cursor], oldest first.
+     *
+     * @param cursor `null` on a first sync, which asks for the whole history.
+     * @param limit maximum number of changes to return; the server may return fewer.
+     */
+    public suspend fun sessionChanges(
+        cursor: String?,
+        limit: Int,
+    ): ApiResult<SyncDeltaDto>
 }

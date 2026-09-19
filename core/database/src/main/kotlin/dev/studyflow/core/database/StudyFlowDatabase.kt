@@ -9,6 +9,7 @@ import dev.studyflow.core.database.dao.MaterialUploadPartDao
 import dev.studyflow.core.database.dao.SessionDao
 import dev.studyflow.core.database.dao.StudyTaskDao
 import dev.studyflow.core.database.dao.SubjectDao
+import dev.studyflow.core.database.dao.SyncDao
 import dev.studyflow.core.database.entity.FolderEntity
 import dev.studyflow.core.database.entity.MaterialEntity
 import dev.studyflow.core.database.entity.MaterialFtsEntity
@@ -21,6 +22,8 @@ import dev.studyflow.core.database.entity.StudySessionEntity
 import dev.studyflow.core.database.entity.StudyTaskEntity
 import dev.studyflow.core.database.entity.SubjectEntity
 import dev.studyflow.core.database.entity.SubtaskEntity
+import dev.studyflow.core.database.entity.SyncQueueEntity
+import dev.studyflow.core.database.entity.SyncStateEntity
 import dev.studyflow.core.database.entity.TagEntity
 import dev.studyflow.core.database.entity.TaskTagEntity
 
@@ -40,8 +43,10 @@ import dev.studyflow.core.database.entity.TaskTagEntity
         StudySessionEntity::class,
         SessionEventEntity::class,
         SessionCorrectionEntity::class,
+        SyncQueueEntity::class,
+        SyncStateEntity::class,
     ],
-    version = 11,
+    version = 12,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -58,8 +63,10 @@ public abstract class StudyFlowDatabase : RoomDatabase() {
 
     public abstract fun sessionDao(): SessionDao
 
+    public abstract fun syncDao(): SyncDao
+
     public companion object {
         public const val NAME: String = "studyflow.db"
-        public const val VERSION: Int = 11
+        public const val VERSION: Int = 12
     }
 }

@@ -17,6 +17,10 @@ dependencies {
     // notifications are all scheduling concerns, and nothing else in the app binds `ObjectStore`
     // to a worker yet.
     implementation(projects.core.storage)
+    // The sync worker speaks HTTP through `StudyFlowApi` (issue #55): translating a domain
+    // `SyncSessionRecord` into the wire DTOs belongs next to the worker that sends it, because
+    // `:core:network` is deliberately unaware of `:core:model` and the domain is unaware of HTTP.
+    implementation(projects.core.network)
     implementation(libs.androidx.activity)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.work.runtime.ktx)

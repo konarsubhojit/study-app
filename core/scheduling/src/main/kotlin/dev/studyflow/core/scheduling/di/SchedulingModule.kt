@@ -6,11 +6,13 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dagger.multibindings.IntoSet
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.DefaultAnchoredClock
+import dev.studyflow.core.common.time.DeviceIdProvider
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.dao.MaterialUploadPartDao
 import dev.studyflow.core.database.repository.RoomUploadProgressStore
@@ -21,15 +23,22 @@ import dev.studyflow.core.domain.materials.MaterialDownloadCoordinator
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
 import dev.studyflow.core.domain.materials.UploadProgressStore
+import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.subjects.SubjectRepository
+import dev.studyflow.core.domain.sync.SyncEngine
+import dev.studyflow.core.domain.sync.SyncScheduler
+import dev.studyflow.core.domain.sync.SyncStore
+import dev.studyflow.core.domain.sync.SyncTransport
 import dev.studyflow.core.domain.tasks.TaskRepository
+import dev.studyflow.core.network.StudyFlowApi
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.scheduling.AndroidBootIdProvider
 import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import dev.studyflow.core.scheduling.AndroidReminderPlatformScheduler
 import dev.studyflow.core.scheduling.AndroidSchedulingCapabilitiesProvider
+import dev.studyflow.core.scheduling.ApiSyncTransport
 import dev.studyflow.core.scheduling.DownloadTransport
 import dev.studyflow.core.scheduling.ReminderActionExecutor
 import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
@@ -38,9 +47,11 @@ import dev.studyflow.core.scheduling.ReminderPlatformScheduler
 import dev.studyflow.core.scheduling.ReminderSchedulingService
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
 import dev.studyflow.core.scheduling.SharedPreferencesDownloadProgressStore
+import dev.studyflow.core.scheduling.SyncOnSessionCommandObserver
 import dev.studyflow.core.scheduling.UrlConnectionDownloadTransport
 import dev.studyflow.core.scheduling.WorkManagerMaterialDownloadCoordinator
 import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
+import dev.studyflow.core.scheduling.WorkManagerSyncCoordinator
 import kotlinx.coroutines.flow.first
 import javax.inject.Singleton
 
@@ -196,4 +207,40 @@ public object SchedulingModule {
     public fun materialDownloadCoordinator(
         @ApplicationContext context: Context,
     ): MaterialDownloadCoordinator = WorkManagerMaterialDownloadCoordinator(context)
+
+    @Provides
+    @Singleton
+    public fun syncTransport(
+        api: StudyFlowApi,
+        deviceIdProvider: DeviceIdProvider,
+        logger: AppLogger,
+    ): SyncTransport = ApiSyncTransport(api, deviceIdProvider, logger)
+
+    @Provides
+    @Singleton
+    public fun syncEngine(
+        store: SyncStore,
+        transport: SyncTransport,
+        clock: Clock,
+    ): SyncEngine = SyncEngine(store = store, transport = transport, clock = clock)
+
+    @Provides
+    @Singleton
+    public fun syncCoordinator(
+        @ApplicationContext context: Context,
+    ): WorkManagerSyncCoordinator = WorkManagerSyncCoordinator(context)
+
+    @Provides
+    @Singleton
+    public fun syncScheduler(coordinator: WorkManagerSyncCoordinator): SyncScheduler = coordinator
+
+    /**
+     * Drains the outbound queue as soon as a session is stopped, rather than waiting for the next
+     * scheduled run — the change is already durable, so this only decides how quickly it travels.
+     */
+    @Provides
+    @IntoSet
+    @Singleton
+    public fun syncOnSessionCommand(coordinator: WorkManagerSyncCoordinator): SessionCommandObserver =
+        SyncOnSessionCommandObserver(coordinator)
 }

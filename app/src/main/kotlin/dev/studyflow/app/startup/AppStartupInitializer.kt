@@ -8,6 +8,7 @@ import dev.studyflow.app.logging.AndroidLogging
 import dev.studyflow.core.notifications.NotificationChannelRegistrar
 import dev.studyflow.core.scheduling.DigestScheduler
 import dev.studyflow.core.scheduling.ReminderIntegrityScheduler
+import dev.studyflow.core.scheduling.WorkManagerSyncCoordinator
 
 class AppStartupInitializer : Initializer<Unit> {
     override fun create(context: Context) {
@@ -20,6 +21,10 @@ class AppStartupInitializer : Initializer<Unit> {
         // the daily digest job once and leaves an already-running one alone (issue #47).
         DigestScheduler(context).ensureScheduled()
         ReminderIntegrityScheduler(context).ensureScheduled()
+
+        // The recurring catch-up pull (issue #55). Local mutations enqueue their own drain, but a
+        // device that only reads would otherwise never ask the server what it missed.
+        WorkManagerSyncCoordinator(context).ensureScheduled()
 
         if (BuildConfig.DEBUG) {
             try {
