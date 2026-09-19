@@ -5,6 +5,9 @@ import dev.studyflow.core.network.error.ApiErrorMapper
 import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
+import dev.studyflow.core.network.model.SyncDeltaDto
+import dev.studyflow.core.network.model.SyncPushRequestDto
+import dev.studyflow.core.network.model.SyncPushResponseDto
 import dev.studyflow.core.network.model.TaskDto
 import dev.studyflow.core.network.version.ClientVersion
 import dev.studyflow.core.network.version.MinimumClientPolicy
@@ -42,6 +45,20 @@ public class KtorStudyFlowApi(
     override suspend fun uploadSession(session: StudySessionDto): ApiResult<StudySessionDto> =
         execute(ApiEndpoint.UploadSession) {
             setBody(session)
+        }
+
+    override suspend fun pushSessionChanges(request: SyncPushRequestDto): ApiResult<SyncPushResponseDto> =
+        execute(ApiEndpoint.PushSessionChanges) {
+            setBody(request)
+        }
+
+    override suspend fun sessionChanges(
+        cursor: String?,
+        limit: Int,
+    ): ApiResult<SyncDeltaDto> =
+        execute(ApiEndpoint.PullSessionChanges) {
+            cursor?.let { parameter("cursor", it) }
+            parameter("limit", limit)
         }
 
     // Ktor's transport throws for everything from a refused connection to a malformed body, and a
