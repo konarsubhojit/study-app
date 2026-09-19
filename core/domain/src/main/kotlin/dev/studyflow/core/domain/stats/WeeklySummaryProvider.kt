@@ -49,11 +49,11 @@ public class WeeklySummaryProvider(
             val previousRange = window.previous.range
             WeeklySummary(
                 window = window,
-                totalCounted = subjectTotals.fold(Duration.ZERO) { total, it -> total + it.totalCounted },
+                totalCounted = subjectTotals.fold(Duration.ZERO) { total, bucket -> total + bucket.totalCounted },
                 previousWeekCounted =
                     dailyTotals
                         .filter { it.bucketStart >= previousRange.from && it.bucketStart < previousRange.to }
-                        .fold(Duration.ZERO) { total, it -> total + it.totalCounted },
+                        .fold(Duration.ZERO) { total, bucket -> total + bucket.totalCounted },
                 topSubjects = subjectTotals.filter { it.totalCounted > Duration.ZERO }.take(TOP_SUBJECT_COUNT),
                 streakDays =
                     StudyStreak.currentStreak(

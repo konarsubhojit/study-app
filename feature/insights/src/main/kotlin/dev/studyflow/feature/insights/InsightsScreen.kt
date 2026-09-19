@@ -94,7 +94,7 @@ public fun InsightsRoute(
 public fun InsightsScreen(
     state: InsightsUiState,
     onEvent: (InsightsUiEvent) -> Unit,
-    onOpenWeeklySummary: () -> Unit = {},
+    onOpenWeeklySummary: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {

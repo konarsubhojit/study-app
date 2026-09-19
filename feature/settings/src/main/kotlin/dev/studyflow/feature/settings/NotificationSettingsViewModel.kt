@@ -226,20 +226,25 @@ public class NotificationSettingsViewModel
                 }
 
                 is NotificationSettingsUiEvent.WeeklySummaryEnabled -> {
-                    // Persist first, then re-arm: the scheduler reads the stored preference, so the
-                    // opposite order would arm (or cancel) against the value the user just replaced.
-                    viewModelScope.launch {
-                        weeklySummarySettings.setEnabled(event.enabled)
-                        weeklySummaryScheduling.sync()
-                    }
+                    updateWeeklySummary { weeklySummarySettings.setEnabled(event.enabled) }
                 }
 
                 is NotificationSettingsUiEvent.WeeklySummaryTimeChanged -> {
-                    viewModelScope.launch {
+                    updateWeeklySummary {
                         weeklySummarySettings.setDeliveryTime(event.isoDayOfWeek, event.hour, event.minute)
-                        weeklySummaryScheduling.sync()
                     }
                 }
+            }
+        }
+
+        /**
+         * Persists first, then re-arms: the scheduler reads the stored preference, so the opposite
+         * order would arm — or cancel — against the value the user has just replaced.
+         */
+        private fun updateWeeklySummary(persist: suspend () -> Unit) {
+            viewModelScope.launch {
+                persist()
+                weeklySummaryScheduling.sync()
             }
         }
 

@@ -83,7 +83,9 @@ public class UserSettingsWeeklySummarySettings(
             // to the default keeps the schedule usable instead of throwing on every read.
             WeeklySummarySchedule(
                 enabled = settings.weeklySummaryEnabled,
-                isoDayOfWeek = settings.weeklySummaryDayOfWeek.orDefault(ISO_DAY_OF_WEEK_RANGE, DEFAULT_ISO_DAY_OF_WEEK),
+                isoDayOfWeek =
+                    settings.weeklySummaryDayOfWeek
+                        .orDefault(ISO_DAY_OF_WEEK_RANGE, DEFAULT_ISO_DAY_OF_WEEK),
                 hour = settings.weeklySummaryHour.orDefault(HOUR_RANGE, DEFAULT_HOUR),
                 minute = settings.weeklySummaryMinute.orDefault(MINUTE_RANGE, 0),
             )

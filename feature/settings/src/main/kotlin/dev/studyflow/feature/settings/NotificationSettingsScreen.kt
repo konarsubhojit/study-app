@@ -222,24 +222,7 @@ private fun WeeklySummaryCard(
                 style = MaterialTheme.typography.bodyMedium,
             )
             if (schedule.enabled) {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-                    items(DAY_NAMES.size, key = { it }) { index ->
-                        val isoDay = index + 1
-                        FilterChip(
-                            selected = schedule.isoDayOfWeek == isoDay,
-                            onClick = {
-                                onEvent(
-                                    NotificationSettingsUiEvent.WeeklySummaryTimeChanged(
-                                        isoDayOfWeek = isoDay,
-                                        hour = schedule.hour,
-                                        minute = schedule.minute,
-                                    ),
-                                )
-                            },
-                            label = { Text(DAY_NAMES[index]) },
-                        )
-                    }
-                }
+                WeeklySummaryDayRow(schedule = schedule, onEvent = onEvent)
                 TextButton(onClick = { showTimePicker = true }) {
                     Text(text = "Delivered at ${schedule.timeLabel()}")
                 }
@@ -262,6 +245,31 @@ private fun WeeklySummaryCard(
                 )
             },
         )
+    }
+}
+
+@Composable
+private fun WeeklySummaryDayRow(
+    schedule: WeeklySummarySchedule,
+    onEvent: (NotificationSettingsUiEvent) -> Unit,
+) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+        items(DAY_NAMES.size, key = { it }) { index ->
+            val isoDay = index + 1
+            FilterChip(
+                selected = schedule.isoDayOfWeek == isoDay,
+                onClick = {
+                    onEvent(
+                        NotificationSettingsUiEvent.WeeklySummaryTimeChanged(
+                            isoDayOfWeek = isoDay,
+                            hour = schedule.hour,
+                            minute = schedule.minute,
+                        ),
+                    )
+                },
+                label = { Text(DAY_NAMES[index]) },
+            )
+        }
     }
 }
 

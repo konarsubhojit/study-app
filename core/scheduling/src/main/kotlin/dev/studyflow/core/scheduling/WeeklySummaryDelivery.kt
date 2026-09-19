@@ -71,15 +71,24 @@ public class WeeklySummaryDelivery(
         if (!settings.schedule.first().enabled) return WeeklySummaryOutcome.OPTED_OUT
 
         val summary = summaryProvider.summaryAt(clock.now())
-        val weekStart = summary.window.start.toEpochDays()
-        if (deliveryLog.lastDeliveredWeekStart() >= weekStart) return WeeklySummaryOutcome.ALREADY_DELIVERED
-        if (!summary.hasActivity) return WeeklySummaryOutcome.INACTIVE_WEEK
-        if (!notifier.canPost(StudyFlowNotificationChannel.WEEKLY_SUMMARY)) return WeeklySummaryOutcome.NOT_ALLOWED
-
-        if (post(summary) != NotificationPostResult.POSTED) return WeeklySummaryOutcome.NOT_ALLOWED
-        deliveryLog.recordDelivered(weekStart)
-        return WeeklySummaryOutcome.DELIVERED
+        return outcomeFor(summary, weekStart = summary.window.start.toEpochDays())
     }
+
+    /** The gates, in order; the week is only recorded once the notification is actually on screen. */
+    private suspend fun outcomeFor(
+        summary: WeeklySummary,
+        weekStart: Long,
+    ): WeeklySummaryOutcome =
+        when {
+            deliveryLog.lastDeliveredWeekStart() >= weekStart -> WeeklySummaryOutcome.ALREADY_DELIVERED
+            !summary.hasActivity -> WeeklySummaryOutcome.INACTIVE_WEEK
+            !notifier.canPost(StudyFlowNotificationChannel.WEEKLY_SUMMARY) -> WeeklySummaryOutcome.NOT_ALLOWED
+            post(summary) != NotificationPostResult.POSTED -> WeeklySummaryOutcome.NOT_ALLOWED
+            else -> {
+                deliveryLog.recordDelivered(weekStart)
+                WeeklySummaryOutcome.DELIVERED
+            }
+        }
 
     private suspend fun post(summary: WeeklySummary): NotificationPostResult {
         val subjects = subjectRepository.observeSubjects().first()
