@@ -77,6 +77,7 @@ prompt deferred to a moment of value, and denials that are reported rather than 
 
 → [ADR 0004](docs/adr/0004-reminder-scheduling.md) ·
 [Notifications guide](docs/notifications.md) ·
+[Widgets guide](docs/widgets.md) ·
 [`ReminderScheduler`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/ReminderScheduler.kt) ·
 [`RecurrenceCalculator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/RecurrenceCalculator.kt)
 
@@ -105,6 +106,28 @@ Running against a local mock backend is a build flag, not a code change:
 [`KtorStudyFlowApi`](core/network/src/main/kotlin/dev/studyflow/core/network/KtorStudyFlowApi.kt) ·
 [`ApiErrorMapper`](core/network/src/main/kotlin/dev/studyflow/core/network/error/ApiErrorMapper.kt) ·
 [`RetryPolicy`](core/network/src/main/kotlin/dev/studyflow/core/network/retry/RetryPolicy.kt)
+
+## Syncing between devices
+
+Every syncable local change writes its outbound queue entry in the *same* Room transaction as the
+change itself, so a crash can leave the device with a change that is unsent, but never with one
+that is unrecorded. A WorkManager job drains that queue under a connected-network constraint with
+exponential backoff — the app does not have to be open — then reads the server's delta one
+resumable page at a time, merging each page and advancing its cursor together so an interrupted run
+resumes instead of restarting. A periodic catch-up run covers the device that only reads and so
+never triggers a drain of its own.
+
+Conflicts resolve to last-writer-wins on `updatedAt`, tie-broken by `deviceId` so two devices never
+disagree; deletions are tombstones that cannot be resurrected by a slower device; a session's
+append-only event log merges by union and is never overwritten. Running and paused sessions never
+leave the device — they are local timer state — and a device with an empty queue and an unchanged
+cursor spends no data at all. Settings shows what is pending, when sync last succeeded, what failed
+last, and offers a manual "Sync now".
+
+→ [ADR 0012](docs/adr/0012-offline-first-sync.md) ·
+[`SessionSyncMerge`](core/domain/src/main/kotlin/dev/studyflow/core/domain/sync/SessionSyncMerge.kt) ·
+[`SyncEngine`](core/domain/src/main/kotlin/dev/studyflow/core/domain/sync/SyncEngine.kt) ·
+[`SyncDao`](core/database/src/main/kotlin/dev/studyflow/core/database/dao/SyncDao.kt)
 
 ## Architecture
 
@@ -223,6 +246,7 @@ tokens or repository secrets only; no secrets are committed to this repository.
 | `:core:scheduling` — AlarmManager reminders, alarm playback, elapsed-realtime source | done |
 | `:core:storage` — provider-agnostic `ObjectStore` over presigned URLs | done |
 | Feature slices — timer, tasks and reminders, materials, history, notification settings | done |
+| Glance home-screen widgets and the Quick Settings tile | done |
 | `:feature:auth`, `:feature:insights` — cloud sign-in and the dashboard | not yet |
 
 The domain core remains Android-free, so building it first proved the riskiest logic before any UI
@@ -262,3 +286,5 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 - [0008 — Room is the local source of truth with explicit migrations](docs/adr/0008-local-room-database.md)
 - [0009 — Notifications: documented channels and a deferred permission](docs/adr/0009-notifications.md)
 - [0010 — Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`](docs/adr/0010-storage-provider.md)
+- [0011 — Alarm-style reminders: full-screen UI, playback service, snooze cap](docs/adr/0011-alarm-style-reminders.md)
+- [0012 — Offline-first sync: transactional queue, resumable delta, last-writer-wins](docs/adr/0012-offline-first-sync.md)

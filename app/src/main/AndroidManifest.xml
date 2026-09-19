@@ -93,6 +93,50 @@
             android:name=".timer.TimerIntervalReceiver"
             android:exported="false" />
 
+        <!-- Home-screen widgets (issue #61). Exported because the launcher, another process,
+             binds them; both are driven by the same repositories as the app and declare no
+             periodic update, so an idle device does no work on their behalf. -->
+        <receiver
+            android:name=".widget.TimerWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_timer_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_timer_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.TodayTasksWidgetReceiver"
+            android:exported="true"
+            android:label="@string/widget_tasks_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/widget_tasks_info" />
+        </receiver>
+
+        <!-- One-tap start/stop from the Quick Settings shade. The permission is the system's own
+             binding permission, so only the platform can bind this service; TOGGLEABLE_TILE tells
+             Android 13 and later that a tap acts immediately instead of opening the app. -->
+        <service
+            android:name=".widget.StudyTimerTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_notification"
+            android:label="@string/tile_timer_label"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.quicksettings.TOGGLEABLE_TILE"
+                android:value="true" />
+        </service>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.files"

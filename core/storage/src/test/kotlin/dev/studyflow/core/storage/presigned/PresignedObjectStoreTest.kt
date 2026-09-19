@@ -55,6 +55,27 @@ class PresignedObjectStoreTest {
         }
 
     @Test
+    fun `part upload sends every header covered by the signature`() =
+        runTest {
+            var seen: HttpRequestData? = null
+            val store =
+                store { request ->
+                    seen = request
+                    respond(content = "", status = HttpStatusCode.OK)
+                }
+            val original = store.initUpload(REQUEST)
+            val checksum = "base64-checksum"
+            val part =
+                original.parts.single().copy(
+                    requiredHeaders = mapOf("x-amz-checksum-sha256" to checksum),
+                )
+
+            store.uploadPart(original.copy(parts = listOf(part)), part, PAYLOAD)
+
+            assertEquals(checksum, seen?.headers?.get("x-amz-checksum-sha256"))
+        }
+
+    @Test
     fun `a store that does not return an entity tag is still usable`() =
         runTest {
             val store = store { respond(content = "", status = HttpStatusCode.OK) }

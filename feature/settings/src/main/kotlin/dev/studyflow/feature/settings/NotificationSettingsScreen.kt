@@ -113,14 +113,20 @@ public fun NotificationSettingsRoute(
         state = state,
         onEvent = viewModel::onEvent,
         modifier = modifier,
+        syncStatus = { SyncStatusRoute() },
     )
 }
 
+/**
+ * @param syncStatus the sync card (issue #55), passed as a slot so this screen stays renderable
+ *   without a ViewModel graph — the same reason the rest of it takes state rather than fetching it.
+ */
 @Composable
 public fun NotificationSettingsScreen(
     state: NotificationSettingsUiState,
     onEvent: (NotificationSettingsUiEvent) -> Unit,
     modifier: Modifier = Modifier,
+    syncStatus: @Composable () -> Unit = {},
 ) {
     state.rationale?.let { key ->
         AlertDialog(
@@ -154,6 +160,10 @@ public fun NotificationSettingsScreen(
     ) {
         item {
             Text(text = "Notifications", style = MaterialTheme.typography.headlineSmall)
+        }
+
+        item {
+            syncStatus()
         }
 
         if (state.notificationsBlocked) {

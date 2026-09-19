@@ -137,6 +137,96 @@ public class UserSettingsFocusTimerSettings(
     }
 }
 
+/**
+ * Overall daily/weekly study targets (issue #73).
+ *
+ * @property dailyGoal `null` means no daily target is set — see `settings.proto`'s
+ *   `daily_goal_minutes` doc for why `0` is the "unset" sentinel rather than a separate flag.
+ */
+public data class GoalTargets(
+    val dailyGoal: Duration?,
+    val weeklyGoal: Duration?,
+)
+
+public interface GoalSettings {
+    public val targets: Flow<GoalTargets>
+
+    /** `0` clears the daily target; matches `settings.proto`'s "0 means unset" convention. */
+    public suspend fun setDailyGoalMinutes(minutes: Int)
+
+    /** `0` clears the weekly target. */
+    public suspend fun setWeeklyGoalMinutes(minutes: Int)
+}
+
+public class UserSettingsGoalSettings(
+    private val store: UserSettingsStore,
+) : GoalSettings {
+    override val targets: Flow<GoalTargets> =
+        store.data.map { settings ->
+            GoalTargets(
+                dailyGoal = settings.dailyGoalMinutes.toGoalOrNull(),
+                weeklyGoal = settings.weeklyGoalMinutes.toGoalOrNull(),
+            )
+        }
+
+    override suspend fun setDailyGoalMinutes(minutes: Int) {
+        require(minutes >= 0) { "minutes must not be negative" }
+        store.update { dailyGoalMinutes = minutes }
+    }
+
+    override suspend fun setWeeklyGoalMinutes(minutes: Int) {
+        require(minutes >= 0) { "minutes must not be negative" }
+        store.update { weeklyGoalMinutes = minutes }
+    }
+}
+
+/**
+ * Opt-in, rate-limited nudge toggles (issue #73). See `settings.proto`'s `nudges_enabled` doc for
+ * why every field defaults to `false`.
+ *
+ * @property nudgesEnabled the single master switch every nudge type is gated behind.
+ */
+public data class NudgeToggles(
+    val nudgesEnabled: Boolean,
+    val endOfDaySummaryEnabled: Boolean,
+    val goalAlmostReachedEnabled: Boolean,
+)
+
+public interface NudgeSettings {
+    public val toggles: Flow<NudgeToggles>
+
+    public suspend fun setNudgesEnabled(enabled: Boolean)
+
+    public suspend fun setEndOfDaySummaryEnabled(enabled: Boolean)
+
+    public suspend fun setGoalAlmostReachedEnabled(enabled: Boolean)
+}
+
+public class UserSettingsNudgeSettings(
+    private val store: UserSettingsStore,
+) : NudgeSettings {
+    override val toggles: Flow<NudgeToggles> =
+        store.data.map { settings ->
+            NudgeToggles(
+                nudgesEnabled = settings.nudgesEnabled,
+                endOfDaySummaryEnabled = settings.endOfDaySummaryEnabled,
+                goalAlmostReachedEnabled = settings.goalAlmostReachedEnabled,
+            )
+        }
+
+    override suspend fun setNudgesEnabled(enabled: Boolean) {
+        store.update { nudgesEnabled = enabled }
+    }
+
+    override suspend fun setEndOfDaySummaryEnabled(enabled: Boolean) {
+        store.update { endOfDaySummaryEnabled = enabled }
+    }
+
+    override suspend fun setGoalAlmostReachedEnabled(enabled: Boolean) {
+        store.update { goalAlmostReachedEnabled = enabled }
+    }
+}
+
 /** Minimal anchor retained only while a timer is active, for direct-boot recovery. */
 public data class ActiveTimer(
     val sessionId: String,
@@ -295,3 +385,6 @@ private fun ActiveTimerAnchor.toActiveTimer(): ActiveTimer? =
     }
 
 private fun Int.toPositiveMinutes(): Duration = coerceAtLeast(1).minutes
+
+/** `0` means "no goal set" (see `settings.proto`); any other value is that many minutes. */
+private fun Int.toGoalOrNull(): Duration? = if (this <= 0) null else minutes

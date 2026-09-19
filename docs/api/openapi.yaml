@@ -134,6 +134,167 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /v1/storage/initUpload:
+    post:
+      operationId: initUpload
+      summary: Validate and open a multipart upload
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InitUploadRequest'
+      responses:
+        '200':
+          description: Short-lived URLs for every checksummed part
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadSession'
+        '413':
+          $ref: '#/components/responses/Error'
+        '415':
+          $ref: '#/components/responses/Error'
+        '429':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/storage/completeUpload:
+    post:
+      operationId: completeUpload
+      summary: Verify and finalize an owned multipart upload
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompleteUploadRequest'
+      responses:
+        '200':
+          description: Verified object metadata; thumbnail generation has been queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredObject'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/storage/getDownloadUrl:
+    post:
+      operationId: getDownloadUrl
+      summary: Issue a short-lived URL for an owned, visible object
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObjectRequest'
+      responses:
+        '200':
+          description: A ten-minute download URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PresignedUrl'
+        '404':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/storage/delete:
+    post:
+      operationId: deleteObject
+      summary: Delete an owned object
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ObjectRequest'
+      responses:
+        '204':
+          description: Deleted, or the object was already absent
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/sync/sessions:
+    get:
+      operationId: pullSessionChanges
+      summary: Session changes recorded after a cursor
+      description: |
+        The inbound half of offline-first sync (issue #55). Changes are returned oldest first and
+        the cursor is opaque to the client, which stores it verbatim and sends it back, so the
+        server may change how it paginates without an app release.
+
+        A client that is already up to date receives an empty `changes` array and the cursor it
+        sent, which is how "nothing changed" costs one conditional request and no data.
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque position from the previous delta; omitted on a first sync
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+          description: Maximum number of changes to return; the server may return fewer
+      responses:
+        '200':
+          description: The next page of changes
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncDelta'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: pushSessionChanges
+      summary: Upload a batch of local session changes
+      description: |
+        The outbound half of offline-first sync (issue #55). The server resolves every change by
+        last-write-wins on `updatedAt` with `deviceId` as the tie-break, so replaying a batch it
+        already applied is a no-op and a client may safely retry one it never got an answer for.
+
+        Only completed sessions may be sent: a running or paused session belongs to the device it
+        runs on, and the server rejects one with `active_session_not_syncable`.
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncPushRequest'
+      responses:
+        '200':
+          description: Which changes the server stored, and which its own newer state beat
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPushResponse'
+        default:
+          $ref: '#/components/responses/Error'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -255,3 +416,223 @@ components:
         focusedSeconds:
           type: integer
           format: int64
+
+    InitUploadRequest:
+      type: object
+      required: [contentHash, contentType, sizeBytes, partChecksums]
+      properties:
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 52428800
+        partChecksums:
+          type: array
+          description: Base64 SHA-256 for each 8 MiB part, in order.
+          items:
+            type: string
+
+    UploadSession:
+      type: object
+      required: [uploadId, expiresAt, parts]
+      properties:
+        uploadId:
+          type: string
+          format: uuid
+        expiresAt:
+          type: string
+          format: date-time
+        parts:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignedPart'
+
+    SignedPart:
+      type: object
+      required: [number, offset, size, url, expiresAt, requiredHeaders]
+      properties:
+        number:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          format: int64
+        size:
+          type: integer
+          format: int64
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+        requiredHeaders:
+          type: object
+          description: Headers covered by the URL signature and required on the part PUT.
+          additionalProperties:
+            type: string
+
+    CompleteUploadRequest:
+      type: object
+      required: [uploadId, parts]
+      properties:
+        uploadId:
+          type: string
+          format: uuid
+        parts:
+          type: array
+          items:
+            type: object
+            required: [number, etag]
+            properties:
+              number:
+                type: integer
+                minimum: 1
+              etag:
+                type: string
+
+    ObjectRequest:
+      type: object
+      required: [contentHash]
+      properties:
+        contentHash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    StoredObject:
+      type: object
+      required: [contentHash, contentType, sizeBytes]
+      properties:
+        contentHash:
+          type: string
+        contentType:
+          type: string
+        sizeBytes:
+          type: integer
+          format: int64
+
+    PresignedUrl:
+      type: object
+      required: [url, expiresAt]
+      properties:
+        url:
+          type: string
+          format: uri
+        expiresAt:
+          type: string
+          format: date-time
+    SyncSession:
+      type: object
+      required: [id, deviceId, updatedAt, startedAt, status]
+      description: |
+        A study session plus its append-only event log. The log is the source of truth and the
+        flat fields are a fold of it, so both travel together.
+      properties:
+        id:
+          type: string
+        deviceId:
+          type: string
+          description: The device whose log produced the session; the conflict tie-break.
+        updatedAt:
+          type: string
+          format: date-time
+          description: Last local modification; the primary conflict term.
+        startedAt:
+          type: string
+          format: date-time
+        endedAt:
+          type: string
+          format: date-time
+        status:
+          type: string
+          enum: [RUNNING, PAUSED, STOPPED]
+          description: Only STOPPED is accepted; an active session is never synced.
+        subjectId:
+          type: string
+        taskId:
+          type: string
+        note:
+          type: string
+        deleted:
+          type: boolean
+          description: A tombstone, so a deletion replicates instead of being resurrected.
+        manualOverride:
+          type: boolean
+        countedMillis:
+          type: integer
+          format: int64
+          description: Folded duration; authoritative when manualOverride is true.
+        unverifiedMillis:
+          type: integer
+          format: int64
+          description: Time the sending device could not vouch for; never folded into countedMillis.
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncSessionEvent'
+
+    SyncSessionEvent:
+      type: object
+      required: [id, sessionId, type, sequence, wallClock, uptimeMillis, bootId]
+      description: One append-only log entry. Merged by union on id; never overwritten.
+      properties:
+        id:
+          type: string
+        sessionId:
+          type: string
+        type:
+          type: string
+          enum: [STARTED, PAUSED, RESUMED, BREAK_STARTED, FOCUS_RESUMED, ACTIVITY_CONFIRMED, STOPPED]
+        sequence:
+          type: integer
+          format: int64
+        wallClock:
+          type: string
+          format: date-time
+        uptimeMillis:
+          type: integer
+          format: int64
+        bootId:
+          type: string
+
+    SyncPushRequest:
+      type: object
+      required: [deviceId, changes]
+      properties:
+        deviceId:
+          type: string
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncSession'
+
+    SyncPushResponse:
+      type: object
+      properties:
+        acceptedIds:
+          type: array
+          items:
+            type: string
+        rejectedIds:
+          type: array
+          description: Changes the server's own newer state beat; the next delta carries the winner.
+          items:
+            type: string
+
+    SyncDelta:
+      type: object
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncSession'
+        nextCursor:
+          type: string
+          description: Opaque; store verbatim and send it back on the next pull.
+        hasMore:
+          type: boolean

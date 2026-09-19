@@ -24,6 +24,16 @@ class UserSettingsSchemaTest {
         assertEquals(false, settings.digestEnabled)
         assertEquals(480, settings.maximumSessionMinutes)
         assertEquals(120, settings.inactivityPromptMinutes)
+        assertEquals(0, settings.dailyGoalMinutes)
+        assertEquals(0, settings.weeklyGoalMinutes)
+        assertEquals(false, settings.nudgesEnabled)
+        assertEquals(false, settings.endOfDaySummaryEnabled)
+        assertEquals(false, settings.goalAlmostReachedEnabled)
+        assertEquals(false, settings.weeklySummaryEnabled)
+        assertEquals(7, settings.weeklySummaryDayOfWeek)
+        assertEquals(18, settings.weeklySummaryHour)
+        assertEquals(0, settings.weeklySummaryMinute)
+        assertEquals(-1, settings.weeklySummaryLastSentWeekStart)
     }
 
     @Test

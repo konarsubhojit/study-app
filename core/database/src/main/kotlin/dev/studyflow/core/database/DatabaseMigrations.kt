@@ -241,6 +241,39 @@ public object DatabaseMigrations {
             }
         }
 
+    /**
+     * Adds the outbound change queue and the inbound sync cursor (issue #55).
+     *
+     * Both tables start empty on an upgrading install: a device that has never synced has nothing
+     * queued, and a `NULL` cursor asks the server for the whole history on the first pull.
+     */
+    public val MIGRATION_11_12: Migration =
+        object : Migration(11, 12) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `sync_queue` (
+                    `sequence` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                    `entity_type` TEXT NOT NULL, `entity_id` TEXT NOT NULL, `operation` TEXT NOT NULL,
+                    `updated_at` INTEGER NOT NULL, `device_id` TEXT NOT NULL)
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS `index_sync_queue_entity_type_entity_id`
+                    ON `sync_queue` (`entity_type`, `entity_id`)
+                    """.trimIndent(),
+                )
+                connection.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `sync_state` (
+                    `id` TEXT NOT NULL, `cursor` TEXT, `last_success_at` INTEGER, `last_error` TEXT,
+                    `last_attempt_at` INTEGER, PRIMARY KEY(`id`))
+                    """.trimIndent(),
+                )
+            }
+        }
+
     public val ALL: Array<Migration>
         get() =
             arrayOf(
@@ -254,6 +287,7 @@ public object DatabaseMigrations {
                 MIGRATION_8_9,
                 MIGRATION_9_10,
                 MIGRATION_10_11,
+                MIGRATION_11_12,
             )
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null

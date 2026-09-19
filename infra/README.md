@@ -79,3 +79,16 @@ Every user-owned table has an RLS policy tying every row to its owner
 (`auth.uid() = user_id`); [`supabase/tests/database/authorization.sql`](supabase/tests/database/authorization.sql)
 proves cross-user reads and writes affect zero rows for every table, run against the real
 migrations rather than a hand-written approximation of them.
+
+## Presigned storage service
+
+`supabase/functions/storage` is the only component that receives S3-compatible storage
+credentials. Deploy it with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `STORAGE_S3_ENDPOINT`,
+`STORAGE_S3_REGION`, `STORAGE_S3_BUCKET`, `STORAGE_S3_ACCESS_KEY_ID`, and
+`STORAGE_S3_SECRET_ACCESS_KEY`. Set `ORPHAN_REAPER_TOKEN` to a random managed secret, then configure
+the repository's `STORAGE_REAPER_URL` and `STORAGE_REAPER_TOKEN` Actions secrets so
+`reap-storage-orphans.yml` aborts abandoned multipart uploads hourly.
+
+An optional malware scanner can be enabled with `STORAGE_SCAN_HOOK_URL` and
+`STORAGE_SCAN_HOOK_TOKEN`. The hook must return `{"clean":true,"sha256":"<expected digest>"}`;
+rejected objects are deleted before their metadata becomes downloadable.

@@ -3,6 +3,7 @@ package dev.studyflow.core.database.dao
 import androidx.paging.PagingSource
 import androidx.room.Dao
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Upsert
@@ -10,6 +11,8 @@ import dev.studyflow.core.database.entity.SessionCorrectionEntity
 import dev.studyflow.core.database.entity.SessionEventEntity
 import dev.studyflow.core.database.entity.SessionWithEvents
 import dev.studyflow.core.database.entity.StudySessionEntity
+import dev.studyflow.core.database.entity.SyncQueueEntity
+import dev.studyflow.core.database.entity.asSyncQueueEntity
 import dev.studyflow.core.model.SessionStatus
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
@@ -70,13 +73,14 @@ public abstract class SessionDao {
     public abstract fun observeEvents(sessionId: String): Flow<List<SessionEventEntity>>
 
     /**
-     * Commits one event and the projection it implies, atomically.
+     * Commits one event, the projection it implies, and its outbound sync entry, atomically.
      *
-     * Both writes land or neither does, so a kill between them cannot leave a half-written command;
-     * and because the projection is only ever derived from the log, a kill *after* the transaction
-     * still replays to the same state. The guards re-check, inside the transaction, the two facts
-     * the caller decided on outside it, so a concurrent writer cannot slip in a second active
-     * session or an out-of-order event.
+     * All three writes land or none does, so a kill between them cannot leave a half-written
+     * command *or* a change that is durable locally but invisible to sync; and because the
+     * projection is only ever derived from the log, a kill *after* the transaction still replays
+     * to the same state. The guards re-check, inside the transaction, the two facts the caller
+     * decided on outside it, so a concurrent writer cannot slip in a second active session or an
+     * out-of-order event.
      *
      * @throws IllegalStateException if another session is already active on the same device.
      * @throws IllegalArgumentException if the event does not continue the session's log.
@@ -97,6 +101,7 @@ public abstract class SessionDao {
         }
         upsertSession(session)
         insertEvent(event)
+        enqueueIfSyncable(session)
     }
 
     @Query(
@@ -185,9 +190,9 @@ public abstract class SessionDao {
     ): Flow<List<SessionWithEvents>>
 
     /**
-     * Commits a correction's session rewrites and its audit rows in one transaction, so a reader
-     * never observes the new session state without the audit trail that explains it (or vice
-     * versa).
+     * Commits a correction's session rewrites, its audit rows and their outbound sync entries in
+     * one transaction, so a reader never observes the new session state without the audit trail
+     * that explains it (or vice versa), and sync never misses an edit that is already durable.
      */
     @Transaction
     public open suspend fun applyCorrection(
@@ -196,7 +201,25 @@ public abstract class SessionDao {
     ) {
         upsertSessions(sessions)
         insertCorrections(corrections)
+        sessions.forEach { session -> enqueueIfSyncable(session) }
     }
+
+    /**
+     * Queues [session] for the server — unless it is still running or paused (issue #55).
+     *
+     * A live stopwatch belongs to the device it runs on: replicating it would let two devices
+     * fight over one timer, and every tick would burn a queue entry and a request for a number
+     * that is stale before it arrives. The session is queued the moment it stops, with its whole
+     * event log, so nothing about it is lost by waiting.
+     */
+    private suspend fun enqueueIfSyncable(session: StudySessionEntity) {
+        if (session.status != SessionStatus.STOPPED) return
+        enqueueSyncEntry(session.asSyncQueueEntity())
+    }
+
+    /** Declared here, rather than borrowed from `SyncDao`, so it runs inside *this* transaction. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun enqueueSyncEntry(entry: SyncQueueEntity)
 
     /** Every correction ever recorded for [sessionId], oldest first — the full audit trail. */
     @Query(

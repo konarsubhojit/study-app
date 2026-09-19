@@ -22,6 +22,9 @@ import dev.studyflow.core.datastore.ActiveTimerStore
 import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionRepository
+import dev.studyflow.core.domain.timer.TimerAccuracyReporter
+import dev.studyflow.core.domain.timer.TimerAccuracySample
+import dev.studyflow.core.domain.timer.TimerAccuracySource
 import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.domain.timer.TimerEngine
 import dev.studyflow.core.domain.timer.TimerState
@@ -41,6 +44,7 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
+import kotlin.time.Duration
 
 internal const val TIMER_NOTIFICATION_ID = 33_003
 private const val REQUEST_OPEN = 33_100
@@ -63,6 +67,8 @@ internal class TimerForegroundService : Service() {
     @Inject lateinit var dispatcherProvider: DispatcherProvider
 
     @Inject lateinit var wallClock: Clock
+
+    @Inject lateinit var accuracyReporter: TimerAccuracyReporter
 
     private lateinit var scope: CoroutineScope
     private val foregroundStarted = AtomicBoolean(false)
@@ -125,6 +131,7 @@ internal class TimerForegroundService : Service() {
 
             is TimerState.Running -> {
                 activeTimerStore.set(state.activeTimer(now))
+                reportAccuracy(state, now)
                 startTimerForeground(state, now)
             }
 
@@ -190,6 +197,22 @@ internal class TimerForegroundService : Service() {
                 .elapsedAt(state, now)
                 .counted
                 .inWholeMilliseconds
+
+    private fun reportAccuracy(
+        state: TimerState.Running,
+        now: TimeAnchor,
+    ) {
+        val expectedOpen = state.openedAt.uptimeDurationTo(now)?.coerceAtLeast(Duration.ZERO) ?: return
+        val measuredOpen = state.openedAt.wallClockDurationTo(now).coerceAtLeast(Duration.ZERO)
+        accuracyReporter.report(
+            TimerAccuracySample(
+                sessionId = state.sessionId,
+                source = TimerAccuracySource.FOREGROUND_REFRESH,
+                expectedElapsed = state.settled + expectedOpen,
+                measuredElapsed = state.settled + measuredOpen,
+            ),
+        )
+    }
 
     private fun actionsFor(state: TimerState.Active): List<NotificationAction> =
         listOf(

@@ -21,6 +21,12 @@ public enum class ApiEndpoint(
     ListSubjects("get", "/$API_VERSION/subjects"),
     ListTasks("get", "/$API_VERSION/tasks"),
     UploadSession("post", "/$API_VERSION/sessions"),
+
+    /** Sends a batch of local session changes; see `SyncEngine` in `:core:domain`. */
+    PushSessionChanges("post", "/$API_VERSION/sync/sessions"),
+
+    /** Reads the session changes recorded after a cursor. */
+    PullSessionChanges("get", "/$API_VERSION/sync/sessions"),
     ;
 
     /** Only a request that can be replayed without duplicating the user's data may be retried. */
