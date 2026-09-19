@@ -92,7 +92,7 @@ private fun TodayTasksContent(tasks: List<StudyTask>) {
                 .fillMaxSize()
                 .appWidgetBackground()
                 .background(GlanceTheme.colors.widgetBackground)
-                .cornerRadius(android.R.dimen.system_app_widget_background_radius)
+                .widgetCornerRadius()
                 .padding(spacing.medium),
     ) {
         Text(

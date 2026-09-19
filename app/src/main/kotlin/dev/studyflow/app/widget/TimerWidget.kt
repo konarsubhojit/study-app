@@ -24,7 +24,6 @@ import androidx.glance.appwidget.SizeMode
 import androidx.glance.appwidget.action.actionRunCallback
 import androidx.glance.appwidget.action.actionStartActivity
 import androidx.glance.appwidget.appWidgetBackground
-import androidx.glance.appwidget.cornerRadius
 import androidx.glance.appwidget.provideContent
 import androidx.glance.background
 import androidx.glance.layout.Alignment
@@ -103,7 +102,7 @@ private fun TimerWidgetContent(snapshot: TimerWidgetSnapshot) {
                 .fillMaxSize()
                 .appWidgetBackground()
                 .background(GlanceTheme.colors.widgetBackground)
-                .cornerRadius(android.R.dimen.system_app_widget_background_radius)
+                .widgetCornerRadius()
                 .padding(spacing.medium)
                 .clickable(actionStartActivity(openTimerIntent(context))),
         verticalAlignment = Alignment.Vertical.CenterVertically,

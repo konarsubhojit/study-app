@@ -65,6 +65,7 @@ class WidgetManifestTest {
     }
 
     @Test
+    @Suppress("QueryPermissionsNeeded") // Queries this app's own package, not another's.
     fun `the quick settings tile answers the platform's tile intent`() {
         val tiles =
             app.packageManager.queryIntentServices(

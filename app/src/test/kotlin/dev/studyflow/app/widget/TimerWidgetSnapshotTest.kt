@@ -1,8 +1,8 @@
 package dev.studyflow.app.widget
 
+import dev.studyflow.core.domain.timer.TimerState
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.TimeAnchor
-import dev.studyflow.core.domain.timer.TimerState
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue

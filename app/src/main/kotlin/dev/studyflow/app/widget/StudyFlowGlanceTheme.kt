@@ -1,8 +1,12 @@
 package dev.studyflow.app.widget
 
+import android.annotation.SuppressLint
 import android.os.Build
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.unit.dp
+import androidx.glance.GlanceModifier
 import androidx.glance.GlanceTheme
+import androidx.glance.appwidget.cornerRadius
 import androidx.glance.material3.ColorProviders
 import dev.studyflow.core.designsystem.theme.StudyFlowColorSchemes
 
@@ -26,3 +30,20 @@ internal fun StudyFlowGlanceTheme(content: @Composable () -> Unit) {
         )
     }
 }
+
+/**
+ * Rounds a widget to whatever the host uses for its own widgets.
+ *
+ * `system_app_widget_background_radius` only exists from Android 12, where the launcher also clips
+ * widgets to it; the fallback matches the platform's pre-12 widget background so the corner is not
+ * a design-system decision but the host's.
+ */
+@SuppressLint("InlinedApi") // Guarded below; the resource exists from Android 12 onwards.
+internal fun GlanceModifier.widgetCornerRadius(): GlanceModifier =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        cornerRadius(android.R.dimen.system_app_widget_background_radius)
+    } else {
+        cornerRadius(LEGACY_WIDGET_CORNER_RADIUS)
+    }
+
+private val LEGACY_WIDGET_CORNER_RADIUS = 16.dp

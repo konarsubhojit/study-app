@@ -6,6 +6,7 @@
   widget must not do (issue #61).
 -->
 <appwidget-provider xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:description="@string/widget_timer_description"
     android:initialLayout="@layout/glance_default_loading_layout"
     android:minHeight="70dp"
@@ -14,4 +15,5 @@
     android:targetCellHeight="1"
     android:targetCellWidth="2"
     android:updatePeriodMillis="0"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen"
+    tools:ignore="UnusedAttribute" />
