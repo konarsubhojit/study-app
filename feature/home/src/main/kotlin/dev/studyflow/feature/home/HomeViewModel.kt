@@ -6,6 +6,8 @@ import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.TimeZoneProvider
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.session.SessionRepository
+import dev.studyflow.core.domain.stats.StudyGoals
+import dev.studyflow.core.domain.stats.StudyStreak
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.StudySession
@@ -15,12 +17,9 @@ import dev.studyflow.core.ui.mvi.UiEvent
 import dev.studyflow.core.ui.mvi.UiState
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.datetime.DateTimeUnit
-import kotlinx.datetime.minus
 import kotlinx.datetime.toLocalDateTime
 import javax.inject.Inject
 import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 
 /** The locally-cached data rendered by the dashboard without a network request. */
 public data class HomeUiState(
@@ -32,7 +31,7 @@ public data class HomeUiState(
     val recentMaterials: List<Material> = emptyList(),
 ) : UiState {
     public companion object {
-        public val DEFAULT_FOCUS_GOAL: Duration = 60.minutes
+        public val DEFAULT_FOCUS_GOAL: Duration = StudyGoals.DEFAULT_DAILY_FOCUS_GOAL
     }
 }
 
@@ -86,14 +85,7 @@ public class HomeViewModel
                 filter { !it.deleted && it.elapsed.counted > Duration.ZERO }
                     .map { it.startedAt.toLocalDateTime(zone).date }
                     .toSet()
-            var day = clock.now().toLocalDateTime(zone).date
-            if (day !in studiedDays) day = day.minus(1, DateTimeUnit.DAY)
-            var streak = 0
-            while (day in studiedDays) {
-                streak++
-                day = day.minus(1, DateTimeUnit.DAY)
-            }
-            return streak
+            return StudyStreak.currentStreak(studiedDays, today = clock.now().toLocalDateTime(zone).date)
         }
 
         override fun onEvent(event: HomeUiEvent) = Unit

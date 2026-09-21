@@ -5,6 +5,9 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.studyflow.core.datastore.AlarmRingtoneSettings
+import dev.studyflow.core.datastore.WeeklySummarySchedule
+import dev.studyflow.core.datastore.WeeklySummarySettings
+import dev.studyflow.core.domain.stats.WeeklySummaryScheduling
 import dev.studyflow.core.notifications.NotificationChannelStatus
 import dev.studyflow.core.notifications.NotificationMessageKey
 import dev.studyflow.core.notifications.NotificationMoment
@@ -43,6 +46,8 @@ public data class NotificationSettingsUiState(
     val loaded: Boolean = false,
     /** Empty means "the device's default alarm sound" — see `settings.proto`'s field doc. */
     val alarmRingtoneUri: String = "",
+    /** The weekly recap opt-in and the day/time it is delivered at (issue #63). */
+    val weeklySummary: WeeklySummarySchedule = WeeklySummarySchedule(),
     val batteryDiagnostics: BatteryDiagnosticsSnapshot =
         BatteryDiagnosticsSnapshot(
             batteryOptimised = false,
@@ -98,6 +103,18 @@ public sealed interface NotificationSettingsUiEvent : UiEvent {
     public data class AlarmRingtonePicked(
         val uri: String?,
     ) : NotificationSettingsUiEvent
+
+    /** The weekly summary switch. Turning it off cancels the scheduled work immediately. */
+    public data class WeeklySummaryEnabled(
+        val enabled: Boolean,
+    ) : NotificationSettingsUiEvent
+
+    /** A new delivery day and time; the next occurrence is re-armed from it. */
+    public data class WeeklySummaryTimeChanged(
+        val isoDayOfWeek: Int,
+        val hour: Int,
+        val minute: Int,
+    ) : NotificationSettingsUiEvent
 }
 
 public sealed interface NotificationSettingsUiEffect : UiEffect {
@@ -123,6 +140,8 @@ public class NotificationSettingsViewModel
         private val source: NotificationSettingsSource,
         private val settingsStore: AlarmRingtoneSettings,
         private val batteryDiagnosticsSource: BatteryDiagnosticsSource,
+        private val weeklySummarySettings: WeeklySummarySettings,
+        private val weeklySummaryScheduling: WeeklySummaryScheduling,
     ) : MviViewModel<NotificationSettingsUiEvent, NotificationSettingsUiEffect>(savedStateHandle) {
         private val systemState = MutableStateFlow(NotificationSettingsUiState())
 
@@ -135,6 +154,11 @@ public class NotificationSettingsViewModel
             settingsStore.uri
                 .onEach { alarmRingtoneUri ->
                     systemState.value = systemState.value.copy(alarmRingtoneUri = alarmRingtoneUri)
+                }.launchIn(viewModelScope)
+
+            weeklySummarySettings.schedule
+                .onEach { schedule ->
+                    systemState.value = systemState.value.copy(weeklySummary = schedule)
                 }.launchIn(viewModelScope)
         }
 
@@ -200,6 +224,27 @@ public class NotificationSettingsViewModel
                         settingsStore.setUri(event.uri.orEmpty())
                     }
                 }
+
+                is NotificationSettingsUiEvent.WeeklySummaryEnabled -> {
+                    updateWeeklySummary { weeklySummarySettings.setEnabled(event.enabled) }
+                }
+
+                is NotificationSettingsUiEvent.WeeklySummaryTimeChanged -> {
+                    updateWeeklySummary {
+                        weeklySummarySettings.setDeliveryTime(event.isoDayOfWeek, event.hour, event.minute)
+                    }
+                }
+            }
+        }
+
+        /**
+         * Persists first, then re-arms: the scheduler reads the stored preference, so the opposite
+         * order would arm — or cancel — against the value the user has just replaced.
+         */
+        private fun updateWeeklySummary(persist: suspend () -> Unit) {
+            viewModelScope.launch {
+                persist()
+                weeklySummaryScheduling.sync()
             }
         }
 

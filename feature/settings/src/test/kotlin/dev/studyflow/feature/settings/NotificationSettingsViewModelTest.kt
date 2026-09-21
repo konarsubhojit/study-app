@@ -4,6 +4,9 @@ import android.content.Intent
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import dev.studyflow.core.datastore.AlarmRingtoneSettings
+import dev.studyflow.core.datastore.WeeklySummarySchedule
+import dev.studyflow.core.datastore.WeeklySummarySettings
+import dev.studyflow.core.domain.stats.WeeklySummaryScheduling
 import dev.studyflow.core.notifications.NotificationChannelStatus
 import dev.studyflow.core.notifications.NotificationMessageKey
 import dev.studyflow.core.notifications.NotificationPermissionState
@@ -34,6 +37,8 @@ class NotificationSettingsViewModelTest {
 
     private val source = FakeNotificationSettingsSource()
     private val alarmRingtoneSettings = FakeAlarmRingtoneSettings()
+    private val weeklySummarySettings = FakeWeeklySummarySettings()
+    private val weeklySummaryScheduling = FakeWeeklySummaryScheduling()
 
     @Test
     fun `the screen reports what the system says, not what the app would like`() =
@@ -207,8 +212,48 @@ class NotificationSettingsViewModelTest {
             assertNull(viewModel.state.value.rationale)
         }
 
+    @Test
+    fun `opting in stores the choice and arms the schedule`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel()
+            advanceUntilIdle()
+
+            viewModel.onEvent(NotificationSettingsUiEvent.WeeklySummaryEnabled(enabled = true))
+            viewModel.onEvent(
+                NotificationSettingsUiEvent.WeeklySummaryTimeChanged(isoDayOfWeek = 1, hour = 7, minute = 30),
+            )
+            advanceUntilIdle()
+
+            assertEquals(
+                WeeklySummarySchedule(enabled = true, isoDayOfWeek = 1, hour = 7, minute = 30),
+                viewModel.state.value.weeklySummary,
+            )
+            assertEquals(2, weeklySummaryScheduling.syncs)
+        }
+
+    @Test
+    fun `opting out cancels the schedule straight away rather than at the next delivery`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel()
+            viewModel.onEvent(NotificationSettingsUiEvent.WeeklySummaryEnabled(enabled = true))
+            advanceUntilIdle()
+
+            viewModel.onEvent(NotificationSettingsUiEvent.WeeklySummaryEnabled(enabled = false))
+            advanceUntilIdle()
+
+            assertFalse(viewModel.state.value.weeklySummary.enabled)
+            assertEquals(2, weeklySummaryScheduling.syncs)
+        }
+
     private fun viewModel(savedState: SavedStateHandle = SavedStateHandle()) =
-        NotificationSettingsViewModel(savedState, source, alarmRingtoneSettings, batteryDiagnostics)
+        NotificationSettingsViewModel(
+            savedState,
+            source,
+            alarmRingtoneSettings,
+            batteryDiagnostics,
+            weeklySummarySettings,
+            weeklySummaryScheduling,
+        )
 
     private fun granted(notificationsEnabled: Boolean) =
         NotificationPermissionState(NotificationPermissionStatus.GRANTED, notificationsEnabled)
@@ -252,6 +297,31 @@ class NotificationSettingsViewModelTest {
 
         override fun recordPermissionRequested() {
             recordedRequest = true
+        }
+    }
+
+    private class FakeWeeklySummarySettings : WeeklySummarySettings {
+        private val backing = MutableStateFlow(WeeklySummarySchedule())
+        override val schedule: Flow<WeeklySummarySchedule> = backing
+
+        override suspend fun setEnabled(enabled: Boolean) {
+            backing.value = backing.value.copy(enabled = enabled)
+        }
+
+        override suspend fun setDeliveryTime(
+            isoDayOfWeek: Int,
+            hour: Int,
+            minute: Int,
+        ) {
+            backing.value = backing.value.copy(isoDayOfWeek = isoDayOfWeek, hour = hour, minute = minute)
+        }
+    }
+
+    private class FakeWeeklySummaryScheduling : WeeklySummaryScheduling {
+        var syncs: Int = 0
+
+        override suspend fun sync() {
+            syncs++
         }
     }
 
