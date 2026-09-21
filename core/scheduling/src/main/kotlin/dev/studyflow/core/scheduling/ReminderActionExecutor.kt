@@ -7,6 +7,7 @@ import dev.studyflow.core.common.time.ElapsedRealtimeSource
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.tasks.TaskRepository
+import dev.studyflow.core.domain.tasks.TaskSeries
 import dev.studyflow.core.domain.timer.TimerCommand
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.Reminder
@@ -83,8 +84,13 @@ public class ReminderActionExecutor(
         task: StudyTask,
         notificationId: Int,
     ) {
-        taskRepository.save(task.copy(completedAt = wallClock.now()))
-        task.reminders.forEach { schedulingService.cancel(it.id) }
+        val updated = TaskSeries.advance(task, wallClock.now())
+        taskRepository.save(updated)
+        if (updated.isCompleted) {
+            updated.reminders.forEach { schedulingService.cancel(it.id) }
+        } else {
+            schedulingService.schedule(updated)
+        }
         dismiss(notificationId)
     }
 

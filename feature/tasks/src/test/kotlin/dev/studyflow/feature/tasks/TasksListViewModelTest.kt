@@ -1,6 +1,8 @@
 package dev.studyflow.feature.tasks
 
 import androidx.lifecycle.SavedStateHandle
+import dev.studyflow.core.model.RecurrenceFrequency
+import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.TaskPriority
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.data.FakeTaskRepository
@@ -167,6 +169,28 @@ class TasksListViewModelTest {
             advanceUntilIdle()
             assertFalse(repository.observeTask("task-1").first()!!.isCompleted)
             assertNull(viewModel.state.value.undo)
+        }
+
+    @Test
+    fun `completing a recurring task advances it to the next occurrence`() =
+        runTest(mainDispatcher.dispatcher) {
+            val task =
+                testStudyTask(
+                    id = "task-1",
+                    dueAt = LocalDateTime(2026, 3, 1, 9, 0),
+                    recurrence = RecurrenceRule(RecurrenceFrequency.DAILY),
+                )
+            repository.save(task)
+            val viewModel = viewModel()
+            advanceUntilIdle()
+
+            viewModel.onEvent(TasksListUiEvent.TaskCompletionToggled(task))
+            advanceUntilIdle()
+
+            val saved = repository.observeTask("task-1").first()!!
+            assertEquals(LocalDateTime(2026, 3, 2, 9, 0), saved.dueAt)
+            assertFalse(saved.isCompleted)
+            assertEquals(TaskListUndo.Completed(task), viewModel.state.value.undo)
         }
 
     @Test

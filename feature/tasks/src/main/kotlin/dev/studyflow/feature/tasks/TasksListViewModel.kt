@@ -6,6 +6,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.TimeZoneProvider
 import dev.studyflow.core.domain.tasks.TaskRepository
+import dev.studyflow.core.domain.tasks.TaskSeries
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.TaskPriority
 import dev.studyflow.core.ui.mvi.MviViewModel
@@ -275,11 +276,11 @@ public class TasksListViewModel
                 if (task.isCompleted) {
                     task.copy(completedAt = null, updatedAt = now)
                 } else {
-                    task.copy(completedAt = now, updatedAt = now)
+                    TaskSeries.advance(task, now)
                 }
             viewModelScope.launch { repository.save(updated) }
-            // Undo only makes sense for the action that just closed the task, not for reopening one.
-            undo.value = if (updated.isCompleted) TaskListUndo.Completed(original = task) else null
+            // Undo only makes sense for the action that just consumed an open task, not for reopening one.
+            undo.value = if (!task.isCompleted) TaskListUndo.Completed(original = task) else null
         }
 
         private fun snooze(task: StudyTask) {
