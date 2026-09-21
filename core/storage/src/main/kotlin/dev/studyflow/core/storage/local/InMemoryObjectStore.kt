@@ -161,7 +161,7 @@ public class InMemoryObjectStore(
             PresignedUrl(
                 url = "${PresignedUrl.LOCAL_SCHEME}objects/${key.value}",
                 // A store may shorten a requested lifetime but never extend it.
-                expiresAt = clock.now() + minOf(ttl, urlTtl, ObjectStore.MAX_PRESIGNED_URL_TTL),
+                expiresAt = clock.now() + minOf(ttl, urlTtl),
             )
         }
     }
