@@ -31,6 +31,7 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
+      # Includes :app:pixel6Api34DebugAndroidTest for timer process-death coverage.
       - name: Run configured managed-device tests
         shell: bash
         run: |
