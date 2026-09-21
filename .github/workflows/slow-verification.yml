@@ -31,21 +31,58 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
+      # Includes :app:pixel6Api34DebugAndroidTest for timer process-death coverage when configured.
       - name: Run configured managed-device tests
         shell: bash
         run: |
           mkdir -p build/ci
           ./gradlew tasks --all --console=plain > build/ci/gradle-tasks.txt
-          mapfile -t managed_device_tasks < <(
-            awk '/^[[:space:]]*[[:alnum:]_]+DebugAndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
+          timer_task=":app:pixel6Api34DebugAndroidTest"
+          timer_task_path="${timer_task#:}"
+          timer_task_available=false
+          managed_device_tasks=()
+          mapfile -t additional_managed_device_tasks < <(
+            awk '/^[[:space:]]*[^[:space:]]+DebugAndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
           )
 
-          if ((${#managed_device_tasks[@]} == 0)); then
+          for task in "${additional_managed_device_tasks[@]}"; do
+            if [[ -z "$task" ]]; then
+              continue
+            fi
+
+            normalized_task="${task#:}"
+            if [[ "$normalized_task" == "$timer_task_path" ]]; then
+              timer_task_available=true
+              continue
+            fi
+
+            duplicate=false
+            if ((${#managed_device_tasks[@]} > 0)); then
+              for existing_task in "${managed_device_tasks[@]}"; do
+                if [[ "$existing_task" == "$task" ]]; then
+                  duplicate=true
+                  break
+                fi
+              done
+            fi
+
+            if [[ "$duplicate" == "false" ]]; then
+              managed_device_tasks+=("$task")
+            fi
+          done
+
+          if [[ "$timer_task_available" == "true" ]]; then
+            if ((${#managed_device_tasks[@]} > 0)); then
+              ./gradlew "$timer_task" "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
+            else
+              ./gradlew "$timer_task" --build-cache --configuration-cache --stacktrace
+            fi
+          elif ((${#managed_device_tasks[@]} > 0)); then
+            ./gradlew "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
+          else
             echo "::notice::No Gradle Managed Device Android test tasks are configured yet."
             exit 0
           fi
-
-          ./gradlew "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
 
       - name: Upload slow verification reports
         if: ${{ !cancelled() }}

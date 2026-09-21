@@ -49,6 +49,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.studyflow.core.datastore.WeeklySummarySchedule
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.notifications.NotificationChannelStatus
+import dev.studyflow.core.notifications.NotificationMessageKey
 import dev.studyflow.core.notifications.StudyFlowNotificationChannel
 import dev.studyflow.core.ui.state.LoadingState
 
@@ -129,21 +130,7 @@ public fun NotificationSettingsScreen(
     syncStatus: @Composable () -> Unit = {},
 ) {
     state.rationale?.let { key ->
-        AlertDialog(
-            onDismissRequest = { onEvent(NotificationSettingsUiEvent.RationaleDismissed) },
-            title = { Text(text = "Turn on notifications") },
-            text = { Text(text = NotificationCopy.rationale(key)) },
-            confirmButton = {
-                TextButton(onClick = { onEvent(NotificationSettingsUiEvent.RationaleAccepted) }) {
-                    Text(text = "Continue")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { onEvent(NotificationSettingsUiEvent.RationaleDismissed) }) {
-                    Text(text = "Not now")
-                }
-            },
-        )
+        NotificationRationaleDialog(key = key, onEvent = onEvent)
     }
 
     if (!state.loaded) {
@@ -195,6 +182,29 @@ public fun NotificationSettingsScreen(
             }
         }
     }
+}
+
+/** The one-time explanation shown before requesting the notification permission. */
+@Composable
+private fun NotificationRationaleDialog(
+    key: NotificationMessageKey,
+    onEvent: (NotificationSettingsUiEvent) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = { onEvent(NotificationSettingsUiEvent.RationaleDismissed) },
+        title = { Text(text = "Turn on notifications") },
+        text = { Text(text = NotificationCopy.rationale(key)) },
+        confirmButton = {
+            TextButton(onClick = { onEvent(NotificationSettingsUiEvent.RationaleAccepted) }) {
+                Text(text = "Continue")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = { onEvent(NotificationSettingsUiEvent.RationaleDismissed) }) {
+                Text(text = "Not now")
+            }
+        },
+    )
 }
 
 /**
