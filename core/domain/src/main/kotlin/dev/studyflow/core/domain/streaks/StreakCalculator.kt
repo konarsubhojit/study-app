@@ -69,9 +69,26 @@ public object StreakCalculator {
         now: Instant,
         graceDays: Int = 1,
     ): StreakSummary {
+        return compute(
+            studyDays = studyDaysOf(sessions, zone),
+            today = now.toLocalDateTime(zone).date,
+            graceDays = graceDays,
+        )
+    }
+
+    /**
+     * Computes a streak from local days whose study-duration threshold has already been applied.
+     *
+     * Statistics consumers use this overload because their daily aggregates deliberately do not
+     * expose individual sessions. Keeping the run and grace calculations here means those
+     * consumers cannot drift from the dashboard's session-based streak.
+     */
+    public fun compute(
+        studyDays: Set<LocalDate>,
+        today: LocalDate,
+        graceDays: Int = 1,
+    ): StreakSummary {
         require(graceDays >= 0) { "graceDays must not be negative, was $graceDays" }
-        val studyDays = studyDaysOf(sessions, zone)
-        val today = now.toLocalDateTime(zone).date
         val asOf = if (today in studyDays) today else today.minus(1, DateTimeUnit.DAY)
 
         val currentStreak = runLengthEndingAt(asOf, studyDays, graceDays)
