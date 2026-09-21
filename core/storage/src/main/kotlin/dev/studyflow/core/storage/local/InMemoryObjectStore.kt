@@ -154,9 +154,9 @@ public class InMemoryObjectStore(
     override suspend fun getDownloadUrl(
         key: ObjectKey,
         ttl: Duration,
-    ): PresignedUrl =
-        mutex.withLock {
-            require(ttl > Duration.ZERO) { "download URL TTL must be positive" }
+    ): PresignedUrl {
+        require(ttl > Duration.ZERO) { "download URL TTL must be positive" }
+        return mutex.withLock {
             if (key !in objects) throw ObjectStoreException.NotFound(key)
             PresignedUrl(
                 url = "${PresignedUrl.LOCAL_SCHEME}objects/${key.value}",
@@ -164,6 +164,7 @@ public class InMemoryObjectStore(
                 expiresAt = clock.now() + minOf(ttl, urlTtl, ObjectStore.MAX_PRESIGNED_URL_TTL),
             )
         }
+    }
 
     /**
      * Deletes the completed object, if any. Like a real provider, this does not cancel an upload
