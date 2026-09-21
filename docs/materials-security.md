@@ -13,9 +13,12 @@ database authorization suite; this file is the feature checklist linked from iss
 | Imports stream into app-private storage, enforce per-kind size caps, and inspect content signatures | Complete |
 | Object and archive keys reject traversal sequences | Complete |
 | Material rows are tombstoned for sync; the BFF deletes remote originals and aborts in-flight uploads | Complete |
-| Private vault encryption is an optional capability. When enabled, it must use AES-GCM keys in Android Keystore (StrongBox where available); key loss makes ciphertext unrecoverable, so recovery is limited to an unencrypted backup | Not enabled |
+| Private vault encryption is an optional capability. When enabled, it must use AES-GCM keys in Android Keystore (StrongBox where available); key loss makes ciphertext unrecoverable, so recovery is limited to an unencrypted backup | Not enabled; tracked by #44 |
 | No material is written to shared storage except through an explicit user-selected SAF export | Complete |
 
 Certificate pinning is optional. If enabled, ship at least one backup pin, overlap old and new pins
 through a release cycle, monitor pin failures without recording URLs or paths, and remove an expired
 pin only after the replacement is deployed.
+
+Cleartext presigned URLs are intentionally unsupported in every build. Offline tests use the
+`studyflow-local://` scheme rather than weakening the production transport requirement.
