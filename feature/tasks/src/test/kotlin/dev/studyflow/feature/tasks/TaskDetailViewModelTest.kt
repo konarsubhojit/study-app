@@ -154,6 +154,28 @@ class TaskDetailViewModelTest {
         }
 
     @Test
+    fun `completing a recurring task advances it to the next occurrence`() =
+        runTest(mainDispatcher.dispatcher) {
+            repository.save(
+                testStudyTask(
+                    id = "task-1",
+                    dueAt = LocalDateTime(2026, 3, 1, 9, 0),
+                    recurrence = RecurrenceRule(RecurrenceFrequency.DAILY),
+                ),
+            )
+            val viewModel = viewModel()
+            viewModel.onEvent(TaskDetailUiEvent.Load("task-1"))
+            advanceUntilIdle()
+
+            viewModel.onEvent(TaskDetailUiEvent.CompletionToggled)
+            advanceUntilIdle()
+
+            val saved = repository.observeTask("task-1").first()!!
+            assertEquals(LocalDateTime(2026, 3, 2, 9, 0), saved.dueAt)
+            assertNull(saved.completedAt)
+        }
+
+    @Test
     fun `requesting a study session emits a stub effect naming the task and subject`() =
         runTest(mainDispatcher.dispatcher) {
             repository.save(testStudyTask(id = "task-1", subjectId = "subject-1"))

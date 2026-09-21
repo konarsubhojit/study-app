@@ -7,6 +7,8 @@ import androidx.core.app.NotificationManagerCompat
 import dev.studyflow.core.domain.reminder.ReminderPlan
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import dev.studyflow.core.domain.timer.TimerCommand
+import dev.studyflow.core.model.RecurrenceFrequency
+import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.SnoozeState
 import dev.studyflow.core.model.StudyTask
@@ -92,6 +94,19 @@ class ReminderActionExecutorTest {
             assertNotNull(saved.completedAt)
             assertTrue(platformScheduler.calls.contains("cancel:reminder-1"))
             assertEquals(0, shadowOf(context.getSystemService(NotificationManager::class.java)).size())
+        }
+
+    @Test
+    fun `complete advances a recurring task and schedules the next occurrence once`() =
+        runBlocking {
+            taskRepository.save(task().copy(recurrence = RecurrenceRule(RecurrenceFrequency.DAILY)))
+
+            executor.execute(ReminderActionKind.COMPLETE, "reminder-1", "task-1")
+
+            val saved = taskRepository.observeTask("task-1").first()!!
+            assertEquals(LocalDateTime(2026, 3, 3, 18, 0), saved.dueAt)
+            assertNull(saved.completedAt)
+            assertEquals(listOf("cancel:reminder-1", "inexact:reminder-1"), platformScheduler.calls)
         }
 
     @Test

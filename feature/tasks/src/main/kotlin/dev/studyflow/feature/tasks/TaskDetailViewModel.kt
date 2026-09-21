@@ -7,6 +7,7 @@ import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.domain.session.SessionHistoryRepository
 import dev.studyflow.core.domain.session.TaskStudyTime
 import dev.studyflow.core.domain.tasks.TaskRepository
+import dev.studyflow.core.domain.tasks.TaskSeries
 import dev.studyflow.core.model.RecurrenceRule
 import dev.studyflow.core.model.Reminder
 import dev.studyflow.core.model.ReminderTrigger
@@ -225,7 +226,13 @@ public class TaskDetailViewModel
         }
 
         private fun toggleCompletion() {
-            mutate { task -> task.copy(completedAt = if (task.isCompleted) null else clock.now()) }
+            mutate { task ->
+                if (task.isCompleted) {
+                    task.copy(completedAt = null)
+                } else {
+                    TaskSeries.advance(task, clock.now())
+                }
+            }
         }
 
         private fun changeRecurrence(recurrence: RecurrenceRule?) {
