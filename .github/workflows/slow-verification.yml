@@ -37,14 +37,12 @@ jobs:
         run: |
           mkdir -p build/ci
           ./gradlew tasks --all --console=plain > build/ci/gradle-tasks.txt
-          mapfile -t managed_device_tasks < <(
+          managed_device_tasks=(":app:pixel6Api34DebugAndroidTest")
+          mapfile -t additional_managed_device_tasks < <(
             awk '/^[[:space:]]*[[:alnum:]_]+DebugAndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
           )
 
-          if ((${#managed_device_tasks[@]} == 0)); then
-            echo "::notice::No Gradle Managed Device Android test tasks are configured yet."
-            exit 0
-          fi
+          managed_device_tasks+=("${additional_managed_device_tasks[@]}")
 
           ./gradlew "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
 
