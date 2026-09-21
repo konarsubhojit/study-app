@@ -39,7 +39,6 @@ jobs:
           ./gradlew tasks --all --console=plain > build/ci/gradle-tasks.txt
           timer_task=":app:pixel6Api34DebugAndroidTest"
           timer_task_path="${timer_task#:}"
-          timer_task_name="${timer_task##*:}"
           timer_task_available=false
           managed_device_tasks=()
           mapfile -t additional_managed_device_tasks < <(
@@ -52,26 +51,38 @@ jobs:
             fi
 
             normalized_task="${task#:}"
-            if [[ "$normalized_task" == "$timer_task_path" || "$normalized_task" == "$timer_task_name" ]]; then
+            if [[ "$normalized_task" == "$timer_task_path" ]]; then
               timer_task_available=true
               continue
             fi
 
-            if [[ " ${managed_device_tasks[*]} " != *" $task "* ]]; then
+            duplicate=false
+            if ((${#managed_device_tasks[@]} > 0)); then
+              for existing_task in "${managed_device_tasks[@]}"; do
+                if [[ "$existing_task" == "$task" ]]; then
+                  duplicate=true
+                  break
+                fi
+              done
+            fi
+
+            if [[ "$duplicate" == "false" ]]; then
               managed_device_tasks+=("$task")
             fi
           done
 
           if [[ "$timer_task_available" == "true" ]]; then
-            managed_device_tasks=("$timer_task" "${managed_device_tasks[@]}")
-          fi
-
-          if ((${#managed_device_tasks[@]} == 0)); then
+            if ((${#managed_device_tasks[@]} > 0)); then
+              ./gradlew "$timer_task" "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
+            else
+              ./gradlew "$timer_task" --build-cache --configuration-cache --stacktrace
+            fi
+          elif ((${#managed_device_tasks[@]} > 0)); then
+            ./gradlew "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
+          else
             echo "::notice::No Gradle Managed Device Android test tasks are configured yet."
             exit 0
           fi
-
-          ./gradlew "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
 
       - name: Upload slow verification reports
         if: ${{ !cancelled() }}
