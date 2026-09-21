@@ -42,7 +42,15 @@ jobs:
             awk '/^[[:space:]]*[[:alnum:]_]+DebugAndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
           )
 
-          managed_device_tasks+=("${additional_managed_device_tasks[@]}")
+          for task in "${additional_managed_device_tasks[@]}"; do
+            if [[ -z "$task" || "$task" == "pixel6Api34DebugAndroidTest" || "$task" == ":app:pixel6Api34DebugAndroidTest" ]]; then
+              continue
+            fi
+
+            if [[ " ${managed_device_tasks[*]} " != *" $task "* ]]; then
+              managed_device_tasks+=("$task")
+            fi
+          done
 
           ./gradlew "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
 
