@@ -130,6 +130,42 @@ class HomeViewModelTest {
         }
 
     @Test
+    fun `streak keeps a run through one missed day`() =
+        runTest(mainDispatcher.dispatcher) {
+            val sessions = FakeSessionRepository()
+            sessions.setSessions(
+                listOf(
+                    testStudySession(
+                        id = "friday",
+                        startedAt = Instant.parse("2026-02-27T09:00:00Z"),
+                        endedAt = Instant.parse("2026-02-27T09:30:00Z"),
+                        status = SessionStatus.STOPPED,
+                        elapsed = SessionElapsed(30.minutes),
+                    ),
+                    testStudySession(
+                        id = "sunday",
+                        startedAt = TEST_WALL_CLOCK,
+                        endedAt = TEST_WALL_CLOCK,
+                        status = SessionStatus.STOPPED,
+                        elapsed = SessionElapsed(30.minutes),
+                    ),
+                ),
+            )
+            val viewModel =
+                HomeViewModel(
+                    SavedStateHandle(),
+                    sessions,
+                    FakeTaskRepository(),
+                    FakeMaterialRepository(),
+                    Clock { TEST_WALL_CLOCK },
+                    TimeZoneProvider { TimeZone.UTC },
+                )
+            advanceUntilIdle()
+
+            assertEquals(2, viewModel.state.value.streakDays)
+        }
+
+    @Test
     fun `active session and three newest non-deleted materials are surfaced`() =
         runTest(mainDispatcher.dispatcher) {
             val sessions = FakeSessionRepository()

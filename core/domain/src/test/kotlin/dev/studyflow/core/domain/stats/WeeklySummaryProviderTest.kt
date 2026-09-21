@@ -17,6 +17,7 @@ import org.junit.jupiter.api.Test
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -67,7 +68,7 @@ class WeeklySummaryProviderTest {
         }
 
     @Test
-    fun `streak counts consecutive studied days and survives a quiet today`() =
+    fun `streak uses the dashboard grace-day policy and survives a quiet today`() =
         runTest {
             val summary =
                 summaryOf(
@@ -77,7 +78,27 @@ class WeeklySummaryProviderTest {
                     session("gap-before", "2026-03-04T15:00:00Z", 30),
                 )
 
-            assertEquals(2, summary.streakDays)
+            assertEquals(3, summary.streakDays)
+        }
+
+    @Test
+    fun `streak ignores daily totals below the dashboard qualification threshold`() =
+        runTest {
+            val sunday = Instant.parse("2026-03-08T15:00:00Z")
+            val summary =
+                summaryOf(
+                    session("yesterday", "2026-03-07T15:00:00Z", 30),
+                    testStudySession(
+                        id = "accidental-start",
+                        subjectId = "maths",
+                        startedAt = sunday,
+                        endedAt = sunday + 30.seconds,
+                        status = SessionStatus.STOPPED,
+                        elapsed = SessionElapsed(counted = 30.seconds),
+                    ),
+                )
+
+            assertEquals(1, summary.streakDays)
         }
 
     @Test
@@ -139,14 +160,6 @@ class WeeklySummaryProviderTest {
             status = SessionStatus.STOPPED,
             elapsed = SessionElapsed(counted = countedMinutes.minutes),
         )
-
-    @Test
-    fun `a streak that never reaches today is still counted from yesterday`() {
-        val days = setOf(LocalDate(2026, 3, 6), LocalDate(2026, 3, 7))
-
-        assertEquals(2, StudyStreak.currentStreak(days, today = LocalDate(2026, 3, 8)))
-        assertEquals(0, StudyStreak.currentStreak(days, today = LocalDate(2026, 3, 10)))
-    }
 
     @Test
     fun `an hour-long duration reads as hours and minutes`() {

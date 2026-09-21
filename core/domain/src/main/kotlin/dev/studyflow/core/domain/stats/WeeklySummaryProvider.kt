@@ -1,6 +1,7 @@
 package dev.studyflow.core.domain.stats
 
 import dev.studyflow.core.common.time.TimeZoneProvider
+import dev.studyflow.core.domain.streaks.StreakCalculator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -56,14 +57,15 @@ public class WeeklySummaryProvider(
                         .fold(Duration.ZERO) { total, bucket -> total + bucket.totalCounted },
                 topSubjects = subjectTotals.filter { it.totalCounted > Duration.ZERO }.take(TOP_SUBJECT_COUNT),
                 streakDays =
-                    StudyStreak.currentStreak(
-                        studiedDays =
-                            dailyTotals
-                                .filter { it.totalCounted > Duration.ZERO }
-                                .map { it.bucketStart.toLocalDateTime(zone).date }
-                                .toSet(),
-                        today = now.toLocalDateTime(zone).date,
-                    ),
+                    StreakCalculator
+                        .compute(
+                            studyDays =
+                                dailyTotals
+                                    .filter { it.totalCounted >= StreakCalculator.MINIMUM_STUDY_DURATION }
+                                    .map { it.bucketStart.toLocalDateTime(zone).date }
+                                    .toSet(),
+                            today = now.toLocalDateTime(zone).date,
+                        ).currentStreak,
                 weeklyGoal = weeklyGoal,
             )
         }

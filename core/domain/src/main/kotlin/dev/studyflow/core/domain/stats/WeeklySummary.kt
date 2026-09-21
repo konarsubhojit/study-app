@@ -106,25 +106,3 @@ public data class WeeklySummary(
         const val PERCENT = 100
     }
 }
-
-/** How many consecutive days of studying ended on (or just before) a given day. */
-public object StudyStreak {
-    /**
-     * Counts back from [today] over [studiedDays].
-     *
-     * Today not being in [studiedDays] does not break a streak — the day is not over yet — so the
-     * count restarts from yesterday; a gap before that ends it.
-     */
-    public fun currentStreak(
-        studiedDays: Set<LocalDate>,
-        today: LocalDate,
-    ): Int {
-        var day = if (today in studiedDays) today else today.minus(1, DateTimeUnit.DAY)
-        var streak = 0
-        while (day in studiedDays) {
-            streak++
-            day = day.minus(1, DateTimeUnit.DAY)
-        }
-        return streak
-    }
-}
