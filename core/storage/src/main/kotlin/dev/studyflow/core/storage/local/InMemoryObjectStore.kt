@@ -42,6 +42,12 @@ public class InMemoryObjectStore(
     private val limits: MultipartLimits = MultipartLimits.S3_COMPATIBLE,
     private val urlTtl: Duration = DEFAULT_URL_TTL,
 ) : ObjectStore {
+    init {
+        require(urlTtl > Duration.ZERO && urlTtl <= ObjectStore.MAX_PRESIGNED_URL_TTL) {
+            "urlTtl must be between zero and ${ObjectStore.MAX_PRESIGNED_URL_TTL}"
+        }
+    }
+
     private val mutex = Mutex()
     private val objects = mutableMapOf<ObjectKey, StoredBlob>()
     private val uploads = mutableMapOf<String, PendingUpload>()
@@ -150,6 +156,7 @@ public class InMemoryObjectStore(
         ttl: Duration,
     ): PresignedUrl =
         mutex.withLock {
+            require(ttl > Duration.ZERO) { "download URL TTL must be positive" }
             if (key !in objects) throw ObjectStoreException.NotFound(key)
             PresignedUrl(
                 url = "${PresignedUrl.LOCAL_SCHEME}objects/${key.value}",
