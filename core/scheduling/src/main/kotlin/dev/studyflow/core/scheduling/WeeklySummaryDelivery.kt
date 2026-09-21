@@ -80,10 +80,22 @@ public class WeeklySummaryDelivery(
         weekStart: Long,
     ): WeeklySummaryOutcome =
         when {
-            deliveryLog.lastDeliveredWeekStart() >= weekStart -> WeeklySummaryOutcome.ALREADY_DELIVERED
-            !summary.hasActivity -> WeeklySummaryOutcome.INACTIVE_WEEK
-            !notifier.canPost(StudyFlowNotificationChannel.WEEKLY_SUMMARY) -> WeeklySummaryOutcome.NOT_ALLOWED
-            post(summary) != NotificationPostResult.POSTED -> WeeklySummaryOutcome.NOT_ALLOWED
+            deliveryLog.lastDeliveredWeekStart() >= weekStart -> {
+                WeeklySummaryOutcome.ALREADY_DELIVERED
+            }
+
+            !summary.hasActivity -> {
+                WeeklySummaryOutcome.INACTIVE_WEEK
+            }
+
+            !notifier.canPost(StudyFlowNotificationChannel.WEEKLY_SUMMARY) -> {
+                WeeklySummaryOutcome.NOT_ALLOWED
+            }
+
+            post(summary) != NotificationPostResult.POSTED -> {
+                WeeklySummaryOutcome.NOT_ALLOWED
+            }
+
             else -> {
                 deliveryLog.recordDelivered(weekStart)
                 WeeklySummaryOutcome.DELIVERED

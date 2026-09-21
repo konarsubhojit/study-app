@@ -1,20 +1,20 @@
 package dev.studyflow.core.scheduling.di
 
 import android.content.Context
+import androidx.work.WorkManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
-import androidx.work.WorkManager
 import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
-import dev.studyflow.core.common.time.TimeZoneProvider
 import dev.studyflow.core.common.time.DefaultAnchoredClock
 import dev.studyflow.core.common.time.DeviceIdProvider
+import dev.studyflow.core.common.time.TimeZoneProvider
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.dao.MaterialUploadPartDao
 import dev.studyflow.core.database.repository.RoomUploadProgressStore

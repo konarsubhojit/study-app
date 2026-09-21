@@ -33,8 +33,7 @@ public object WeeklySummaryCopy {
     ): String = (listOf(title(summary)) + lines(summary, subjectName)).joinToString("\n")
 
     /** The range of days the summary covers, as ISO dates. */
-    public fun rangeLabel(summary: WeeklySummary): String =
-        "${summary.window.start} to ${summary.window.endInclusive}"
+    public fun rangeLabel(summary: WeeklySummary): String = "${summary.window.start} to ${summary.window.endInclusive}"
 
     /** "4 h 35 min", or "35 min" below an hour — the same minute resolution the charts use. */
     public fun durationLabel(duration: Duration): String {

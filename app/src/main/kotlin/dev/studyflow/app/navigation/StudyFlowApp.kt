@@ -196,14 +196,21 @@ private val AppRoute.topLevelRoute: AppRoute
     get() =
         when (this) {
             HomeRoute -> HomeRoute
+
             is TimerRoute -> TimerRoute()
+
             is MaterialsRoute -> MaterialsRoute()
+
             is TasksRoute -> TasksRoute()
+
             HistoryRoute -> HistoryRoute
+
             InsightsRoute -> InsightsRoute
+
             // The weekly recap is a detail of the statistics it is computed from, so the bottom bar
             // keeps Insights selected while it is open.
             WeeklySummaryRoute -> InsightsRoute
+
             SettingsRoute -> SettingsRoute
         }
 
