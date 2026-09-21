@@ -37,13 +37,21 @@ jobs:
         run: |
           mkdir -p build/ci
           ./gradlew tasks --all --console=plain > build/ci/gradle-tasks.txt
-          managed_device_tasks=(":app:pixel6Api34DebugAndroidTest")
+          timer_task=":app:pixel6Api34DebugAndroidTest"
+          timer_task_name="${timer_task##*:}"
+          timer_task_available=false
+          managed_device_tasks=()
           mapfile -t additional_managed_device_tasks < <(
-            awk '/^[[:space:]]*[[:alnum:]_]+DebugAndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
+            awk '/^[[:space:]]*[^[:space:]]+DebugAndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
           )
 
           for task in "${additional_managed_device_tasks[@]}"; do
-            if [[ -z "$task" || "$task" == "pixel6Api34DebugAndroidTest" || "$task" == ":app:pixel6Api34DebugAndroidTest" ]]; then
+            if [[ -z "$task" ]]; then
+              continue
+            fi
+
+            if [[ "$task" == "$timer_task" || "$task" == "$timer_task_name" ]]; then
+              timer_task_available=true
               continue
             fi
 
@@ -51,6 +59,15 @@ jobs:
               managed_device_tasks+=("$task")
             fi
           done
+
+          if [[ "$timer_task_available" == "true" ]]; then
+            managed_device_tasks=("$timer_task" "${managed_device_tasks[@]}")
+          fi
+
+          if ((${#managed_device_tasks[@]} == 0)); then
+            echo "::notice::No Gradle Managed Device Android test tasks are configured yet."
+            exit 0
+          fi
 
           ./gradlew "${managed_device_tasks[@]}" --build-cache --configuration-cache --stacktrace
 
