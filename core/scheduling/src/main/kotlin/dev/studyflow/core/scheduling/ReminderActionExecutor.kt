@@ -87,7 +87,7 @@ public class ReminderActionExecutor(
         val updated = TaskSeries.advance(task, wallClock.now())
         taskRepository.save(updated)
         if (updated.isCompleted) {
-            task.reminders.forEach { schedulingService.cancel(it.id) }
+            updated.reminders.forEach { schedulingService.cancel(it.id) }
         } else {
             schedulingService.schedule(updated)
         }
