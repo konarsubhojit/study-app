@@ -31,13 +31,14 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
-      # Includes :app:pixel6Api34DebugAndroidTest for timer process-death coverage.
+      # Includes :app:pixel6Api34DebugAndroidTest for timer process-death coverage when configured.
       - name: Run configured managed-device tests
         shell: bash
         run: |
           mkdir -p build/ci
           ./gradlew tasks --all --console=plain > build/ci/gradle-tasks.txt
           timer_task=":app:pixel6Api34DebugAndroidTest"
+          timer_task_path="${timer_task#:}"
           timer_task_name="${timer_task##*:}"
           timer_task_available=false
           managed_device_tasks=()
@@ -50,7 +51,8 @@ jobs:
               continue
             fi
 
-            if [[ "$task" == "$timer_task" || "$task" == "$timer_task_name" ]]; then
+            normalized_task="${task#:}"
+            if [[ "$normalized_task" == "$timer_task_path" || "$normalized_task" == "$timer_task_name" ]]; then
               timer_task_available=true
               continue
             fi
