@@ -44,7 +44,7 @@ public class InMemoryObjectStore(
 ) : ObjectStore {
     init {
         require(urlTtl > Duration.ZERO && urlTtl <= ObjectStore.MAX_PRESIGNED_URL_TTL) {
-            "urlTtl must be between zero and ${ObjectStore.MAX_PRESIGNED_URL_TTL}"
+            "urlTtl must be greater than zero and at most ${ObjectStore.MAX_PRESIGNED_URL_TTL}"
         }
     }
 
