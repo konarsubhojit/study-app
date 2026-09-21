@@ -31,6 +31,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.io.IOException
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -174,6 +175,19 @@ class PresignedObjectStoreTest {
             store.getDownloadUrl(REQUEST.key, ttl = 16.minutes)
 
             assertEquals(15.minutes, source.downloadTtl)
+        }
+
+    @Test
+    fun `download URLs require a positive requested lifetime`() =
+        runTest {
+            val source = FakeUrlSource()
+            val store = store(source) { respond("", HttpStatusCode.OK) }
+
+            assertFailsWith<IllegalArgumentException> {
+                store.getDownloadUrl(REQUEST.key, ttl = ZERO)
+            }
+
+            assertTrue(source.calls.isEmpty())
         }
 
     private fun store(
