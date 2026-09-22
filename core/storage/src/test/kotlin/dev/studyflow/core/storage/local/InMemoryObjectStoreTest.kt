@@ -20,9 +20,9 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
-import kotlin.time.Duration.Companion.ZERO
 
 @DisplayName("InMemoryObjectStore")
 class InMemoryObjectStoreTest {
