@@ -66,8 +66,6 @@ import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -90,6 +88,8 @@ import dev.studyflow.core.ui.state.EmptyState
 import dev.studyflow.core.ui.state.LoadingState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -115,7 +115,7 @@ public fun MaterialDetailRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val exportScope = rememberCoroutineScope()
 
     LaunchedEffect(materialId) {
         viewModel.onEvent(MaterialDetailUiEvent.Load(materialId))
@@ -136,7 +136,7 @@ public fun MaterialDetailRoute(
         onBack = onBack,
         onShare = { material, source -> shareLocalMaterial(context, material, source) },
         onExport = { material, source ->
-            lifecycleOwner.lifecycleScope.launch {
+            exportScope.launch {
                 val result =
                     withContext(StandardDispatcherProvider.io) {
                         exportLocalMaterialToDownloads(context, material, source)
@@ -1012,22 +1012,22 @@ internal suspend fun exportLocalMaterialToDownloads(
 
     return try {
         if (!copyLocalFileToDownload(sourceFile, downloadUri, openOutput)) {
-            deleteDownload(downloadUri)
+            deleteDownloadSafely(downloadUri, deleteDownload)
             MaterialExportResult.Failed
         } else {
             markFinished(downloadUri)
             MaterialExportResult.Exported
         }
     } catch (exception: CancellationException) {
-        withContext(NonCancellable) { deleteDownload(downloadUri) }
+        withContext(NonCancellable) { deleteDownloadSafely(downloadUri, deleteDownload) }
         throw exception
     } catch (exception: IOException) {
         Log.w(TAG, "Material export failed", exception)
-        deleteDownload(downloadUri)
+        deleteDownloadSafely(downloadUri, deleteDownload)
         MaterialExportResult.Failed
     } catch (exception: SecurityException) {
         Log.w(TAG, "Material export failed", exception)
-        deleteDownload(downloadUri)
+        deleteDownloadSafely(downloadUri, deleteDownload)
         MaterialExportResult.Failed
     }
 }
@@ -1038,24 +1038,45 @@ internal enum class MaterialExportResult {
     Failed,
 }
 
-private fun copyLocalFileToDownload(
+private suspend fun copyLocalFileToDownload(
     sourceFile: File,
     downloadUri: Uri,
     openOutput: (Uri) -> OutputStream?,
 ): Boolean {
     val output = openOutput(downloadUri) ?: return false
+    val buffer = ByteArray(EXPORT_COPY_BUFFER_BYTES)
     output.use { target ->
-        sourceFile.inputStream().use { input -> input.copyTo(target) }
+        sourceFile.inputStream().use { input ->
+            while (true) {
+                currentCoroutineContext().ensureActive()
+                val read = input.read(buffer)
+                if (read == -1) break
+                target.write(buffer, 0, read)
+            }
+        }
     }
     return true
 }
 
 private fun String.toLocalFile(): File? =
-    if (startsWith("file:")) {
-        toUri().path?.let(::File)
-    } else {
-        File(this)
+    when (toUri().scheme) {
+        null -> File(this)
+        "file" -> toUri().path?.let(::File)
+        else -> null
     }
+
+private fun deleteDownloadSafely(
+    uri: Uri,
+    deleteDownload: (Uri) -> Unit,
+) {
+    try {
+        deleteDownload(uri)
+    } catch (exception: SecurityException) {
+        Log.w(TAG, "Material export cleanup failed", exception)
+    } catch (exception: IOException) {
+        Log.w(TAG, "Material export cleanup failed", exception)
+    }
+}
 
 private fun Material.downloadContentValues(): ContentValues =
     ContentValues().apply {
@@ -1076,6 +1097,7 @@ private fun Context.markDownloadFinished(uri: Uri) {
 private fun downloadsCollectionUri(): Uri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
 private const val TAG = "MaterialDetailScreen"
+private const val EXPORT_COPY_BUFFER_BYTES = 64 * 1024
 private const val MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
 private const val IMAGE_ZOOM_MIN_SCALE = 1f
 private const val IMAGE_ZOOM_MAX_SCALE = 5f

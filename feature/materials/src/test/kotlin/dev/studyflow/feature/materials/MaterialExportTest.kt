@@ -124,6 +124,98 @@ class MaterialExportTest {
             assertEquals(MaterialExportResult.Unsupported, exported)
         }
 
+    @Test
+    fun `export fails before inserting when source is remote`() =
+        runTest {
+            var insertCalled = false
+
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = testMaterial(id = "material-1", displayName = "notes.txt"),
+                    source = MaterialPreviewSource.Remote("content://materials/notes.txt"),
+                    insertDownload = {
+                        insertCalled = true
+                        Uri.parse("content://downloads/4")
+                    },
+                )
+
+            assertEquals(MaterialExportResult.Failed, exported)
+            assertEquals(false, insertCalled)
+        }
+
+    @Test
+    fun `export fails before inserting when local source file is missing`() =
+        runTest {
+            var insertCalled = false
+
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = testMaterial(id = "material-1", displayName = "notes.txt"),
+                    source = MaterialPreviewSource.Local(File(tempDir.root, "missing.txt").absolutePath),
+                    insertDownload = {
+                        insertCalled = true
+                        Uri.parse("content://downloads/5")
+                    },
+                )
+
+            assertEquals(MaterialExportResult.Failed, exported)
+            assertEquals(false, insertCalled)
+        }
+
+    @Test
+    fun `export fails before inserting when local source is not a file URI`() =
+        runTest {
+            var insertCalled = false
+
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = testMaterial(id = "material-1", displayName = "notes.txt"),
+                    source = MaterialPreviewSource.Local("content://materials/notes.txt"),
+                    insertDownload = {
+                        insertCalled = true
+                        Uri.parse("content://downloads/6")
+                    },
+                )
+
+            assertEquals(MaterialExportResult.Failed, exported)
+            assertEquals(false, insertCalled)
+        }
+
+    @Test
+    fun `export fails when provider cannot insert a Downloads row`() =
+        runTest {
+            val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
+
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = testMaterial(id = "material-1", displayName = "notes.txt"),
+                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    insertDownload = { null },
+                )
+
+            assertEquals(MaterialExportResult.Failed, exported)
+        }
+
+    @Test
+    fun `export fails when provider rejects insert`() =
+        runTest {
+            val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
+
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = testMaterial(id = "material-1", displayName = "notes.txt"),
+                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    insertDownload = { throw SecurityException("denied") },
+                )
+
+            assertEquals(MaterialExportResult.Failed, exported)
+        }
+
     private object FailingOutputStream : OutputStream() {
         override fun write(b: Int) {
             throw IOException("disk full")
