@@ -43,6 +43,13 @@ class ObjectStoreModelsTest {
     }
 
     @Test
+    fun `a cleartext presigned URL is rejected`() {
+        assertThrows(IllegalArgumentException::class.java) {
+            PresignedUrl("http://storage.example/object?signature=x", EXPIRY)
+        }
+    }
+
+    @Test
     fun `a session signs the parts the domain planner produced, in order`() {
         val hash = ContentHash("b".repeat(64))
         val plan = UploadPlanner.plan(totalBytes = 20L * 1024 * 1024, contentHash = hash)

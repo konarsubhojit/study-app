@@ -42,6 +42,12 @@ public class InMemoryObjectStore(
     private val limits: MultipartLimits = MultipartLimits.S3_COMPATIBLE,
     private val urlTtl: Duration = DEFAULT_URL_TTL,
 ) : ObjectStore {
+    init {
+        require(urlTtl > Duration.ZERO && urlTtl <= ObjectStore.MAX_PRESIGNED_URL_TTL) {
+            "urlTtl must be greater than zero and at most ${ObjectStore.MAX_PRESIGNED_URL_TTL}"
+        }
+    }
+
     private val mutex = Mutex()
     private val objects = mutableMapOf<ObjectKey, StoredBlob>()
     private val uploads = mutableMapOf<String, PendingUpload>()
@@ -148,8 +154,9 @@ public class InMemoryObjectStore(
     override suspend fun getDownloadUrl(
         key: ObjectKey,
         ttl: Duration,
-    ): PresignedUrl =
-        mutex.withLock {
+    ): PresignedUrl {
+        require(ttl > Duration.ZERO) { "download URL TTL must be positive" }
+        return mutex.withLock {
             if (key !in objects) throw ObjectStoreException.NotFound(key)
             PresignedUrl(
                 url = "${PresignedUrl.LOCAL_SCHEME}objects/${key.value}",
@@ -157,6 +164,7 @@ public class InMemoryObjectStore(
                 expiresAt = clock.now() + minOf(ttl, urlTtl),
             )
         }
+    }
 
     /**
      * Deletes the completed object, if any. Like a real provider, this does not cancel an upload

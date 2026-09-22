@@ -84,7 +84,10 @@ public class PresignedObjectStore(
     override suspend fun getDownloadUrl(
         key: ObjectKey,
         ttl: Duration,
-    ): PresignedUrl = urls.downloadUrl(key, ttl)
+    ): PresignedUrl {
+        require(ttl > Duration.ZERO) { "download URL TTL must be positive" }
+        return urls.downloadUrl(key, minOf(ttl, ObjectStore.MAX_PRESIGNED_URL_TTL))
+    }
 
     override suspend fun delete(key: ObjectKey) {
         urls.delete(key)

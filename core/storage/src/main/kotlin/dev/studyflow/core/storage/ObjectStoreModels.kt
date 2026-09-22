@@ -71,8 +71,8 @@ public data class PresignedUrl(
     val expiresAt: Instant,
 ) {
     init {
-        require(url.startsWith("http://") || url.startsWith("https://") || url.startsWith(LOCAL_SCHEME)) {
-            "PresignedUrl.url must be an absolute http(s) or $LOCAL_SCHEME URL, was '$url'"
+        require(url.startsWith("https://") || url.startsWith(LOCAL_SCHEME)) {
+            "PresignedUrl.url must be an absolute HTTPS or $LOCAL_SCHEME URL"
         }
     }
 

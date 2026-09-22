@@ -4,6 +4,7 @@ import dev.studyflow.core.domain.materials.MultipartLimits
 import dev.studyflow.core.domain.materials.UploadPart
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.storage.ObjectKey
+import dev.studyflow.core.storage.ObjectStore
 import dev.studyflow.core.storage.ObjectStoreException
 import dev.studyflow.core.storage.SignedPart
 import dev.studyflow.core.storage.UploadRequest
@@ -19,6 +20,7 @@ import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
 
@@ -150,6 +152,21 @@ class InMemoryObjectStoreTest {
             assertEquals(device.now() + InMemoryObjectStore.DEFAULT_URL_TTL, greedy.expiresAt)
             assertTrue(short.url.startsWith("studyflow-local://"), short.url)
         }
+
+    @Test
+    fun `a download URL requires a positive requested lifetime`() =
+        runTest {
+            val stored = store.upload("readable".encodeToByteArray())
+
+            assertFailsWith<IllegalArgumentException> { store.getDownloadUrl(stored.key, ttl = ZERO) }
+        }
+
+    @Test
+    fun `a local store rejects URL lifetimes that exceed the security limit`() {
+        assertFailsWith<IllegalArgumentException> {
+            InMemoryObjectStore(urlTtl = ObjectStore.MAX_PRESIGNED_URL_TTL + 1.minutes)
+        }
+    }
 
     @Test
     fun `there is no URL for an object nobody uploaded`() =

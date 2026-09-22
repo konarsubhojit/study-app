@@ -68,13 +68,12 @@ public object StreakCalculator {
         zone: TimeZone,
         now: Instant,
         graceDays: Int = 1,
-    ): StreakSummary {
-        return compute(
+    ): StreakSummary =
+        compute(
             studyDays = studyDaysOf(sessions, zone),
             today = now.toLocalDateTime(zone).date,
             graceDays = graceDays,
         )
-    }
 
     /**
      * Computes a streak from local days whose study-duration threshold has already been applied.

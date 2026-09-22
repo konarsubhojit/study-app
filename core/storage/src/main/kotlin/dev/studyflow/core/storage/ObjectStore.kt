@@ -87,7 +87,10 @@ public interface ObjectStore {
     public suspend fun stat(key: ObjectKey): StoredObject?
 
     public companion object {
+        /** A signed URL is a bearer credential and must never remain usable for hours or days. */
+        public val MAX_PRESIGNED_URL_TTL: Duration = 15.minutes
+
         /** Long enough to start a download on a slow link, short enough to be useless if it leaks. */
-        public val DEFAULT_DOWNLOAD_TTL: Duration = 15.minutes
+        public val DEFAULT_DOWNLOAD_TTL: Duration = MAX_PRESIGNED_URL_TTL
     }
 }

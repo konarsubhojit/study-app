@@ -31,6 +31,7 @@ import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.io.IOException
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -165,6 +166,30 @@ class PresignedObjectStoreTest {
             assertNull(store.stat(ObjectKey("materials/absent")))
         }
 
+    @Test
+    fun `download URL requests longer than fifteen minutes are capped`() =
+        runTest {
+            val source = FakeUrlSource()
+            val store = store(source) { respond("", HttpStatusCode.OK) }
+
+            store.getDownloadUrl(REQUEST.key, ttl = 16.minutes)
+
+            assertEquals(15.minutes, source.downloadTtl)
+        }
+
+    @Test
+    fun `download URLs require a positive requested lifetime`() =
+        runTest {
+            val source = FakeUrlSource()
+            val store = store(source) { respond("", HttpStatusCode.OK) }
+
+            assertFailsWith<IllegalArgumentException> {
+                store.getDownloadUrl(REQUEST.key, ttl = ZERO)
+            }
+
+            assertTrue(source.calls.isEmpty())
+        }
+
     private fun store(
         source: FakeUrlSource = FakeUrlSource(),
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
@@ -175,6 +200,7 @@ class PresignedObjectStoreTest {
     /** Stands in for the BFF (#7), which is the only thing that ever holds a provider credential. */
     private class FakeUrlSource : PresignedUrlSource {
         val calls = mutableListOf<String>()
+        var downloadTtl: Duration? = null
 
         override suspend fun createUpload(request: UploadRequest): UploadSession {
             calls += "createUpload"
@@ -205,6 +231,7 @@ class PresignedObjectStoreTest {
             ttl: Duration,
         ): PresignedUrl {
             calls += "downloadUrl"
+            downloadTtl = ttl
             return PresignedUrl("https://storage.example/download?$SIGNATURE", EXPIRY)
         }
 
