@@ -86,6 +86,7 @@ import dev.studyflow.core.ui.components.StudyFlowTopAppBar
 import dev.studyflow.core.ui.state.EmptyState
 import dev.studyflow.core.ui.state.LoadingState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -133,7 +134,7 @@ public fun MaterialDetailRoute(
         onShare = { material, source -> shareLocalMaterial(context, material, source) },
         onExport = { material, source ->
             exportScope.launch {
-                val exported =
+                val result =
                     withContext(StandardDispatcherProvider.io) {
                         exportLocalMaterialToDownloads(context, material, source)
                     }
@@ -141,10 +142,10 @@ public fun MaterialDetailRoute(
                     .makeText(
                         context,
                         context.getString(
-                            if (exported) {
-                                R.string.material_export_success
-                            } else {
-                                R.string.material_export_failed
+                            when (result) {
+                                MaterialExportResult.Exported -> R.string.material_export_success
+                                MaterialExportResult.Failed -> R.string.material_export_failed
+                                MaterialExportResult.Unsupported -> R.string.material_export_unsupported
                             },
                         ),
                         Toast.LENGTH_SHORT,
@@ -980,11 +981,10 @@ private fun shareLocalMaterial(
 /**
  * Copies a cached material into the public Downloads collection.
  *
- * Returns `true` only after the bytes were copied and the MediaStore row was marked complete.
- * Returns `false` for unsupported platform versions, non-local sources, missing files, provider
- * failures, or copy failures. The injectable lambdas are test seams for the MediaStore calls.
+ * Returns [MaterialExportResult.Exported] only after the bytes were copied and the MediaStore row
+ * was marked complete. The injectable lambdas are test seams for the MediaStore calls.
  */
-internal fun exportLocalMaterialToDownloads(
+internal suspend fun exportLocalMaterialToDownloads(
     context: Context,
     material: Material,
     source: MaterialPreviewSource?,
@@ -994,41 +994,55 @@ internal fun exportLocalMaterialToDownloads(
     openOutput: (Uri) -> OutputStream? = { uri -> context.contentResolver.openOutputStream(uri) },
     markFinished: (Uri) -> Unit = { uri -> context.markDownloadFinished(uri) },
     deleteDownload: (Uri) -> Unit = { uri -> context.contentResolver.delete(uri, null, null) },
-): Boolean {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
-    if (source !is MaterialPreviewSource.Local) return false
+): MaterialExportResult {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return MaterialExportResult.Unsupported
+    if (source !is MaterialPreviewSource.Local) return MaterialExportResult.Failed
     val sourceFile = File(source.uri)
-    if (!sourceFile.isFile) return false
+    if (!sourceFile.isFile) return MaterialExportResult.Failed
 
     val downloadUri =
         try {
             insertDownload(material.downloadContentValues())
         } catch (_: SecurityException) {
             null
-        } ?: return false
+        } ?: return MaterialExportResult.Failed
 
     return try {
-        val output =
-            openOutput(downloadUri)
-                ?: run {
-                    deleteDownload(downloadUri)
-                    return false
-                }
-        output.use { target ->
-            sourceFile.inputStream().use { input -> input.copyTo(target) }
+        if (!copyLocalFileToDownload(sourceFile, downloadUri, openOutput)) {
+            deleteDownload(downloadUri)
+            MaterialExportResult.Failed
+        } else {
+            markFinished(downloadUri)
+            MaterialExportResult.Exported
         }
-        markFinished(downloadUri)
-        true
     } catch (exception: CancellationException) {
-        deleteDownload(downloadUri)
+        withContext(NonCancellable) { deleteDownload(downloadUri) }
         throw exception
     } catch (_: IOException) {
         deleteDownload(downloadUri)
-        false
+        MaterialExportResult.Failed
     } catch (_: SecurityException) {
         deleteDownload(downloadUri)
-        false
+        MaterialExportResult.Failed
     }
+}
+
+internal enum class MaterialExportResult {
+    Exported,
+    Unsupported,
+    Failed,
+}
+
+private fun copyLocalFileToDownload(
+    sourceFile: File,
+    downloadUri: Uri,
+    openOutput: (Uri) -> OutputStream?,
+): Boolean {
+    val output = openOutput(downloadUri) ?: return false
+    output.use { target ->
+        sourceFile.inputStream().use { input -> input.copyTo(target) }
+    }
+    return true
 }
 
 private fun Material.downloadContentValues(): ContentValues =

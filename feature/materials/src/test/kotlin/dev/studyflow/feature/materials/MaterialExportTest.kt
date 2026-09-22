@@ -5,10 +5,9 @@ import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
 import dev.studyflow.core.testing.data.testMaterial
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -28,7 +27,8 @@ class MaterialExportTest {
     val tempDir = TemporaryFolder()
 
     @Test
-    fun `export copies a local material into a Downloads media row`() {
+    fun `export copies a local material into a Downloads media row`() =
+        runTest {
         val source = tempDir.newFile("notes.pdf").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
         val material =
             testMaterial(
@@ -55,7 +55,7 @@ class MaterialExportTest {
                 markFinished = { finishedUri = it },
             )
 
-        assertTrue(exported)
+        assertEquals(MaterialExportResult.Exported, exported)
         assertEquals("notes.pdf", insertedValues.getAsString(MediaStore.MediaColumns.DISPLAY_NAME))
         assertEquals("application/pdf", insertedValues.getAsString(MediaStore.MediaColumns.MIME_TYPE))
         assertEquals(Environment.DIRECTORY_DOWNLOADS, insertedValues.getAsString(MediaStore.MediaColumns.RELATIVE_PATH))
@@ -65,7 +65,8 @@ class MaterialExportTest {
     }
 
     @Test
-    fun `export deletes the inserted Downloads row when copying fails`() {
+    fun `export deletes the inserted Downloads row when copying fails`() =
+        runTest {
         val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
         val material = testMaterial(id = "material-1", displayName = "notes.txt")
         val uri = Uri.parse("content://downloads/2")
@@ -81,12 +82,13 @@ class MaterialExportTest {
                 deleteDownload = { deletedUri = it },
             )
 
-        assertFalse(exported)
+        assertEquals(MaterialExportResult.Failed, exported)
         assertEquals(uri, deletedUri)
     }
 
     @Test
-    fun `export deletes the inserted Downloads row when the provider cannot open output`() {
+    fun `export deletes the inserted Downloads row when the provider cannot open output`() =
+        runTest {
         val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
         val material = testMaterial(id = "material-1", displayName = "notes.txt")
         val uri = Uri.parse("content://downloads/3")
@@ -102,7 +104,7 @@ class MaterialExportTest {
                 deleteDownload = { deletedUri = it },
             )
 
-        assertFalse(exported)
+        assertEquals(MaterialExportResult.Failed, exported)
         assertEquals(uri, deletedUri)
     }
 
