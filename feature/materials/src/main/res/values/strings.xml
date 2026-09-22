@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="material_export_success">Exported to Downloads</string>
-    <string name="material_export_failed">Couldn\u2019t export to Downloads. Check storage space and try again.</string>
+    <string name="material_export_failed">Couldn’t export to Downloads. Check storage space and try again.</string>
     <string name="material_export_unsupported">Export to Downloads requires Android 10 or newer.</string>
 </resources>

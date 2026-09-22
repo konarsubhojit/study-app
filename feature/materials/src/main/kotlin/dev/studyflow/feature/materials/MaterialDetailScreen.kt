@@ -11,6 +11,7 @@ import android.os.Build
 import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import android.widget.Toast
@@ -65,6 +66,8 @@ import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.MediaItem
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.database.StandaloneDatabaseProvider
@@ -112,7 +115,7 @@ public fun MaterialDetailRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
-    val exportScope = rememberCoroutineScope()
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(materialId) {
         viewModel.onEvent(MaterialDetailUiEvent.Load(materialId))
@@ -133,7 +136,7 @@ public fun MaterialDetailRoute(
         onBack = onBack,
         onShare = { material, source -> shareLocalMaterial(context, material, source) },
         onExport = { material, source ->
-            exportScope.launch {
+            lifecycleOwner.lifecycleScope.launch {
                 val result =
                     withContext(StandardDispatcherProvider.io) {
                         exportLocalMaterialToDownloads(context, material, source)
@@ -997,7 +1000,7 @@ internal suspend fun exportLocalMaterialToDownloads(
 ): MaterialExportResult {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return MaterialExportResult.Unsupported
     if (source !is MaterialPreviewSource.Local) return MaterialExportResult.Failed
-    val sourceFile = File(source.uri)
+    val sourceFile = source.uri.toLocalFile() ?: return MaterialExportResult.Failed
     if (!sourceFile.isFile) return MaterialExportResult.Failed
 
     val downloadUri =
@@ -1018,10 +1021,12 @@ internal suspend fun exportLocalMaterialToDownloads(
     } catch (exception: CancellationException) {
         withContext(NonCancellable) { deleteDownload(downloadUri) }
         throw exception
-    } catch (_: IOException) {
+    } catch (exception: IOException) {
+        Log.w(TAG, "Material export failed", exception)
         deleteDownload(downloadUri)
         MaterialExportResult.Failed
-    } catch (_: SecurityException) {
+    } catch (exception: SecurityException) {
+        Log.w(TAG, "Material export failed", exception)
         deleteDownload(downloadUri)
         MaterialExportResult.Failed
     }
@@ -1045,6 +1050,13 @@ private fun copyLocalFileToDownload(
     return true
 }
 
+private fun String.toLocalFile(): File? =
+    if (startsWith("file:")) {
+        toUri().path?.let(::File)
+    } else {
+        File(this)
+    }
+
 private fun Material.downloadContentValues(): ContentValues =
     ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
@@ -1063,6 +1075,7 @@ private fun Context.markDownloadFinished(uri: Uri) {
 
 private fun downloadsCollectionUri(): Uri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
+private const val TAG = "MaterialDetailScreen"
 private const val MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
 private const val IMAGE_ZOOM_MIN_SCALE = 1f
 private const val IMAGE_ZOOM_MAX_SCALE = 5f

@@ -29,84 +29,100 @@ class MaterialExportTest {
     @Test
     fun `export copies a local material into a Downloads media row`() =
         runTest {
-        val source = tempDir.newFile("notes.pdf").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
-        val material =
-            testMaterial(
-                id = "material-1",
-                displayName = "notes.pdf",
-                mimeType = "application/pdf",
-                sizeBytes = source.length(),
-            )
-        val uri = Uri.parse("content://downloads/1")
-        val copied = ByteArrayOutputStream()
-        lateinit var insertedValues: ContentValues
-        var finishedUri: Uri? = null
+            val source = tempDir.newFile("notes.pdf").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
+            val material =
+                testMaterial(
+                    id = "material-1",
+                    displayName = "notes.pdf",
+                    mimeType = "application/pdf",
+                    sizeBytes = source.length(),
+                )
+            val uri = Uri.parse("content://downloads/1")
+            val copied = ByteArrayOutputStream()
+            lateinit var insertedValues: ContentValues
+            var finishedUri: Uri? = null
 
-        val exported =
-            exportLocalMaterialToDownloads(
-                context = RuntimeEnvironment.getApplication(),
-                material = material,
-                source = MaterialPreviewSource.Local(source.absolutePath),
-                insertDownload = { values ->
-                    insertedValues = ContentValues(values)
-                    uri
-                },
-                openOutput = { copied },
-                markFinished = { finishedUri = it },
-            )
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = material,
+                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    insertDownload = { values ->
+                        insertedValues = ContentValues(values)
+                        uri
+                    },
+                    openOutput = { copied },
+                    markFinished = { finishedUri = it },
+                )
 
-        assertEquals(MaterialExportResult.Exported, exported)
-        assertEquals("notes.pdf", insertedValues.getAsString(MediaStore.MediaColumns.DISPLAY_NAME))
-        assertEquals("application/pdf", insertedValues.getAsString(MediaStore.MediaColumns.MIME_TYPE))
-        assertEquals(Environment.DIRECTORY_DOWNLOADS, insertedValues.getAsString(MediaStore.MediaColumns.RELATIVE_PATH))
-        assertEquals(1, insertedValues.getAsInteger(MediaStore.MediaColumns.IS_PENDING))
-        assertArrayEquals(source.readBytes(), copied.toByteArray())
-        assertEquals(uri, finishedUri)
-    }
+            assertEquals(MaterialExportResult.Exported, exported)
+            assertEquals("notes.pdf", insertedValues.getAsString(MediaStore.MediaColumns.DISPLAY_NAME))
+            assertEquals("application/pdf", insertedValues.getAsString(MediaStore.MediaColumns.MIME_TYPE))
+            assertEquals(Environment.DIRECTORY_DOWNLOADS, insertedValues.getAsString(MediaStore.MediaColumns.RELATIVE_PATH))
+            assertEquals(1, insertedValues.getAsInteger(MediaStore.MediaColumns.IS_PENDING))
+            assertArrayEquals(source.readBytes(), copied.toByteArray())
+            assertEquals(uri, finishedUri)
+        }
 
     @Test
     fun `export deletes the inserted Downloads row when copying fails`() =
         runTest {
-        val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
-        val material = testMaterial(id = "material-1", displayName = "notes.txt")
-        val uri = Uri.parse("content://downloads/2")
-        var deletedUri: Uri? = null
+            val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
+            val material = testMaterial(id = "material-1", displayName = "notes.txt")
+            val uri = Uri.parse("content://downloads/2")
+            var deletedUri: Uri? = null
 
-        val exported =
-            exportLocalMaterialToDownloads(
-                context = RuntimeEnvironment.getApplication(),
-                material = material,
-                source = MaterialPreviewSource.Local(source.absolutePath),
-                insertDownload = { uri },
-                openOutput = { FailingOutputStream },
-                deleteDownload = { deletedUri = it },
-            )
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = material,
+                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    insertDownload = { uri },
+                    openOutput = { FailingOutputStream },
+                    deleteDownload = { deletedUri = it },
+                )
 
-        assertEquals(MaterialExportResult.Failed, exported)
-        assertEquals(uri, deletedUri)
-    }
+            assertEquals(MaterialExportResult.Failed, exported)
+            assertEquals(uri, deletedUri)
+        }
 
     @Test
     fun `export deletes the inserted Downloads row when the provider cannot open output`() =
         runTest {
-        val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
-        val material = testMaterial(id = "material-1", displayName = "notes.txt")
-        val uri = Uri.parse("content://downloads/3")
-        var deletedUri: Uri? = null
+            val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
+            val material = testMaterial(id = "material-1", displayName = "notes.txt")
+            val uri = Uri.parse("content://downloads/3")
+            var deletedUri: Uri? = null
 
-        val exported =
-            exportLocalMaterialToDownloads(
-                context = RuntimeEnvironment.getApplication(),
-                material = material,
-                source = MaterialPreviewSource.Local(source.absolutePath),
-                insertDownload = { uri },
-                openOutput = { null },
-                deleteDownload = { deletedUri = it },
-            )
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = material,
+                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    insertDownload = { uri },
+                    openOutput = { null },
+                    deleteDownload = { deletedUri = it },
+                )
 
-        assertEquals(MaterialExportResult.Failed, exported)
-        assertEquals(uri, deletedUri)
-    }
+            assertEquals(MaterialExportResult.Failed, exported)
+            assertEquals(uri, deletedUri)
+        }
+
+    @Test
+    @Config(sdk = [28])
+    fun `export reports unsupported before Android 10`() =
+        runTest {
+            val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
+
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = testMaterial(id = "material-1", displayName = "notes.txt"),
+                    source = MaterialPreviewSource.Local(source.absolutePath),
+                )
+
+            assertEquals(MaterialExportResult.Unsupported, exported)
+        }
 
     private object FailingOutputStream : OutputStream() {
         override fun write(b: Int) {
