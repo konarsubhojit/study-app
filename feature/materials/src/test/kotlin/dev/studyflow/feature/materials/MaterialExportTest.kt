@@ -2,6 +2,7 @@ package dev.studyflow.feature.materials
 
 import android.content.ContentValues
 import android.net.Uri
+import android.os.Environment
 import android.provider.MediaStore
 import dev.studyflow.core.testing.data.testMaterial
 import org.junit.Assert.assertArrayEquals
@@ -57,7 +58,8 @@ class MaterialExportTest {
         assertTrue(exported)
         assertEquals("notes.pdf", insertedValues.getAsString(MediaStore.MediaColumns.DISPLAY_NAME))
         assertEquals("application/pdf", insertedValues.getAsString(MediaStore.MediaColumns.MIME_TYPE))
-        assertEquals(source.length(), insertedValues.getAsLong(MediaStore.MediaColumns.SIZE))
+        assertEquals(Environment.DIRECTORY_DOWNLOADS, insertedValues.getAsString(MediaStore.MediaColumns.RELATIVE_PATH))
+        assertEquals(1, insertedValues.getAsInteger(MediaStore.MediaColumns.IS_PENDING))
         assertArrayEquals(source.readBytes(), copied.toByteArray())
         assertEquals(uri, finishedUri)
     }

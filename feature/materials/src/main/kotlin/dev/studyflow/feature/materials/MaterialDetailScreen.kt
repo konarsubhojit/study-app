@@ -8,10 +8,12 @@ import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.os.ParcelFileDescriptor
 import android.provider.MediaStore
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -108,6 +110,7 @@ public fun MaterialDetailRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val exportScope = rememberCoroutineScope()
 
     LaunchedEffect(materialId) {
         viewModel.onEvent(MaterialDetailUiEvent.Load(materialId))
@@ -127,7 +130,20 @@ public fun MaterialDetailRoute(
         onEvent = viewModel::onEvent,
         onBack = onBack,
         onShare = { material, source -> shareLocalMaterial(context, material, source) },
-        onExport = { material, source -> exportLocalMaterialToDownloads(context, material, source) },
+        onExport = { material, source ->
+            exportScope.launch {
+                val exported =
+                    withContext(StandardDispatcherProvider.io) {
+                        exportLocalMaterialToDownloads(context, material, source)
+                    }
+                Toast
+                    .makeText(
+                        context,
+                        if (exported) "Exported to Downloads" else "Export failed",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+            }
+        },
         onStartStudySession = onStartStudySession,
         modifier = modifier,
     )
@@ -954,6 +970,13 @@ private fun shareLocalMaterial(
     context.startActivity(Intent.createChooser(intent, material.displayName))
 }
 
+/**
+ * Copies a cached material into the public Downloads collection.
+ *
+ * Returns `true` only after the bytes were copied and the MediaStore row was marked complete.
+ * Returns `false` for unsupported platform versions, non-local sources, missing files, provider
+ * failures, or copy failures. The injectable lambdas are test seams for the MediaStore calls.
+ */
 internal fun exportLocalMaterialToDownloads(
     context: Context,
     material: Material,
@@ -965,6 +988,7 @@ internal fun exportLocalMaterialToDownloads(
     markFinished: (Uri) -> Unit = { uri -> context.markDownloadFinished(uri) },
     deleteDownload: (Uri) -> Unit = { uri -> context.contentResolver.delete(uri, null, null) },
 ): Boolean {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false
     if (source !is MaterialPreviewSource.Local) return false
     val sourceFile = File(source.uri)
     if (!sourceFile.isFile) return false
@@ -1001,14 +1025,11 @@ private fun Material.downloadContentValues(): ContentValues =
     ContentValues().apply {
         put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
         put(MediaStore.MediaColumns.MIME_TYPE, mimeType.ifBlank { ALL_MIME_TYPES })
-        put(MediaStore.MediaColumns.SIZE, sizeBytes)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
+        put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+        put(MediaStore.MediaColumns.IS_PENDING, 1)
     }
 
 private fun Context.markDownloadFinished(uri: Uri) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
     val values =
         ContentValues().apply {
             put(MediaStore.MediaColumns.IS_PENDING, 0)
@@ -1016,12 +1037,7 @@ private fun Context.markDownloadFinished(uri: Uri) {
     contentResolver.update(uri, values, null, null)
 }
 
-private fun downloadsCollectionUri(): Uri =
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
-    } else {
-        MediaStore.Files.getContentUri("external")
-    }
+private fun downloadsCollectionUri(): Uri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
 private const val MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
 private const val IMAGE_ZOOM_MIN_SCALE = 1f
