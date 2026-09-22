@@ -109,6 +109,29 @@ class MaterialExportTest {
         }
 
     @Test
+    fun `export deletes the inserted Downloads row when marking complete fails`() =
+        runTest {
+            val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
+            val material = testMaterial(id = "material-1", displayName = "notes.txt")
+            val uri = Uri.parse("content://downloads/7")
+            var deletedUri: Uri? = null
+
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = material,
+                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    insertDownload = { uri },
+                    openOutput = { ByteArrayOutputStream() },
+                    markFinished = { throw SecurityException("update denied") },
+                    deleteDownload = { deletedUri = it },
+                )
+
+            assertEquals(MaterialExportResult.Failed, exported)
+            assertEquals(uri, deletedUri)
+        }
+
+    @Test
     @Config(sdk = [28])
     fun `export reports unsupported before Android 10`() =
         runTest {

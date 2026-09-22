@@ -15,6 +15,7 @@ import android.util.Log
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -1058,12 +1059,14 @@ private suspend fun copyLocalFileToDownload(
     return true
 }
 
-private fun String.toLocalFile(): File? =
-    when (toUri().scheme) {
+private fun String.toLocalFile(): File? {
+    val uri = toUri()
+    return when (uri.scheme) {
         null -> File(this)
-        "file" -> toUri().path?.let(::File)
+        "file" -> uri.path?.let(::File)
         else -> null
     }
+}
 
 private fun deleteDownloadSafely(
     uri: Uri,
@@ -1094,6 +1097,7 @@ private fun Context.markDownloadFinished(uri: Uri) {
     contentResolver.update(uri, values, null, null)
 }
 
+@RequiresApi(Build.VERSION_CODES.Q)
 private fun downloadsCollectionUri(): Uri = MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
 
 private const val TAG = "MaterialDetailScreen"
