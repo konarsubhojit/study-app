@@ -1,12 +1,15 @@
 package dev.studyflow.feature.materials
 
 import android.content.ActivityNotFoundException
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
+import android.os.Build
 import android.os.ParcelFileDescriptor
+import android.provider.MediaStore
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import androidx.compose.foundation.Image
@@ -84,6 +87,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
+import java.io.OutputStream
 
 /**
  * The material detail screen: what the catalogue knows about one imported file (issue #37).
@@ -122,7 +127,7 @@ public fun MaterialDetailRoute(
         onEvent = viewModel::onEvent,
         onBack = onBack,
         onShare = { material, source -> shareLocalMaterial(context, material, source) },
-        onExport = { material, source -> shareLocalMaterial(context, material, source) },
+        onExport = { material, source -> exportLocalMaterialToDownloads(context, material, source) },
         onStartStudySession = onStartStudySession,
         modifier = modifier,
     )
@@ -948,6 +953,75 @@ private fun shareLocalMaterial(
             ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     context.startActivity(Intent.createChooser(intent, material.displayName))
 }
+
+internal fun exportLocalMaterialToDownloads(
+    context: Context,
+    material: Material,
+    source: MaterialPreviewSource?,
+    insertDownload: (ContentValues) -> Uri? = { values ->
+        context.contentResolver.insert(downloadsCollectionUri(), values)
+    },
+    openOutput: (Uri) -> OutputStream? = { uri -> context.contentResolver.openOutputStream(uri) },
+    markFinished: (Uri) -> Unit = { uri -> context.markDownloadFinished(uri) },
+    deleteDownload: (Uri) -> Unit = { uri -> context.contentResolver.delete(uri, null, null) },
+): Boolean {
+    if (source !is MaterialPreviewSource.Local) return false
+    val sourceFile = File(source.uri)
+    if (!sourceFile.isFile) return false
+
+    val downloadUri =
+        try {
+            insertDownload(material.downloadContentValues())
+        } catch (_: SecurityException) {
+            null
+        } ?: return false
+
+    return try {
+        val output =
+            openOutput(downloadUri)
+                ?: run {
+                    deleteDownload(downloadUri)
+                    return false
+                }
+        output.use { target ->
+            sourceFile.inputStream().use { input -> input.copyTo(target) }
+        }
+        markFinished(downloadUri)
+        true
+    } catch (_: IOException) {
+        deleteDownload(downloadUri)
+        false
+    } catch (_: SecurityException) {
+        deleteDownload(downloadUri)
+        false
+    }
+}
+
+private fun Material.downloadContentValues(): ContentValues =
+    ContentValues().apply {
+        put(MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+        put(MediaStore.MediaColumns.MIME_TYPE, mimeType.ifBlank { ALL_MIME_TYPES })
+        put(MediaStore.MediaColumns.SIZE, sizeBytes)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+    }
+
+private fun Context.markDownloadFinished(uri: Uri) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    val values =
+        ContentValues().apply {
+            put(MediaStore.MediaColumns.IS_PENDING, 0)
+        }
+    contentResolver.update(uri, values, null, null)
+}
+
+private fun downloadsCollectionUri(): Uri =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        MediaStore.Downloads.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+    } else {
+        MediaStore.Files.getContentUri("external")
+    }
 
 private const val MEDIA_CACHE_BYTES = 512L * 1024L * 1024L
 private const val IMAGE_ZOOM_MIN_SCALE = 1f
