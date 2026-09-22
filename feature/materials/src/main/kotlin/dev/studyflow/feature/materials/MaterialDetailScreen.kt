@@ -85,6 +85,7 @@ import dev.studyflow.core.ui.components.DurationText
 import dev.studyflow.core.ui.components.StudyFlowTopAppBar
 import dev.studyflow.core.ui.state.EmptyState
 import dev.studyflow.core.ui.state.LoadingState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -139,7 +140,13 @@ public fun MaterialDetailRoute(
                 Toast
                     .makeText(
                         context,
-                        if (exported) "Exported to Downloads" else "Export failed",
+                        context.getString(
+                            if (exported) {
+                                R.string.material_export_success
+                            } else {
+                                R.string.material_export_failed
+                            },
+                        ),
                         Toast.LENGTH_SHORT,
                     ).show()
             }
@@ -1012,6 +1019,9 @@ internal fun exportLocalMaterialToDownloads(
         }
         markFinished(downloadUri)
         true
+    } catch (exception: CancellationException) {
+        deleteDownload(downloadUri)
+        throw exception
     } catch (_: IOException) {
         deleteDownload(downloadUri)
         false

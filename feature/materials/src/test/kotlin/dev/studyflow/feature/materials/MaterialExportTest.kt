@@ -67,7 +67,7 @@ class MaterialExportTest {
     @Test
     fun `export deletes the inserted Downloads row when copying fails`() {
         val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
-        val material = testMaterial(id = "material-1", displayName = "notes.txt", localUri = source.absolutePath)
+        val material = testMaterial(id = "material-1", displayName = "notes.txt")
         val uri = Uri.parse("content://downloads/2")
         var deletedUri: Uri? = null
 
@@ -78,6 +78,27 @@ class MaterialExportTest {
                 source = MaterialPreviewSource.Local(source.absolutePath),
                 insertDownload = { uri },
                 openOutput = { FailingOutputStream },
+                deleteDownload = { deletedUri = it },
+            )
+
+        assertFalse(exported)
+        assertEquals(uri, deletedUri)
+    }
+
+    @Test
+    fun `export deletes the inserted Downloads row when the provider cannot open output`() {
+        val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
+        val material = testMaterial(id = "material-1", displayName = "notes.txt")
+        val uri = Uri.parse("content://downloads/3")
+        var deletedUri: Uri? = null
+
+        val exported =
+            exportLocalMaterialToDownloads(
+                context = RuntimeEnvironment.getApplication(),
+                material = material,
+                source = MaterialPreviewSource.Local(source.absolutePath),
+                insertDownload = { uri },
+                openOutput = { null },
                 deleteDownload = { deletedUri = it },
             )
 
