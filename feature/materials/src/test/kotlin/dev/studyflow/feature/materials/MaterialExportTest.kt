@@ -239,6 +239,22 @@ class MaterialExportTest {
             assertEquals(MaterialExportResult.Failed, exported)
         }
 
+    @Test
+    fun `export fails when provider reports invalid insert metadata`() =
+        runTest {
+            val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
+
+            val exported =
+                exportLocalMaterialToDownloads(
+                    context = RuntimeEnvironment.getApplication(),
+                    material = testMaterial(id = "material-1", displayName = "notes.txt"),
+                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    insertDownload = { throw IllegalArgumentException("invalid metadata") },
+                )
+
+            assertEquals(MaterialExportResult.Failed, exported)
+        }
+
     private object FailingOutputStream : OutputStream() {
         override fun write(b: Int) {
             throw IOException("disk full")
