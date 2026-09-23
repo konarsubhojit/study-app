@@ -55,7 +55,15 @@ jobs:
             > build/release/generated-notes.json
           jq -r '.body' build/release/generated-notes.json \
             > "build/release/CHANGELOG-$GITHUB_REF_NAME.md"
-          jq -r '.body[0:500]' build/release/generated-notes.json \
+          jq -r '.body' build/release/generated-notes.json \
+            | sed -E \
+                -e 's/^#+[[:space:]]*//' \
+                -e 's/^- /• /' \
+                -e 's/\[([^][]+)\]\([^()]+\)/\1/g' \
+                -e 's/[*_`]//g' \
+            | jq -Rrjs \
+                'gsub("[[:space:]]+"; " ") | ltrimstr(" ") |
+                 if length <= 500 then . else ((.[0:497] | sub("[^[:space:]]+$"; "")) + "...") end' \
             > build/release/distribution/whatsnew/whatsnew-en-US
 
       - name: Build release artifacts
