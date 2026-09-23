@@ -1,0 +1,20 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+    - title: Fixes
+      labels:
+        - bug
+        - fix
+    - title: Infrastructure
+      labels:
+        - infra
+        - dependencies
+    - title: Other changes
+      labels:
+        - '*'
