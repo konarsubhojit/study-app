@@ -295,6 +295,36 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /v1/account:
+    delete:
+      operationId: deleteAccount
+      summary: Delete the signed-in account and everything stored for it
+      description: |
+        The server half of the data-lifecycle flow (issue #78). Deletes the account, every row
+        owned by it and every object stored for it, then answers with the retention window after
+        which the last copy — backups included — is gone.
+
+        Idempotent: a repeated request for an account that is already scheduled for deletion
+        answers with the same receipt rather than an error, because the client retries whenever it
+        could not confirm that the first request arrived.
+
+        The client clears its local data only after this call succeeds, so a failure here must
+        leave the account usable.
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      responses:
+        '200':
+          description: The deletion was accepted
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AccountDeletionReceipt'
+        default:
+          $ref: '#/components/responses/Error'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -336,6 +366,22 @@ components:
             $ref: '#/components/schemas/ApiError'
 
   schemas:
+    AccountDeletionReceipt:
+      type: object
+      required: [acceptedAt, retentionWindowDays]
+      properties:
+        acceptedAt:
+          type: string
+          format: date-time
+          description: When the server accepted the deletion.
+        retentionWindowDays:
+          type: integer
+          format: int32
+          description: |
+            Days until the last copy, backups included, is unrecoverable. Shown to the user,
+            because "deleted" and "unrecoverable" are different dates.
+          examples: [30]
+
     ApiError:
       type: object
       required: [code, message]

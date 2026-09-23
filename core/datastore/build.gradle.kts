@@ -6,6 +6,8 @@ plugins {
 dependencies {
     implementation(projects.core.model)
     implementation(projects.core.network)
+    // Account deletion's erasers are domain ports; the stores that implement them live here.
+    implementation(projects.core.domain)
     implementation(libs.androidx.datastore)
     implementation(libs.protobuf.javalite)
     implementation(libs.security.crypto)

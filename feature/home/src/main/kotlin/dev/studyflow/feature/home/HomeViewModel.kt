@@ -6,8 +6,8 @@ import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.TimeZoneProvider
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.session.SessionRepository
-import dev.studyflow.core.domain.streaks.StreakCalculator
 import dev.studyflow.core.domain.stats.StudyGoals
+import dev.studyflow.core.domain.streaks.StreakCalculator
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.StudySession
@@ -81,11 +81,12 @@ public class HomeViewModel
 
         private fun List<StudySession>.streakDays(): Int {
             val zone = timeZoneProvider.current()
-            return StreakCalculator.compute(
-                sessions = filterNot(StudySession::deleted),
-                zone = zone,
-                now = clock.now(),
-            ).currentStreak
+            return StreakCalculator
+                .compute(
+                    sessions = filterNot(StudySession::deleted),
+                    zone = zone,
+                    now = clock.now(),
+                ).currentStreak
         }
 
         override fun onEvent(event: HomeUiEvent) = Unit

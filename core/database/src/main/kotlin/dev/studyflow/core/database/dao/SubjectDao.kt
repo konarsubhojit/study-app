@@ -20,6 +20,10 @@ public interface SubjectDao {
     @Query("SELECT COUNT(*) FROM subjects")
     public suspend fun count(): Int
 
+    /** Every subject, archived ones included, for a data export (issue #78). */
+    @Query("SELECT * FROM subjects ORDER BY id ASC")
+    public suspend fun allSubjects(): List<SubjectEntity>
+
     @Query("SELECT * FROM subjects WHERE id = :id")
     public suspend fun getById(id: String): SubjectEntity?
 }

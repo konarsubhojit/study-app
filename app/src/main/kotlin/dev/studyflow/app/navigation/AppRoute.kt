@@ -35,6 +35,10 @@ internal data object HistoryRoute : AppRoute
 @Serializable
 internal data object InsightsRoute : AppRoute
 
+/** Export, restore and account deletion (issue #78); reached from settings, never a tab of its own. */
+@Serializable
+internal data object DataPrivacyRoute : AppRoute
+
 /** The weekly recap the summary notification opens (issue #63); reachable from insights too. */
 @Serializable
 internal data object WeeklySummaryRoute : AppRoute

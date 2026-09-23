@@ -2,6 +2,7 @@ package dev.studyflow.core.network
 
 import dev.studyflow.core.network.error.ApiError
 import dev.studyflow.core.network.error.ApiErrorMapper
+import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
@@ -60,6 +61,8 @@ public class KtorStudyFlowApi(
             cursor?.let { parameter("cursor", it) }
             parameter("limit", limit)
         }
+
+    override suspend fun deleteAccount(): ApiResult<AccountDeletionReceiptDto> = execute(ApiEndpoint.DeleteAccount)
 
     // Ktor's transport throws for everything from a refused connection to a malformed body, and a
     // caller cannot act on any of it, so the whole surface is mapped rather than caught by type.

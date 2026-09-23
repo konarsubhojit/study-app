@@ -1,5 +1,8 @@
 plugins {
     id("studyflow.jvm.library")
+    // The export/import archive format is JSON the domain owns (issue #78): the schema, its
+    // version and the merge rules belong beside the business rules, not in a platform module.
+    id("studyflow.serialization")
 }
 
 dependencies {

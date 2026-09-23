@@ -9,6 +9,7 @@ import dev.studyflow.core.network.auth.AuthTokens
 import dev.studyflow.core.network.auth.InMemoryTokenStore
 import dev.studyflow.core.network.auth.TokenStore
 import dev.studyflow.core.network.http.studyFlowHttpClient
+import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.model.StudyFlowJson
 import dev.studyflow.core.network.model.StudySessionDto
@@ -69,6 +70,14 @@ public class FakeStudyFlowBackend(
     /** What the next `GET /v1/sync/sessions` answers with. */
     public var syncDelta: SyncDeltaDto = SyncDeltaDto()
 
+    /** How many account deletions the backend accepted; the endpoint is idempotent by contract. */
+    public var acceptedAccountDeletions: Int = 0
+        private set
+
+    /** What `DELETE /v1/account` answers with. */
+    public var accountDeletionReceipt: AccountDeletionReceiptDto =
+        AccountDeletionReceiptDto(acceptedAtIso = "2026-03-01T09:00:00Z", retentionWindowDays = 30)
+
     private val config =
         ApiConfig(
             baseUrl = BASE_URL,
@@ -126,6 +135,11 @@ public class FakeStudyFlowBackend(
                 } else {
                     respondJson(StudyFlowJson.encodeToString(syncDelta))
                 }
+            }
+
+            ApiEndpoint.DeleteAccount.path -> {
+                acceptedAccountDeletions++
+                respondJson(StudyFlowJson.encodeToString(accountDeletionReceipt))
             }
 
             ApiEndpoint.UploadSession.path -> {

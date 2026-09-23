@@ -30,6 +30,7 @@ import dev.studyflow.feature.home.HomeRoute as HomeScreenRoute
 import dev.studyflow.feature.insights.InsightsRoute as InsightsScreenRoute
 import dev.studyflow.feature.insights.WeeklySummaryRoute as WeeklySummaryScreenRoute
 import dev.studyflow.feature.materials.MaterialsRoute as MaterialsScreenRoute
+import dev.studyflow.feature.settings.DataPrivacyRoute as DataPrivacyScreenRoute
 import dev.studyflow.feature.timer.TimerRoute as TimerScreenRoute
 
 @Composable
@@ -101,7 +102,10 @@ private fun AppNavDisplay(
                         TasksEntry(route = route, backStack = backStack)
                     }
                     entry<SettingsRoute> {
-                        NotificationSettingsRoute()
+                        NotificationSettingsRoute(onOpenDataPrivacy = { backStack.add(DataPrivacyRoute) })
+                    }
+                    entry<DataPrivacyRoute> {
+                        DataPrivacyScreenRoute()
                     }
                     entry<HistoryRoute> {
                         HistoryScreenRoute()
@@ -212,6 +216,9 @@ private val AppRoute.topLevelRoute: AppRoute
             WeeklySummaryRoute -> InsightsRoute
 
             SettingsRoute -> SettingsRoute
+
+            // Data & privacy is opened from settings and belongs to it as far as the bar is concerned.
+            DataPrivacyRoute -> SettingsRoute
         }
 
 private val AppRoute.label: String
@@ -225,4 +232,5 @@ private val AppRoute.label: String
             InsightsRoute -> "Insights"
             WeeklySummaryRoute -> "Weekly summary"
             SettingsRoute -> "Settings"
+            DataPrivacyRoute -> "Data & privacy"
         }

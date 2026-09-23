@@ -128,6 +128,38 @@ public abstract class SessionDao {
     public abstract suspend fun count(): Int
 
     /**
+     * Every session with its whole event log, tombstones included, for a data export (issue #78).
+     *
+     * Tombstones are exported rather than filtered out because an archive restored onto a device
+     * that still holds the pre-deletion row has to be able to re-apply the deletion; dropping them
+     * would make a restore resurrect sessions the user deleted.
+     */
+    @Transaction
+    @Query("SELECT * FROM study_sessions ORDER BY id ASC")
+    public abstract suspend fun allSessions(): List<SessionWithEvents>
+
+    /**
+     * Restores sessions and their logs, replacing any log already stored for them.
+     *
+     * The log is replaced wholesale rather than merged event by event: sequences are only unique
+     * within a session, so two partially-overlapping logs for the same id cannot be interleaved
+     * into anything meaningful, and the archived log is the one the restored projection was
+     * resolved against.
+     */
+    @Transaction
+    public open suspend fun restore(
+        sessions: List<StudySessionEntity>,
+        events: List<SessionEventEntity>,
+    ) {
+        upsertSessions(sessions)
+        sessions.forEach { deleteEventsForSession(it.id) }
+        insertEvents(events)
+    }
+
+    @Query("DELETE FROM session_events WHERE session_id = :sessionId")
+    protected abstract suspend fun deleteEventsForSession(sessionId: String)
+
+    /**
      * Non-deleted sessions for the history list (issue #32), newest-first, optionally filtered by
      * subject and/or a wall-clock start-time range.
      *
