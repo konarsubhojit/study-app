@@ -26,8 +26,10 @@ val appVersionName =
                 "StudyFlow version '$it' must use major.minor.patch semantic versioning"
             }
         }
+// A recent custom epoch preserves second-level local build ordering without nearing Android's limit.
+val localVersionEpoch = Instant.parse("2025-01-01T00:00:00Z")
 val localVersionCode =
-    (Instant.now().epochSecond - Instant.parse("2025-01-01T00:00:00Z").epochSecond)
+    (Instant.now().epochSecond - localVersionEpoch.epochSecond)
         .also {
             require(it in 1..Int.MAX_VALUE.toLong()) {
                 "Local StudyFlow versionCode is outside Android's supported range"

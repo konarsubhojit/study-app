@@ -22,13 +22,17 @@ mapfile -t dex_files < <(unzip -Z1 "$artifact" | grep -E '^classes([0-9]+)?\.dex
   exit 1
 }
 
+dex_strings="$(mktemp)"
+trap 'rm -f "$dex_strings"' EXIT
+for dex_file in "${dex_files[@]}"; do
+  unzip -p "$artifact" "$dex_file" | strings >> "$dex_strings"
+done
+
 for forbidden_class in "${forbidden_classes[@]}"; do
-  for dex_file in "${dex_files[@]}"; do
-    if unzip -p "$artifact" "$dex_file" | strings | grep -Fq "$forbidden_class"; then
-      echo "Debug tooling '$forbidden_class' exists in $artifact ($dex_file)" >&2
-      exit 1
-    fi
-  done
+  if grep -Fq "$forbidden_class" "$dex_strings"; then
+    echo "Debug tooling '$forbidden_class' exists in $artifact" >&2
+    exit 1
+  fi
 done
 
 echo "Verified that $artifact contains no debug tooling classes."
