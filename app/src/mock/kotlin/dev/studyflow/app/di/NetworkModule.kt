@@ -42,9 +42,7 @@ internal class FakeStudyFlowBackend(
     override suspend fun uploadSession(session: StudySessionDto): ApiResult<StudySessionDto> =
         ApiResult.Success(session)
 
-    override suspend fun pushSessionChanges(
-        request: SyncPushRequestDto,
-    ): ApiResult<SyncPushResponseDto> =
+    override suspend fun pushSessionChanges(request: SyncPushRequestDto): ApiResult<SyncPushResponseDto> =
         ApiResult.Success(
             SyncPushResponseDto(acceptedIds = request.changes.map { it.id }),
         )
