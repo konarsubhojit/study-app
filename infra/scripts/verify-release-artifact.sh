@@ -16,6 +16,7 @@ readonly forbidden_classes=(
   "Ldev/studyflow/app/debug/InspectionOverlay;"
 )
 
+unzip -tq "$artifact" >/dev/null
 mapfile -t dex_files < <(unzip -Z1 "$artifact" | grep -E '^classes([0-9]+)?\.dex$')
 ((${#dex_files[@]} > 0)) || {
   echo "No DEX files found in $artifact" >&2

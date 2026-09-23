@@ -1,5 +1,4 @@
 import com.android.build.api.dsl.ApplicationExtension
-import java.time.Instant
 import java.util.Properties
 
 plugins {
@@ -30,10 +29,12 @@ val appVersionName =
                 "StudyFlow version '$it' must use major.minor.patch semantic versioning"
             }
         }
-// A recent custom epoch preserves second-level local build ordering without nearing Android's limit.
-val localVersionEpoch = Instant.parse("2025-01-01T00:00:00Z")
+val (majorVersion, minorVersion, patchVersion) = appVersionName.split('.').map(String::toLong)
+require(minorVersion <= 999 && patchVersion <= 999) {
+    "StudyFlow minor and patch versions must fit in three digits"
+}
 val localVersionCode =
-    (Instant.now().epochSecond - localVersionEpoch.epochSecond)
+    (majorVersion * 1_000_000 + minorVersion * 1_000 + patchVersion)
         .also {
             require(it in 1..Int.MAX_VALUE.toLong()) {
                 "Local StudyFlow versionCode is outside Android's supported range"
@@ -89,6 +90,15 @@ extensions.configure<ApplicationExtension> {
                 keyPassword = releaseKeyPassword
             }
         buildTypes.getByName("release").signingConfig = releaseSigning
+    }
+}
+
+tasks.register("printVersionName") {
+    group = "versioning"
+    description = "Prints the canonical StudyFlow semantic version."
+    inputs.property("versionName", appVersionName)
+    doLast {
+        logger.quiet(inputs.properties.getValue("versionName").toString())
     }
 }
 

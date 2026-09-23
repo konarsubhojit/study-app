@@ -26,8 +26,9 @@ GitHub generates the changelog from merged pull-request labels using `.github/re
 The same generated entry is truncated to Play's 500-character limit and attached to the release as
 `whatsnew-en-US`.
 
-Local builds use the current Unix timestamp only to remain installable without CI. Never publish a
-local artifact: the release workflow always overrides that fallback with its monotonic run number.
+Local builds derive a reproducible version code from `major * 1,000,000 + minor * 1,000 + patch`.
+Never publish a local artifact: the release workflow overrides that fallback with its monotonic run
+number.
 The workflow signs both artifacts from the `STUDYFLOW_RELEASE_KEYSTORE_BASE64`,
 `STUDYFLOW_RELEASE_STORE_PASSWORD`, `STUDYFLOW_RELEASE_KEY_ALIAS`, and
 `STUDYFLOW_RELEASE_KEY_PASSWORD` repository secrets and verifies their signatures before upload.
