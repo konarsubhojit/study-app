@@ -153,23 +153,23 @@ public class DataPrivacyViewModel
                     event.uri?.let { uri -> run(DataPrivacyTask.IMPORT) { importer.import(uri).asImportMessage() } }
                 }
 
-                DataPrivacyUiEvent.DeleteAccountRequested -> {
-                    confirmingDeletionChanges.value = true
-                }
-
-                DataPrivacyUiEvent.DeleteAccountDismissed -> {
-                    confirmingDeletionChanges.value = false
-                }
-
-                DataPrivacyUiEvent.DeleteAccountConfirmed -> {
-                    confirmingDeletionChanges.value = false
-                    deleteAccount()
+                DataPrivacyUiEvent.DeleteAccountRequested,
+                DataPrivacyUiEvent.DeleteAccountDismissed,
+                DataPrivacyUiEvent.DeleteAccountConfirmed,
+                -> {
+                    onDeletionEvent(event)
                 }
 
                 DataPrivacyUiEvent.MessageDismissed -> {
                     progress.value = progress.value.copy(message = null)
                 }
             }
+        }
+
+        /** The confirmation handshake, kept together so the "only after a yes" rule reads as one rule. */
+        private fun onDeletionEvent(event: DataPrivacyUiEvent) {
+            confirmingDeletionChanges.value = event == DataPrivacyUiEvent.DeleteAccountRequested
+            if (event == DataPrivacyUiEvent.DeleteAccountConfirmed) deleteAccount()
         }
 
         private fun deleteAccount() =
