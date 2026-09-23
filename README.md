@@ -96,10 +96,17 @@ once and replays the request; a spent refresh token signs the user out instead o
 response is checked against `X-Minimum-Client-Version`, so a build the server is about to stop
 serving gets a friendly upgrade prompt rather than a wall of failures.
 
-Running against a local mock backend is a build flag, not a code change:
+The `mock` flavour is a complete offline app with seeded subjects and tasks and the in-memory object
+store, suitable for demos and UI tests:
 
 ```bash
-./gradlew installDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080
+./gradlew installMockDebug
+```
+
+To point a production-flavour debug build at a backend running on the host instead:
+
+```bash
+./gradlew installProductionDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080
 ```
 
 → [ADR 0007](docs/adr/0007-api-contract-and-network-client.md) ·

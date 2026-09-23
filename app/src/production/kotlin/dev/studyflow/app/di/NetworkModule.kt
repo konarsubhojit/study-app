@@ -21,7 +21,7 @@ import io.ktor.client.engine.okhttp.OkHttp
 import javax.inject.Singleton
 
 /**
- * Wires the typed API client into the application graph (issue #63).
+ * Wires the production API client into the application graph (issue #63).
  *
  * The base URL and the client version come from `BuildConfig`, so pointing the app at a local mock
  * backend is `-Pstudyflow.apiBaseUrl=http://10.0.2.2:8080` rather than an edit to a constant that

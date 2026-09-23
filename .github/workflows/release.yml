@@ -1,0 +1,144 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build tagged release
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Validate tag and version
+        id: version
+        shell: bash
+        run: |
+          tag_version="${GITHUB_REF_NAME#v}"
+          configured_version="$(./gradlew -q :app:printVersionName)"
+          if [[ "$tag_version" != "$configured_version" ]]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match app version $configured_version"
+            exit 1
+          fi
+          echo "name=$tag_version" >> "$GITHUB_OUTPUT"
+          echo "code=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Generate changelog and Play release notes
+        shell: bash
+        run: |
+          mkdir -p build/release/distribution/whatsnew
+          gh api \
+            --method POST \
+            "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+            -f tag_name="$GITHUB_REF_NAME" \
+            -f target_commitish="$GITHUB_SHA" \
+            > build/release/generated-notes.json
+          jq -r '.body' build/release/generated-notes.json \
+            > "build/release/CHANGELOG-$GITHUB_REF_NAME.md"
+          jq -r '.body' build/release/generated-notes.json \
+            | sed -E \
+                -e 's/^#+[[:space:]]*//' \
+                -e 's/^- /• /' \
+                -e 's/\[([^][]+)\]\([^()]+\)/\1/g' \
+                -e 's/[*_`]//g' \
+            | jq -Rrjs \
+                'gsub("[[:space:]]+"; " ") | ltrimstr(" ") |
+                 if length <= 500 then . else ((.[0:497] | sub("[^[:space:]]+$"; "")) + "...") end' \
+            > build/release/distribution/whatsnew/whatsnew-en-US
+
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STUDYFLOW_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STUDYFLOW_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.STUDYFLOW_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.STUDYFLOW_RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          : "${KEYSTORE_BASE64:?STUDYFLOW_RELEASE_KEYSTORE_BASE64 is required}"
+          : "${STORE_PASSWORD:?STUDYFLOW_RELEASE_STORE_PASSWORD is required}"
+          : "${KEY_ALIAS:?STUDYFLOW_RELEASE_KEY_ALIAS is required}"
+          : "${KEY_PASSWORD:?STUDYFLOW_RELEASE_KEY_PASSWORD is required}"
+          keystore="$RUNNER_TEMP/studyflow-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          echo "STUDYFLOW_RELEASE_STORE_FILE=$keystore" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build release artifacts
+        run: |
+          ./gradlew \
+            :app:assembleProductionRelease \
+            :app:bundleProductionRelease \
+            -Pstudyflow.versionName=${{ steps.version.outputs.name }} \
+            -Pstudyflow.versionCode=${{ steps.version.outputs.code }}
+          cp app/build/outputs/apk/production/release/app-production-release.apk \
+            "build/release/studyflow-$GITHUB_REF_NAME.apk"
+          cp app/build/outputs/bundle/productionRelease/app-production-release.aab \
+            "build/release/studyflow-$GITHUB_REF_NAME.aab"
+
+      - name: Verify release signatures
+        shell: bash
+        run: |
+          apksigner="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --verbose "build/release/studyflow-$GITHUB_REF_NAME.apk"
+          jarsigner -verify "build/release/studyflow-$GITHUB_REF_NAME.aab"
+
+      - name: Verify release excludes debug tooling
+        run: infra/scripts/verify-release-artifact.sh "build/release/studyflow-$GITHUB_REF_NAME.apk"
+
+      - name: Record artifact provenance
+        run: |
+          jq -n \
+            --arg tag "$GITHUB_REF_NAME" \
+            --arg commit "$GITHUB_SHA" \
+            --arg versionName "${{ steps.version.outputs.name }}" \
+            --argjson versionCode "${{ steps.version.outputs.code }}" \
+            '{tag: $tag, commit: $commit, versionName: $versionName, versionCode: $versionCode}' \
+            > "build/release/studyflow-$GITHUB_REF_NAME.json"
+          (
+            cd build/release
+            sha256sum \
+              "studyflow-$GITHUB_REF_NAME.apk" \
+              "studyflow-$GITHUB_REF_NAME.aab" \
+              > "studyflow-$GITHUB_REF_NAME.sha256"
+          )
+
+      - name: Publish GitHub release
+        shell: bash
+        run: |
+          notes="build/release/CHANGELOG-$GITHUB_REF_NAME.md"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --notes-file "$notes"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --verify-tag \
+              --title "StudyFlow ${{ steps.version.outputs.name }}" \
+              --notes-file "$notes"
+          fi
+          gh release upload "$GITHUB_REF_NAME" --clobber \
+            "build/release/studyflow-$GITHUB_REF_NAME.apk" \
+            "build/release/studyflow-$GITHUB_REF_NAME.aab" \
+            "build/release/studyflow-$GITHUB_REF_NAME.json" \
+            "build/release/studyflow-$GITHUB_REF_NAME.sha256" \
+            build/release/distribution/whatsnew/whatsnew-en-US

@@ -14,6 +14,28 @@ Use the committed Gradle wrapper; a separate Gradle installation is neither requ
 See the [README](README.md) for the current module map and
 [ADR 0002](docs/adr/0002-architecture-layering.md) for dependency rules.
 
+## Releases
+
+`app/version.properties` contains the next `major.minor.patch` version. A release is created only by
+pushing the matching `vMAJOR.MINOR.PATCH` tag; the release workflow rejects any mismatch, derives
+`versionCode` from the monotonic GitHub Actions run number, and records the tag, commit and versions
+beside checksummed APK/AAB artifacts.
+
+GitHub generates the changelog from merged pull-request labels using `.github/release.yml`. Apply
+`feature`/`enhancement`, `bug`/`fix`, `infra`/`dependencies`, or `skip-changelog` as appropriate.
+The same generated entry is truncated to Play's 500-character limit and attached to the release as
+`whatsnew-en-US`.
+
+Local builds derive a reproducible version code from `major * 1,000,000 + minor * 1,000 + patch`.
+Never publish a local artifact: the release workflow overrides that fallback with its monotonic run
+number.
+The workflow signs both artifacts from the `STUDYFLOW_RELEASE_KEYSTORE_BASE64`,
+`STUDYFLOW_RELEASE_STORE_PASSWORD`, `STUDYFLOW_RELEASE_KEY_ALIAS`, and
+`STUDYFLOW_RELEASE_KEY_PASSWORD` repository secrets and verifies their signatures before upload.
+
+Release APKs are inspected by `infra/scripts/verify-release-artifact.sh`; the workflow fails if
+LeakCanary, Compose inspection, overlay, or sample-data seeder classes are present.
+
 ## Module layout
 
 - `:app` wires Android application concerns together.
