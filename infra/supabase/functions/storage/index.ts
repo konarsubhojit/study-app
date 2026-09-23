@@ -516,6 +516,7 @@ async function getDownloadUrl(request: Request, owner: string): Promise<Response
     );
     await audit(owner, "download", upload.object_key, expiresAt);
     const response = json(200, { url, expiresAt });
+    // The BFF only sees URL issuance, not the provider's later transfer log; this is projected egress.
     responseEgressBytes.set(response, upload.size_bytes);
     return response;
 }

@@ -16,7 +16,7 @@ Provision the production dashboard from these SQL views after every migration:
 | p95 latency | `backend_health_daily.p95_latency_ms` | `backend_alert_policies.metric = 'p95_latency_ms'` |
 | Upload success rate | `backend_health_daily.upload_success_rate` | `backend_alert_policies.metric = 'upload_success_rate'` |
 | Storage growth | `backend_storage_growth_daily.ready_bytes_added` | `backend_alert_policies.metric = 'storage_growth_gib_daily'` |
-| Egress volume | `backend_health_daily.egress_bytes` | `backend_alert_policies.metric = 'egress_gib_daily'` |
+| Egress volume estimate | `backend_health_daily.egress_bytes` | `backend_alert_policies.metric = 'egress_gib_daily'` |
 | Auth failures | `backend_health_daily.auth_failures` | `backend_alert_policies.metric = 'auth_failures'` |
 | Cost per 1,000 active users | `backend_cost_projection.projected_monthly_usd_per_1000_active_users` | ops review when reality differs by more than 20% |
 
@@ -55,8 +55,9 @@ alert is acknowledged.
   by maintenance.
 - **Budget review:** compare the provider invoice with
   `backend_cost_projection.projected_monthly_usd_per_1000_active_users` every billing cycle. The
-  initial model uses $0.021/GiB-month storage and $0.09/GiB egress placeholders; update the migration
-  and this runbook when provider pricing changes.
+  initial model uses $0.021/GiB-month storage and $0.09/GiB egress placeholders. Egress is estimated
+  from signed download URL issuance because the BFF does not see the provider's actual transfer log;
+  update the migration and this runbook when provider pricing or measured egress exports change.
 
 ## Abuse response plan
 
