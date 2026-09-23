@@ -26,15 +26,31 @@ val appVersionName =
                 "StudyFlow version '$it' must use major.minor.patch semantic versioning"
             }
         }
+val localVersionCode =
+    (Instant.now().epochSecond - Instant.parse("2025-01-01T00:00:00Z").epochSecond)
+        .also {
+            require(it in 1..Int.MAX_VALUE.toLong()) {
+                "Local StudyFlow versionCode is outside Android's supported range"
+            }
+        }.toInt()
 val appVersionCode =
     providers
         .gradleProperty("studyflow.versionCode")
         .orElse(providers.environmentVariable("GITHUB_RUN_NUMBER"))
         .map(String::toInt)
-        .getOrElse(Instant.now().epochSecond.toInt())
+        .getOrElse(localVersionCode)
         .also {
             require(it > 0) { "StudyFlow versionCode must be positive" }
         }
+val releaseStoreFile = providers.environmentVariable("STUDYFLOW_RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("STUDYFLOW_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("STUDYFLOW_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("STUDYFLOW_RELEASE_KEY_PASSWORD").orNull
+val releaseSigningValues =
+    listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword)
+require(releaseSigningValues.all { it == null } || releaseSigningValues.all { it != null }) {
+    "Release signing requires store file, store password, key alias, and key password"
+}
 
 extensions.configure<ApplicationExtension> {
     defaultConfig {
@@ -56,6 +72,17 @@ extensions.configure<ApplicationExtension> {
             applicationIdSuffix = ".mock"
             versionNameSuffix = "-mock"
         }
+    }
+
+    if (releaseStoreFile != null) {
+        val releaseSigning =
+            signingConfigs.create("studyflowRelease") {
+                storeFile = file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+            }
+        buildTypes.getByName("release").signingConfig = releaseSigning
     }
 }
 

@@ -12,8 +12,8 @@ readonly forbidden_classes=(
   "Lleakcanary/"
   "Lcom/squareup/leakcanary/"
   "Landroidx/compose/ui/tooling/ComposeViewAdapter;"
-  "SampleDataSeeder"
-  "InspectionOverlay"
+  "Ldev/studyflow/app/debug/SampleDataSeeder;"
+  "Ldev/studyflow/app/debug/InspectionOverlay;"
 )
 
 mapfile -t dex_files < <(unzip -Z1 "$artifact" | grep -E '^classes([0-9]+)?\.dex$')

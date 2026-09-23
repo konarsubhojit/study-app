@@ -28,6 +28,9 @@ The same generated entry is truncated to Play's 500-character limit and attached
 
 Local builds use the current Unix timestamp only to remain installable without CI. Never publish a
 local artifact: the release workflow always overrides that fallback with its monotonic run number.
+The workflow signs both artifacts from the `STUDYFLOW_RELEASE_KEYSTORE_BASE64`,
+`STUDYFLOW_RELEASE_STORE_PASSWORD`, `STUDYFLOW_RELEASE_KEY_ALIAS`, and
+`STUDYFLOW_RELEASE_KEY_PASSWORD` repository secrets and verifies their signatures before upload.
 
 Release APKs are inspected by `infra/scripts/verify-release-artifact.sh`; the workflow fails if
 LeakCanary, Compose inspection, overlay, or sample-data seeder classes are present.

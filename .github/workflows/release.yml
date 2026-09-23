@@ -68,6 +68,25 @@ jobs:
                  if length <= 500 then . else ((.[0:497] | sub("[^[:space:]]+$"; "")) + "...") end' \
             > build/release/distribution/whatsnew/whatsnew-en-US
 
+      - name: Configure release signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STUDYFLOW_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STUDYFLOW_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.STUDYFLOW_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.STUDYFLOW_RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          : "${KEYSTORE_BASE64:?STUDYFLOW_RELEASE_KEYSTORE_BASE64 is required}"
+          : "${STORE_PASSWORD:?STUDYFLOW_RELEASE_STORE_PASSWORD is required}"
+          : "${KEY_ALIAS:?STUDYFLOW_RELEASE_KEY_ALIAS is required}"
+          : "${KEY_PASSWORD:?STUDYFLOW_RELEASE_KEY_PASSWORD is required}"
+          keystore="$RUNNER_TEMP/studyflow-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          echo "STUDYFLOW_RELEASE_STORE_FILE=$keystore" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
       - name: Build release artifacts
         run: |
           ./gradlew \
@@ -75,10 +94,17 @@ jobs:
             :app:bundleProductionRelease \
             -Pstudyflow.versionName=${{ steps.version.outputs.name }} \
             -Pstudyflow.versionCode=${{ steps.version.outputs.code }}
-          cp app/build/outputs/apk/production/release/app-production-release-unsigned.apk \
+          cp app/build/outputs/apk/production/release/app-production-release.apk \
             "build/release/studyflow-$GITHUB_REF_NAME.apk"
           cp app/build/outputs/bundle/productionRelease/app-production-release.aab \
             "build/release/studyflow-$GITHUB_REF_NAME.aab"
+
+      - name: Verify release signatures
+        shell: bash
+        run: |
+          apksigner="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          "$apksigner" verify --verbose "build/release/studyflow-$GITHUB_REF_NAME.apk"
+          jarsigner -verify "build/release/studyflow-$GITHUB_REF_NAME.aab"
 
       - name: Verify release excludes debug tooling
         run: infra/scripts/verify-release-artifact.sh "build/release/studyflow-$GITHUB_REF_NAME.apk"
