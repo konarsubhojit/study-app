@@ -17,10 +17,14 @@ val versionProperties =
     Properties().apply {
         file("version.properties").inputStream().use(::load)
     }
+val configuredVersionName =
+    requireNotNull(versionProperties.getProperty("versionName")) {
+        "app/version.properties must define versionName"
+    }
 val appVersionName =
     providers
         .gradleProperty("studyflow.versionName")
-        .getOrElse(versionProperties.getProperty("versionName"))
+        .getOrElse(configuredVersionName)
         .also {
             require(Regex("""\d+\.\d+\.\d+""").matches(it)) {
                 "StudyFlow version '$it' must use major.minor.patch semantic versioning"
