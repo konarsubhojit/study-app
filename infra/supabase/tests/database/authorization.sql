@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(46);
+select plan(54);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -222,6 +222,18 @@ select ok(
   ),
   'clients cannot reserve arbitrary object keys through the quota function'
 );
+select ok(
+  not has_table_privilege('authenticated', 'public.backend_observability_events', 'insert'),
+  'clients cannot forge backend observability events'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.backend_alert_policies', 'select'),
+  'clients cannot inspect alert routing policy'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.storage_lifecycle_rules', 'select'),
+  'clients cannot inspect storage lifecycle policy'
+);
 
 -- The storage-key/owner check constraint independently blocks a materials row from pointing at
 -- someone else's object prefix, even for a service-role write.
@@ -286,6 +298,31 @@ select is(
   (select count(*) from public.storage_claim_expired_uploads(100))::int,
   1,
   'a stale reaping claim is recovered after a worker crash'
+);
+select lives_ok(
+  $$ insert into public.backend_observability_events
+       (request_id, operation, status, duration_ms, error_code, egress_bytes)
+     values ('trace-1', 'completeUpload', 503, 1250, 'storage_unavailable', 0) $$,
+  'the service role can record sanitized backend telemetry'
+);
+select is(
+  (select request_count from public.backend_health_daily where day = current_date),
+  1::bigint,
+  'the health dashboard view counts backend requests'
+);
+select is(
+  (select auth_failures from public.backend_health_daily where day = current_date),
+  0::bigint,
+  'the health dashboard view exposes auth failure counts'
+);
+select ok(
+  (select projected_monthly_usd_per_1000_active_users from public.backend_cost_projection) >= 0,
+  'the cost dashboard view projects monthly spend per 1000 active users'
+);
+select is(
+  (select count(*) from public.storage_lifecycle_rules where enabled)::int,
+  3,
+  'storage lifecycle guardrails are registered'
 );
 reset role;
 

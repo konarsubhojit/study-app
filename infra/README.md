@@ -92,3 +92,10 @@ the repository's `STORAGE_REAPER_URL` and `STORAGE_REAPER_TOKEN` Actions secrets
 An optional malware scanner can be enabled with `STORAGE_SCAN_HOOK_URL` and
 `STORAGE_SCAN_HOOK_TOKEN`. The hook must return `{"clean":true,"sha256":"<expected digest>"}`;
 rejected objects are deleted before their metadata becomes downloadable.
+
+## Operations
+
+Backend dashboards, alerts, cost monitoring, abuse response and the backup/restore drill are tracked
+in [`docs/backend-observability.md`](../docs/backend-observability.md). The database migrations expose
+the dashboard views and alert/lifecycle policy rows; the Edge Function writes only sanitized request
+telemetry and never logs presigned URLs, object keys or user identifiers.

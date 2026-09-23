@@ -8,7 +8,7 @@ const settings = {
 };
 Object.entries(settings).forEach(([name, value]) => Deno.env.set(name, value));
 
-const { objectKey, validateUpload } = await import("./index.ts");
+const { objectKey, observabilityLogLine, requestTraceId, validateUpload } = await import("./index.ts");
 
 const checksum = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
@@ -65,6 +65,34 @@ Deno.test("upload validation rejects missing part checksums", () => {
             }),
         "invalid_part_checksums",
     );
+});
+
+Deno.test("request tracing accepts only bounded opaque identifiers", () => {
+    const accepted = requestTraceId(new Request("https://edge.test/initUpload", {
+        headers: { "x-request-id": "trace_01:abc-123" },
+    }));
+    if (accepted !== "trace_01:abc-123") throw new Error("trace id was not preserved");
+
+    const rejected = requestTraceId(new Request("https://edge.test/initUpload", {
+        headers: { "x-request-id": "https://storage.example/signed?token=secret" },
+    }));
+    if (rejected.includes("storage.example") || rejected.includes("token")) {
+        throw new Error("unsafe trace id was preserved");
+    }
+});
+
+Deno.test("observability logs do not contain user content or presigned urls", () => {
+    const line = observabilityLogLine({
+        requestId: "trace-1",
+        operation: "getDownloadUrl",
+        status: 200,
+        durationMs: 42,
+        egressBytes: 1024,
+    });
+    const event = JSON.parse(line);
+    if (event.event !== "storage_request") throw new Error("wrong event name");
+    if ("url" in event || "object_key" in event || "user_id" in event) throw new Error("unsafe field logged");
+    if (line.includes("https://") || line.includes("alice")) throw new Error("unsafe value logged");
 });
 
 function assertApiError(block: () => unknown, code: string): void {
