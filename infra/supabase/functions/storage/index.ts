@@ -102,15 +102,21 @@ function operationName(request: Request): string {
     return OPERATIONS.has(candidate) ? candidate : "unknown";
 }
 
-export function observabilityLogLine(event: ObservabilityEvent): string {
-    return JSON.stringify({
-        event: "storage_request",
+function observabilityPayload(event: ObservabilityEvent): Json {
+    return {
         request_id: event.requestId,
         operation: event.operation,
         status: event.status,
         duration_ms: event.durationMs,
         error_code: event.errorCode ?? null,
         egress_bytes: event.egressBytes ?? 0,
+    };
+}
+
+export function observabilityLogLine(event: ObservabilityEvent): string {
+    return JSON.stringify({
+        event: "storage_request",
+        ...observabilityPayload(event),
     });
 }
 
@@ -119,14 +125,7 @@ async function recordObservability(event: ObservabilityEvent): Promise<void> {
     await database("backend_observability_events", {
         method: "POST",
         headers: { prefer: "return=minimal" },
-        body: JSON.stringify({
-            request_id: event.requestId,
-            operation: event.operation,
-            status: event.status,
-            duration_ms: event.durationMs,
-            error_code: event.errorCode ?? null,
-            egress_bytes: event.egressBytes ?? 0,
-        }),
+        body: JSON.stringify(observabilityPayload(event)),
     }).catch((error) => {
         console.warn(error instanceof Error ? `observability_write_failed:${error.name}` : "observability_write_failed");
     });

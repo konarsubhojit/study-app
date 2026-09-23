@@ -42,6 +42,22 @@ insert into public.backend_alert_policies
     route = excluded.route,
     runbook_path = excluded.runbook_path;
 
+create table public.backend_cost_assumptions (
+  metric text primary key,
+  unit text not null,
+  usd_per_unit numeric not null check (usd_per_unit >= 0),
+  updated_at timestamptz not null default now()
+);
+
+insert into public.backend_cost_assumptions (metric, unit, usd_per_unit)
+  values
+    ('storage', 'GiB-month', 0.021),
+    ('egress', 'GiB', 0.09)
+  on conflict (metric) do update set
+    unit = excluded.unit,
+    usd_per_unit = excluded.usd_per_unit,
+    updated_at = now();
+
 create table public.storage_lifecycle_rules (
   id text primary key,
   applies_to text not null,
@@ -130,10 +146,11 @@ egress_30d as (
   where occurred_at >= now() - interval '30 days'
 ),
 unit_costs as (
-  -- Conservative planning placeholders: adjust this row when the provider invoice changes.
   select
-    0.021::numeric as storage_usd_per_gib_month,
-    0.09::numeric as egress_usd_per_gib
+    coalesce(max(usd_per_unit) filter (where metric = 'storage'), 0)::numeric as storage_usd_per_gib_month,
+    coalesce(max(usd_per_unit) filter (where metric = 'egress'), 0)::numeric as egress_usd_per_gib
+  from public.backend_cost_assumptions
+  where metric in ('storage', 'egress')
 )
 select
   1000::integer as projected_active_users,
@@ -152,10 +169,12 @@ cross join unit_costs;
 
 alter table public.backend_observability_events enable row level security;
 alter table public.backend_alert_policies enable row level security;
+alter table public.backend_cost_assumptions enable row level security;
 alter table public.storage_lifecycle_rules enable row level security;
 
 revoke all on public.backend_observability_events from anon, authenticated;
 revoke all on public.backend_alert_policies from anon, authenticated;
+revoke all on public.backend_cost_assumptions from anon, authenticated;
 revoke all on public.storage_lifecycle_rules from anon, authenticated;
 revoke all on public.backend_health_daily from anon, authenticated;
 revoke all on public.backend_storage_growth_daily from anon, authenticated;
@@ -163,6 +182,7 @@ revoke all on public.backend_cost_projection from anon, authenticated;
 
 grant insert on public.backend_observability_events to service_role;
 grant select on public.backend_alert_policies to service_role;
+grant select, update on public.backend_cost_assumptions to service_role;
 grant select on public.storage_lifecycle_rules to service_role;
 grant select on public.backend_health_daily to service_role;
 grant select on public.backend_storage_growth_daily to service_role;

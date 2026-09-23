@@ -21,7 +21,8 @@ Provision the production dashboard from these SQL views after every migration:
 | Cost per 1,000 active users | `backend_cost_projection.projected_monthly_usd_per_1000_active_users` | ops review when reality differs by more than 20% |
 
 The same request id is returned as `x-request-id`, so a support report can be correlated with the
-structured logs without exposing any user content.
+structured logs without exposing any user content. `error_code` is nullable and populated for errors
+raised by the BFF; `status` remains the alerting source of truth for every response.
 
 ## Alert response
 
@@ -55,9 +56,10 @@ alert is acknowledged.
   by maintenance.
 - **Budget review:** compare the provider invoice with
   `backend_cost_projection.projected_monthly_usd_per_1000_active_users` every billing cycle. The
-  initial model uses $0.021/GiB-month storage and $0.09/GiB egress placeholders. Egress is estimated
-  from signed download URL issuance because the BFF does not see the provider's actual transfer log;
-  update the migration and this runbook when provider pricing or measured egress exports change.
+  initial `backend_cost_assumptions` rows use $0.021/GiB-month storage and $0.09/GiB egress
+  placeholders. Egress is estimated from signed download URL issuance because the BFF does not see
+  the provider's actual transfer log; update the assumption rows and this runbook when provider
+  pricing or measured egress exports change.
 
 ## Abuse response plan
 
