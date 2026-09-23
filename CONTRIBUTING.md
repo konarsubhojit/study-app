@@ -26,7 +26,7 @@ GitHub generates the changelog from merged pull-request labels using `.github/re
 The same generated entry is truncated to Play's 500-character limit and attached to the release as
 `whatsnew-en-US`.
 
-Local builds use a UTC `yyMMdd` version code only to remain installable without CI. Never publish a
+Local builds use the current Unix timestamp only to remain installable without CI. Never publish a
 local artifact: the release workflow always overrides that fallback with its monotonic run number.
 
 Release APKs are inspected by `infra/scripts/verify-release-artifact.sh`; the workflow fails if

@@ -35,7 +35,9 @@ jobs:
         shell: bash
         run: |
           tag_version="${GITHUB_REF_NAME#v}"
-          configured_version="$(sed -n 's/^versionName=//p' app/version.properties)"
+          configured_version="$(
+            sed -n 's/^versionName=//p' app/version.properties | tr -d '\r[:space:]'
+          )"
           if [[ "$tag_version" != "$configured_version" ]]; then
             echo "::error::Tag $GITHUB_REF_NAME does not match app version $configured_version"
             exit 1

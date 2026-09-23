@@ -1,7 +1,5 @@
 import com.android.build.api.dsl.ApplicationExtension
-import java.time.LocalDate
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
+import java.time.Instant
 import java.util.Properties
 
 plugins {
@@ -33,12 +31,8 @@ val appVersionCode =
         .gradleProperty("studyflow.versionCode")
         .orElse(providers.environmentVariable("GITHUB_RUN_NUMBER"))
         .map(String::toInt)
-        .getOrElse(
-            LocalDate
-                .now(ZoneOffset.UTC)
-                .format(DateTimeFormatter.ofPattern("yyMMdd"))
-                .toInt(),
-        ).also {
+        .getOrElse(Instant.now().epochSecond.toInt())
+        .also {
             require(it > 0) { "StudyFlow versionCode must be positive" }
         }
 
