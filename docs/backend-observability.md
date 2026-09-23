@@ -50,8 +50,9 @@ alert is acknowledged.
   function aborts expired multipart uploads and marks stale metadata failed.
 - **Cold tiering:** configure the storage provider lifecycle policy to transition ready material
   objects after the `cold-tier-ready-materials` interval in `storage_lifecycle_rules`.
-- **Metadata expiry:** failed/deleted upload metadata is retained for the `failed-or-deleted` review
-  window in `storage_lifecycle_rules`, then can be purged by maintenance.
+- **Metadata expiry:** failed/deleted upload metadata is retained for the
+  `failed-or-deleted-metadata-expiry` review window in `storage_lifecycle_rules`, then can be purged
+  by maintenance.
 - **Budget review:** compare the provider invoice with
   `backend_cost_projection.projected_monthly_usd_per_1000_active_users` every billing cycle. The
   initial model uses $0.021/GiB-month storage and $0.09/GiB egress placeholders; update the migration

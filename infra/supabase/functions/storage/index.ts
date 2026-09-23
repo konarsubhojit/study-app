@@ -26,7 +26,7 @@ const ALLOWED_MIME_TYPES = new Set([
     "video/mp4",
 ]);
 const OPERATIONS = new Set(["initUpload", "completeUpload", "getDownloadUrl", "delete", "reapOrphans"]);
-const TRACE_ID = /^[A-Za-z0-9._:-]{1,64}$/;
+const TRACE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const responseEgressBytes = new WeakMap<Response, number>();
 
 type Json = Record<string, unknown>;
@@ -94,7 +94,7 @@ const json = (status: number, body: Json, headers: HeadersInit = {}): Response =
 
 export function requestTraceId(request: Request): string {
     const provided = request.headers.get("x-request-id") ?? request.headers.get("traceparent");
-    return provided && TRACE_ID.test(provided) ? provided : crypto.randomUUID();
+    return provided && TRACE_ID_PATTERN.test(provided) ? provided : crypto.randomUUID();
 }
 
 function operationName(request: Request): string {
