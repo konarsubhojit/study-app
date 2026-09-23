@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(54);
+select plan(55);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -314,6 +314,24 @@ select is(
   (select auth_failures from public.backend_health_daily where day = current_date),
   0::bigint,
   'the health dashboard view exposes auth failure counts'
+);
+insert into public.storage_uploads
+    (user_id, object_key, content_hash, content_type, size_bytes, part_checksums, state, expires_at, completed_at)
+  values (
+    '11111111-1111-1111-1111-111111111111',
+    '11111111-1111-1111-1111-111111111111/' || repeat('e', 64),
+    repeat('e', 64),
+    'application/pdf',
+    40,
+    '[]'::jsonb,
+    'ready',
+    now() + interval '1 hour',
+    now()
+  );
+select is(
+  (select ready_bytes_added from public.backend_storage_growth_daily where day = current_date),
+  40::bigint,
+  'the storage growth dashboard view totals ready bytes'
 );
 select ok(
   (select projected_monthly_usd_per_1000_active_users from public.backend_cost_projection) >= 0,
