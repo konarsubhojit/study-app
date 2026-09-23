@@ -1,4 +1,8 @@
 import com.android.build.api.dsl.ApplicationExtension
+import java.time.LocalDate
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Properties
 
 plugins {
     id("studyflow.android.application")
@@ -11,17 +15,53 @@ plugins {
 // 10.0.2.2 is the host machine as seen from the emulator.
 val defaultApiBaseUrl = "https://api.studyflow.dev"
 val apiBaseUrl: String = providers.gradleProperty("studyflow.apiBaseUrl").getOrElse(defaultApiBaseUrl)
+val versionProperties =
+    Properties().apply {
+        file("version.properties").inputStream().use(::load)
+    }
+val appVersionName =
+    providers
+        .gradleProperty("studyflow.versionName")
+        .getOrElse(versionProperties.getProperty("versionName"))
+        .also {
+            require(Regex("""\d+\.\d+\.\d+""").matches(it)) {
+                "StudyFlow version '$it' must use major.minor.patch semantic versioning"
+            }
+        }
+val appVersionCode =
+    providers
+        .gradleProperty("studyflow.versionCode")
+        .orElse(providers.environmentVariable("GITHUB_RUN_NUMBER"))
+        .map(String::toInt)
+        .getOrElse(
+            LocalDate
+                .now(ZoneOffset.UTC)
+                .format(DateTimeFormatter.ofPattern("yyMMdd"))
+                .toInt(),
+        ).also {
+            require(it > 0) { "StudyFlow versionCode must be positive" }
+        }
 
 extensions.configure<ApplicationExtension> {
-    val appVersionName = "1.0.0"
-
     defaultConfig {
-        versionCode = 1
+        versionCode = appVersionCode
         versionName = appVersionName
 
         buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         // The server uses this to decide when an installed build is too old to serve.
         buildConfigField("String", "API_CLIENT_VERSION", "\"$appVersionName\"")
+    }
+
+    flavorDimensions += "backend"
+    productFlavors {
+        create("production") {
+            dimension = "backend"
+        }
+        create("mock") {
+            dimension = "backend"
+            applicationIdSuffix = ".mock"
+            versionNameSuffix = "-mock"
+        }
     }
 }
 
