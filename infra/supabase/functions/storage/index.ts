@@ -132,6 +132,16 @@ async function recordObservability(event: ObservabilityEvent): Promise<void> {
     });
 }
 
+function recordObservabilityAfterResponse(event: ObservabilityEvent): void {
+    const promise = recordObservability(event);
+    const runtime = (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime;
+    if (runtime) {
+        runtime.waitUntil(promise);
+    } else {
+        void promise;
+    }
+}
+
 function withTrace(response: Response, requestId: string): Response {
     response.headers.set("x-request-id", requestId);
     return response;
@@ -639,7 +649,7 @@ export async function handleRequest(request: Request): Promise<Response> {
         response = json(503, { code: "storage_unavailable", message: "Cloud storage is temporarily unavailable." });
         return withTrace(response, requestId);
     } finally {
-        await recordObservability({
+        recordObservabilityAfterResponse({
             requestId,
             operation,
             status,
