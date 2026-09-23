@@ -27,6 +27,9 @@ public enum class ApiEndpoint(
 
     /** Reads the session changes recorded after a cursor. */
     PullSessionChanges("get", "/$API_VERSION/sync/sessions"),
+
+    /** Deletes the signed-in account, its rows and its stored objects (issue #78). */
+    DeleteAccount("delete", "/$API_VERSION/account"),
     ;
 
     /** Only a request that can be replayed without duplicating the user's data may be retried. */

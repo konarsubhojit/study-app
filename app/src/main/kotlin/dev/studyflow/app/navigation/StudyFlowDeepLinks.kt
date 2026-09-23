@@ -24,19 +24,31 @@ internal object StudyFlowDeepLinks {
     private const val INSIGHTS = "insights"
     private const val SUMMARY = "summary"
     private const val SETTINGS = "settings"
+    private const val PRIVACY = "privacy"
     private const val WIDGET = "widget"
     private const val RUNNING = "running"
 
     internal fun uriFor(route: AppRoute): Uri =
         when (route) {
             HomeRoute -> uri(HOME)
+
             is TimerRoute -> uri(TIMER, RUNNING.takeIf { route.openRunningTimer })
+
             is MaterialsRoute -> uri(MATERIALS, route.materialId)
+
             is TasksRoute -> uri(TASKS, route.taskId)
+
             HistoryRoute -> uri(HISTORY)
+
             InsightsRoute -> uri(INSIGHTS)
+
             WeeklySummaryRoute -> uri(SUMMARY)
+
             SettingsRoute -> uri(SETTINGS)
+
+            // `studyflow://settings/privacy`: a deletion request has to be linkable from a help
+            // page or a support reply, not only findable by scrolling.
+            DataPrivacyRoute -> uri(SETTINGS, PRIVACY)
         }
 
     internal fun uriFor(action: WidgetAction): Uri = uri(WIDGET, action.path)
@@ -55,18 +67,54 @@ internal object StudyFlowDeepLinks {
         if (uri?.scheme != SCHEME) return null
         val segments = uri.pathSegments
         return when (uri.host) {
-            HOME -> HomeRoute.takeIf { segments.isEmpty() }
-            TIMER -> timerRoute(segments)
-            MATERIALS -> identifier(segments)?.let(::MaterialsRoute) ?: MaterialsRoute().takeIf { segments.isEmpty() }
-            TASKS -> identifier(segments)?.let(::TasksRoute) ?: TasksRoute().takeIf { segments.isEmpty() }
-            HISTORY -> HistoryRoute.takeIf { segments.isEmpty() }
-            INSIGHTS -> InsightsRoute.takeIf { segments.isEmpty() }
-            SUMMARY -> WeeklySummaryRoute.takeIf { segments.isEmpty() }
-            SETTINGS -> SettingsRoute.takeIf { segments.isEmpty() }
-            WIDGET -> widgetRoute(segments)
-            else -> null
+            HOME -> {
+                HomeRoute.takeIf { segments.isEmpty() }
+            }
+
+            TIMER -> {
+                timerRoute(segments)
+            }
+
+            MATERIALS -> {
+                identifier(segments)?.let(::MaterialsRoute) ?: MaterialsRoute().takeIf { segments.isEmpty() }
+            }
+
+            TASKS -> {
+                identifier(segments)?.let(::TasksRoute) ?: TasksRoute().takeIf { segments.isEmpty() }
+            }
+
+            HISTORY -> {
+                HistoryRoute.takeIf { segments.isEmpty() }
+            }
+
+            INSIGHTS -> {
+                InsightsRoute.takeIf { segments.isEmpty() }
+            }
+
+            SUMMARY -> {
+                WeeklySummaryRoute.takeIf { segments.isEmpty() }
+            }
+
+            SETTINGS -> {
+                settingsRoute(segments)
+            }
+
+            WIDGET -> {
+                widgetRoute(segments)
+            }
+
+            else -> {
+                null
+            }
         }
     }
+
+    private fun settingsRoute(segments: List<String>): AppRoute? =
+        when {
+            segments.isEmpty() -> SettingsRoute
+            segments == listOf(PRIVACY) -> DataPrivacyRoute
+            else -> null
+        }
 
     private fun timerRoute(segments: List<String>): TimerRoute? =
         when {

@@ -50,6 +50,7 @@ graph TD
     core_common --> core_model
     core_database --> core_domain
     core_database --> core_model
+    core_datastore --> core_domain
     core_datastore --> core_model
     core_datastore --> core_network
     core_domain --> core_common

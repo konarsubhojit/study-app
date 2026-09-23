@@ -135,3 +135,16 @@ public data class SyncDeltaDto(
     val nextCursor: String? = null,
     val hasMore: Boolean = false,
 )
+
+/**
+ * Response body of `DELETE /v1/account`.
+ *
+ * The retention window travels with the receipt rather than being a constant in the app: it is a
+ * promise the *server* makes, and a client that hard-coded it would keep showing the old number
+ * after the policy changed.
+ */
+@Serializable
+public data class AccountDeletionReceiptDto(
+    @SerialName("acceptedAt") val acceptedAtIso: String? = null,
+    val retentionWindowDays: Int = 0,
+)

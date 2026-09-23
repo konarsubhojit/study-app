@@ -52,6 +52,18 @@ public class UserSettingsStore internal constructor(
         withContext(ioContext) {
             dataStore.updateData { current -> current.toBuilder().apply(transform).build() }
         }
+
+    /**
+     * Resets every setting to its default, for account deletion (issue #78).
+     *
+     * The file is rewritten with the default message rather than deleted: the defaults live in the
+     * proto, so a reset store and a fresh install are the same thing, and a deleted file would
+     * leave the `DataStore` instance this process already holds pointing at nothing.
+     */
+    public suspend fun clear(): UserSettings =
+        withContext(ioContext) {
+            dataStore.updateData { UserSettings.getDefaultInstance() }
+        }
 }
 
 /**

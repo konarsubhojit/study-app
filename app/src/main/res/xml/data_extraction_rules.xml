@@ -1,11 +1,54 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Mirrors android:allowBackup="false": no app data leaves the device via cloud backup or
-     device-to-device transfer on Android 12 and higher. -->
+<!--
+  Android 12+ backup and transfer rules (issue #78; see docs/data-lifecycle.md).
+
+  The application manifest sets android:allowBackup="false", so nothing here is ever consulted in
+  practice. The rules are written out in full anyway, because the excludes below are the ones that
+  must survive anybody later deciding to turn backup on:
+
+  * studyflow.auth.tokens — Keystore-encrypted access and refresh tokens. The Keystore key they
+    are sealed with never leaves the device, so a restored copy is unreadable *and* a security
+    liability; the user signs in again instead.
+  * active_timer.pb — the running-timer anchor. A restored device must not resurrect a "running"
+    session: the wall clock has moved, the foreground service is gone, and the user would find a
+    timer that has been counting for days.
+  * database/ and no_backup/ — rows belong to the server-side account or to the export archive,
+    not to a platform backup of unknown age that would merge with newer synced data.
+  * Caches (thumbnails, temporary downloads) — never eligible for backup on any platform version,
+    and covered again by the blanket root exclude. All reproducible, none worth a restore.
+
+  StudyFlow's answer to "how do I move to a new device" is the export/import archive, which the
+  user chooses, sees and controls, not an opaque cloud copy.
+-->
 <data-extraction-rules>
     <cloud-backup disableIfNoEncryptionCapability="false">
         <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="device_root" />
+        <exclude domain="device_file" />
+        <exclude domain="device_database" />
+        <exclude domain="device_sharedpref" />
+        <exclude domain="sharedpref" path="studyflow.auth.tokens.xml" />
+        <exclude domain="file" path="datastore/active_timer.pb" />
+        <exclude domain="file" path="datastore/user_settings.pb" />
+        <exclude domain="file" path="materials" />
     </cloud-backup>
     <device-transfer>
         <exclude domain="root" />
+        <exclude domain="file" />
+        <exclude domain="database" />
+        <exclude domain="sharedpref" />
+        <exclude domain="external" />
+        <exclude domain="device_root" />
+        <exclude domain="device_file" />
+        <exclude domain="device_database" />
+        <exclude domain="device_sharedpref" />
+        <exclude domain="sharedpref" path="studyflow.auth.tokens.xml" />
+        <exclude domain="file" path="datastore/active_timer.pb" />
+        <exclude domain="file" path="datastore/user_settings.pb" />
+        <exclude domain="file" path="materials" />
     </device-transfer>
 </data-extraction-rules>

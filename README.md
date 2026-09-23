@@ -129,6 +129,25 @@ last, and offers a manual "Sync now".
 [`SyncEngine`](core/domain/src/main/kotlin/dev/studyflow/core/domain/sync/SyncEngine.kt) ·
 [`SyncDao`](core/database/src/main/kotlin/dev/studyflow/core/database/dao/SyncDao.kt)
 
+## Owning your data
+
+Everything the app knows about a student exports into one zip the user chooses the location of —
+readable JSON for sessions (with their event logs), tasks, subjects and material metadata, plus the
+original cached files. Importing it back merges rather than inserts: the same archive imported
+twice changes nothing, newer local edits survive, and a session that was running at export time
+comes back stopped rather than as a timer that has been counting for a week.
+
+Deleting the account asks the server first — a local wipe would destroy the credentials the request
+is authenticated with — then clears the database, files, caches, thumbnails, settings, the
+active-timer anchor and, last, the tokens. Platform backup stays off, and the extraction rules
+enumerate what must never be copied off the device.
+
+→ [ADR 0013](docs/adr/0013-data-lifecycle.md) ·
+[Data lifecycle guide](docs/data-lifecycle.md) ·
+[`DataArchive`](core/domain/src/main/kotlin/dev/studyflow/core/domain/lifecycle/DataArchive.kt) ·
+[`ArchiveMergePolicy`](core/domain/src/main/kotlin/dev/studyflow/core/domain/lifecycle/ArchiveMergePolicy.kt) ·
+[`AccountDeletionCoordinator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/lifecycle/AccountDeletion.kt)
+
 ## Architecture
 
 Compose UI → ViewModel (UDF/MVI) → pure-Kotlin domain → data, with dependencies pointing inwards
@@ -288,3 +307,4 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 - [0010 — Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`](docs/adr/0010-storage-provider.md)
 - [0011 — Alarm-style reminders: full-screen UI, playback service, snooze cap](docs/adr/0011-alarm-style-reminders.md)
 - [0012 — Offline-first sync: transactional queue, resumable delta, last-writer-wins](docs/adr/0012-offline-first-sync.md)
+- [0013 — Data lifecycle: user-owned archive, idempotent merge, server-first deletion](docs/adr/0013-data-lifecycle.md)

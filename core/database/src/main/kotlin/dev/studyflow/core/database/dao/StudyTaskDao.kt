@@ -181,6 +181,11 @@ public abstract class StudyTaskDao {
     @Query("SELECT COUNT(*) FROM study_tasks")
     public abstract suspend fun count(): Int
 
+    /** Every task with its reminders, tags and checklist, tombstones included (issue #78). */
+    @Transaction
+    @Query("SELECT * FROM study_tasks ORDER BY id ASC")
+    public abstract suspend fun allTasks(): List<TaskWithReminders>
+
     @Upsert
     protected abstract suspend fun upsertTask(task: StudyTaskEntity)
 

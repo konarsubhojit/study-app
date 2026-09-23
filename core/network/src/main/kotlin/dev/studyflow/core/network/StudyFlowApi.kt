@@ -1,5 +1,6 @@
 package dev.studyflow.core.network
 
+import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.SyncDeltaDto
@@ -47,4 +48,12 @@ public interface StudyFlowApi {
         cursor: String?,
         limit: Int,
     ): ApiResult<SyncDeltaDto>
+
+    /**
+     * `DELETE /v1/account` — deletes the account, its rows and its stored objects (issue #78).
+     *
+     * Idempotent by contract, so a client that never learned whether its request arrived may send
+     * it again; the client only clears its local data once this succeeds.
+     */
+    public suspend fun deleteAccount(): ApiResult<AccountDeletionReceiptDto>
 }

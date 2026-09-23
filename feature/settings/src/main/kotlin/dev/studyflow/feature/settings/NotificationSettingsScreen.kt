@@ -65,6 +65,7 @@ import dev.studyflow.core.ui.state.LoadingState
 // below API 33; the system reports the permission as already granted on older platforms.
 public fun NotificationSettingsRoute(
     modifier: Modifier = Modifier,
+    onOpenDataPrivacy: () -> Unit = {},
     viewModel: NotificationSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -114,6 +115,7 @@ public fun NotificationSettingsRoute(
         state = state,
         onEvent = viewModel::onEvent,
         modifier = modifier,
+        onOpenDataPrivacy = onOpenDataPrivacy,
         syncStatus = { SyncStatusRoute() },
     )
 }
@@ -121,12 +123,14 @@ public fun NotificationSettingsRoute(
 /**
  * @param syncStatus the sync card (issue #55), passed as a slot so this screen stays renderable
  *   without a ViewModel graph — the same reason the rest of it takes state rather than fetching it.
+ * @param onOpenDataPrivacy opens export, restore and account deletion (issue #78).
  */
 @Composable
 public fun NotificationSettingsScreen(
     state: NotificationSettingsUiState,
     onEvent: (NotificationSettingsUiEvent) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenDataPrivacy: () -> Unit = {},
     syncStatus: @Composable () -> Unit = {},
 ) {
     state.rationale?.let { key ->
@@ -179,6 +183,35 @@ public fun NotificationSettingsScreen(
         item {
             TextButton(onClick = { onEvent(NotificationSettingsUiEvent.OpenAppSettings) }) {
                 Text(text = "Open system notification settings")
+            }
+        }
+
+        item {
+            DataPrivacyCard(onOpen = onOpenDataPrivacy)
+        }
+    }
+}
+
+/**
+ * The way into "Data & privacy" (issue #78).
+ *
+ * A card rather than a buried menu item: a user who wants their data out — or gone — should not
+ * have to hunt for the control, and the deletion route has to be findable to be honest.
+ */
+@Composable
+private fun DataPrivacyCard(onOpen: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text(text = DataPrivacyCopy.TITLE, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "Export your data, restore it from an archive, or delete your account.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onOpen) {
+                Text(text = "Open data & privacy")
             }
         }
     }

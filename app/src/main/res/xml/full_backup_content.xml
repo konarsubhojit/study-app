@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Only consulted pre-Android 12 when android:allowBackup is true; kept in sync with
-     data_extraction_rules.xml for documentation purposes since allowBackup is false. -->
+<!--
+  Pre-Android 12 backup rules (issue #78; see docs/data-lifecycle.md).
+
+  Only consulted when android:allowBackup is true, which it is not. Kept exhaustive and in sync
+  with data_extraction_rules.xml so the two files cannot drift into disagreeing about what is
+  sensitive: auth tokens, the running-timer anchor and caches stay out on every platform version.
+-->
 <full-backup-content>
     <exclude domain="root" />
+    <exclude domain="file" />
+    <exclude domain="database" />
+    <exclude domain="sharedpref" />
+    <exclude domain="external" />
+    <exclude domain="sharedpref" path="studyflow.auth.tokens.xml" />
+    <exclude domain="file" path="datastore/active_timer.pb" />
+    <exclude domain="file" path="datastore/user_settings.pb" />
+    <exclude domain="file" path="materials" />
 </full-backup-content>

@@ -168,6 +168,10 @@ public abstract class MaterialDao {
     @Query("SELECT COUNT(*) FROM materials")
     public abstract suspend fun count(): Int
 
+    /** Every catalogue row, tombstones included, for a data export (issue #78). */
+    @Query("SELECT * FROM materials ORDER BY id ASC")
+    public abstract suspend fun allMaterials(): List<MaterialEntity>
+
     @Query("SELECT COUNT(*) FROM materials WHERE deleted = 0")
     public abstract suspend fun countActive(): Int
 
