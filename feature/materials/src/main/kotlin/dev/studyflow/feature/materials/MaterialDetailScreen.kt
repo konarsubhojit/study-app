@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -103,6 +104,7 @@ public fun MaterialDetailRoute(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val exportScope = rememberCoroutineScope()
 
     LaunchedEffect(materialId) {
         viewModel.onEvent(MaterialDetailUiEvent.Load(materialId))
@@ -122,7 +124,26 @@ public fun MaterialDetailRoute(
         onEvent = viewModel::onEvent,
         onBack = onBack,
         onShare = { material, source -> shareLocalMaterial(context, material, source) },
-        onExport = { material, source -> shareLocalMaterial(context, material, source) },
+        onExport = { material, source ->
+            exportScope.launch {
+                val result =
+                    withContext(StandardDispatcherProvider.io) {
+                        exportLocalMaterialToDownloads(context, material, source)
+                    }
+                Toast
+                    .makeText(
+                        context,
+                        context.getString(
+                            when (result) {
+                                MaterialExportResult.Exported -> R.string.material_export_success
+                                MaterialExportResult.Failed -> R.string.material_export_failed
+                                MaterialExportResult.Unsupported -> R.string.material_export_unsupported
+                            },
+                        ),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+            }
+        },
         onStartStudySession = onStartStudySession,
         modifier = modifier,
     )
