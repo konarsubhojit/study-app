@@ -54,18 +54,50 @@ Studio (a local admin UI for browsing tables and running SQL) is available at
 ## Prod environment
 
 Prod is a Supabase project linked to this repository, updated by pushing the same migrations that
-were exercised locally and by the authorisation tests:
+were exercised locally and by the authorisation tests. The primary deployment path is the
+manually-run **Deploy backend** GitHub Actions workflow; it works from a mobile browser and requires
+no local machine, Docker, or Supabase CLI.
+
+### GitHub Actions setup
+
+Add these repository Actions secrets:
+
+| Secret | Purpose | Where to get it |
+| --- | --- | --- |
+| `SUPABASE_ACCESS_TOKEN` | Authenticates the CLI to the Supabase account | Supabase dashboard → Account → Access Tokens |
+| `SUPABASE_DB_PASSWORD` | The target project's database password | Supabase dashboard → Project → Settings → Database |
+| `STORAGE_REAPER_URL` | Endpoint hit hourly by `reap-storage-orphans.yml` | Deployed storage Edge Function URL |
+| `STORAGE_REAPER_TOKEN` | Must match `ORPHAN_REAPER_TOKEN` on the Edge Function | The managed secret chosen when deploying the function |
+
+In GitHub, open **Repository → Settings → Secrets and variables → Actions → New repository
+secret**, enter each name and value, then save it. `project_ref` is a workflow input, not a secret;
+find it in the Supabase dashboard under **Project → Settings → General**. Adding secrets and running
+the deploy both work from a mobile browser.
+
+Storing `SUPABASE_ACCESS_TOKEN` and `SUPABASE_DB_PASSWORD` as repository Actions secrets is a
+deliberate change from the previous credential guidance, which implied that credentials live only
+in a password manager or external CI secret store. No credential, connection string, or project ref
+is committed anywhere under `infra/`.
+
+### Deploy with GitHub Actions
+
+From the GitHub mobile or desktop web UI, open the **Actions** tab, select **Deploy backend**, choose
+**Run workflow**, enter the project ref, and tap **Run workflow**. Any maintainer with write access
+can trigger this deploy. `supabase db push` is not reversible; if approval rules are wanted later,
+add them to the `production` environment.
+
+### Deploy locally
 
 ```sh
-export SUPABASE_ACCESS_TOKEN=...   # from a managed secret store (CI secret, password manager) — never committed
+export SUPABASE_ACCESS_TOKEN=...   # from a managed secret store — never committed
 export SUPABASE_DB_PASSWORD=...    # ditto
 ./infra/scripts/deploy-prod.sh <project-ref>
 ```
 
 `deploy-prod.sh` only ever reads these from the environment; nothing under `infra/` contains a
-prod credential, connection string or project ref. `<project-ref>` identifies which Supabase
-project to link and push to, and is not a secret by itself, but is still passed as an argument
-rather than hard-coded so the script can never be run against the wrong project by accident.
+prod credential, connection string or project ref. `<project-ref>` identifies which Supabase project
+to link and push to, and is not a secret by itself, but is still passed as an argument rather than
+hard-coded so the script can never be run against the wrong project by accident.
 
 If Supabase were ever discontinued or became too expensive (see ADR 0007's cost model), the same
 migrations apply as-is to any Postgres instance; only `deploy-prod.sh`'s use of `supabase db push`
