@@ -253,6 +253,14 @@ The CI job summary records the Gradle build/test/check duration for each run; th
 summary records dependency/build-cache hit details. CI credentials must come from GitHub-provided
 tokens or repository secrets only; no secrets are committed to this repository.
 
+When all release-signing secrets are configured, CI also uploads a signed production testing APK as
+the `studyflow-testing-release-apk-<run number>` artifact. Configure repository secrets
+`STUDYFLOW_RELEASE_KEYSTORE_BASE64`, `STUDYFLOW_RELEASE_STORE_PASSWORD`,
+`STUDYFLOW_RELEASE_KEY_ALIAS`, and `STUDYFLOW_RELEASE_KEY_PASSWORD`; generate the base64 value with
+`base64 -w0 <keystore>`. Download the APK from the run's **Artifacts** section in GitHub Actions.
+This job skips signing on fork pull requests and when any required secret is missing. Artifacts are
+kept for 7 days on pull requests and 14 days otherwise.
+
 ## Current state
 
 | Area | Status |
