@@ -161,3 +161,119 @@ jobs:
             **/build/test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  testing-release-apk:
+    name: Build signed testing release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check signing availability
+        id: signing
+        shell: bash
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STUDYFLOW_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STUDYFLOW_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.STUDYFLOW_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.STUDYFLOW_RELEASE_KEY_PASSWORD }}
+          IS_FORK_PR: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
+        run: |
+          if [[ "$IS_FORK_PR" == "true" ]]; then
+            echo "::notice::Skipping testing APK because signing secrets are unavailable to fork pull requests."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          elif [[ -z "$KEYSTORE_BASE64" || -z "$STORE_PASSWORD" || -z "$KEY_ALIAS" || -z "$KEY_PASSWORD" ]]; then
+            echo "::notice::Skipping testing APK because one or more release signing secrets are not configured."
+            echo "available=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.signing.outputs.available == 'true'
+
+      - name: Set up JDK
+        if: steps.signing.outputs.available == 'true'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        if: steps.signing.outputs.available == 'true'
+        uses: gradle/actions/setup-gradle@v6
+        with:
+          cache-read-only: true
+
+      - name: Configure release signing
+        if: steps.signing.outputs.available == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STUDYFLOW_RELEASE_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.STUDYFLOW_RELEASE_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.STUDYFLOW_RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.STUDYFLOW_RELEASE_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          : "${KEYSTORE_BASE64:?STUDYFLOW_RELEASE_KEYSTORE_BASE64 is required}"
+          : "${STORE_PASSWORD:?STUDYFLOW_RELEASE_STORE_PASSWORD is required}"
+          : "${KEY_ALIAS:?STUDYFLOW_RELEASE_KEY_ALIAS is required}"
+          : "${KEY_PASSWORD:?STUDYFLOW_RELEASE_KEY_PASSWORD is required}"
+          umask 077
+          keystore="$RUNNER_TEMP/studyflow-release.jks"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          echo "STUDYFLOW_RELEASE_STORE_FILE=$keystore" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "STUDYFLOW_RELEASE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+
+      - name: Build production release APK
+        if: steps.signing.outputs.available == 'true'
+        run: ./gradlew :app:assembleProductionRelease --build-cache --configuration-cache --stacktrace
+
+      - name: Verify APK signature
+        if: steps.signing.outputs.available == 'true'
+        shell: bash
+        run: |
+          apk="app/build/outputs/apk/production/release/app-production-release.apk"
+          unsigned_apk="$(find app/build/outputs/apk/production/release -maxdepth 1 -name '*-unsigned.apk' -print -quit)"
+          if [[ -n "$unsigned_apk" ]]; then
+            echo "::error::An unsigned production release APK was produced."
+            exit 1
+          fi
+          if [[ ! -s "$apk" ]]; then
+            echo "::error::The production release APK is missing."
+            exit 1
+          fi
+          apksigner="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          verification="$("$apksigner" verify --verbose --print-certs "$apk")"
+          printf '%s\n' "$verification"
+          sha1="$(awk '/certificate SHA-1 digest: / { sub(/^.*certificate SHA-1 digest: /, ""); print; exit }' <<< "$verification")"
+          sha256="$(awk '/certificate SHA-256 digest: / { sub(/^.*certificate SHA-256 digest: /, ""); print; exit }' <<< "$verification")"
+          if [[ -z "$sha1" || -z "$sha256" ]]; then
+            echo "::error::Could not extract the APK signing certificate fingerprints."
+            exit 1
+          fi
+          {
+            echo "### Testing release APK signing certificate"
+            echo ""
+            echo "- SHA-1: \`$sha1\`"
+            echo "- SHA-256: \`$sha256\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload testing release APK
+        if: steps.signing.outputs.available == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: studyflow-testing-release-apk-${{ github.run_number }}
+          path: app/build/outputs/apk/production/release/app-production-release.apk
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'pull_request' && 7 || 14 }}
+
+      - name: Remove release keystore
+        if: always()
+        shell: bash
+        run: |
+          keystore="$RUNNER_TEMP/studyflow-release.jks"
+          if [[ -f "$keystore" ]]; then
+            shred -u -- "$keystore"
+          fi
