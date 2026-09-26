@@ -235,9 +235,8 @@ jobs:
         shell: bash
         run: |
           apk="app/build/outputs/apk/production/release/app-production-release.apk"
-          if [[ -z "$(find app/build/outputs/apk/production/release -maxdepth 1 -name '*-unsigned.apk' -print -quit)" ]]; then
-            :
-          else
+          unsigned_apk="$(find app/build/outputs/apk/production/release -maxdepth 1 -name '*-unsigned.apk' -print -quit)"
+          if [[ -n "$unsigned_apk" ]]; then
             echo "::error::An unsigned production release APK was produced."
             exit 1
           fi
@@ -248,8 +247,8 @@ jobs:
           apksigner="$ANDROID_HOME/build-tools/$(ls -1 "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
           verification="$("$apksigner" verify --verbose --print-certs "$apk")"
           printf '%s\n' "$verification"
-          sha1="$(sed -n 's/^Signer #1 certificate SHA-1 digest: //p' <<< "$verification")"
-          sha256="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<< "$verification")"
+          sha1="$(awk '/certificate SHA-1 digest: / { sub(/^.*certificate SHA-1 digest: /, ""); print; exit }' <<< "$verification")"
+          sha256="$(awk '/certificate SHA-256 digest: / { sub(/^.*certificate SHA-256 digest: /, ""); print; exit }' <<< "$verification")"
           if [[ -z "$sha1" || -z "$sha256" ]]; then
             echo "::error::Could not extract the APK signing certificate fingerprints."
             exit 1
