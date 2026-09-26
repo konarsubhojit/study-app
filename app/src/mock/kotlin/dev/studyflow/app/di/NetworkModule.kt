@@ -6,6 +6,9 @@ import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.network.ApiResult
 import dev.studyflow.core.network.StudyFlowApi
+import dev.studyflow.core.network.auth.InMemoryTokenStore
+import dev.studyflow.core.network.auth.TokenStore
+import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.SyncDeltaDto
@@ -20,6 +23,10 @@ object NetworkModule {
     @Provides
     @Singleton
     fun studyFlowApi(): StudyFlowApi = FakeStudyFlowBackend()
+
+    @Provides
+    @Singleton
+    fun tokenStore(): TokenStore = InMemoryTokenStore()
 }
 
 internal class FakeStudyFlowBackend(
@@ -51,4 +58,9 @@ internal class FakeStudyFlowBackend(
         cursor: String?,
         limit: Int,
     ): ApiResult<SyncDeltaDto> = ApiResult.Success(SyncDeltaDto())
+
+    override suspend fun deleteAccount(): ApiResult<AccountDeletionReceiptDto> =
+        ApiResult.Success(
+            AccountDeletionReceiptDto(acceptedAtIso = "2026-03-01T09:00:00Z", retentionWindowDays = 30),
+        )
 }
