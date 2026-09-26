@@ -36,6 +36,14 @@ The workflow signs both artifacts from the `STUDYFLOW_RELEASE_KEYSTORE_BASE64`,
 Release APKs are inspected by `infra/scripts/verify-release-artifact.sh`; the workflow fails if
 LeakCanary, Compose inspection, overlay, or sample-data seeder classes are present.
 
+Release builds are minified and resource-shrunk by R8, so code reached only by reflection has to be
+kept explicitly. Dependencies ship their own rules; the few this build cannot derive live in
+`app/proguard-rules.pro`. Every rule R8 actually applied to a build — the app's, the Android
+defaults, and each dependency's — is listed in
+`app/build/outputs/mapping/<variant>/configuration.txt`, and `usage.txt` beside it names what was
+removed. Test a release change with `./gradlew :app:installProductionRelease` rather than a debug
+build, which is not minified.
+
 ## Module layout
 
 - `:app` wires Android application concerns together.
