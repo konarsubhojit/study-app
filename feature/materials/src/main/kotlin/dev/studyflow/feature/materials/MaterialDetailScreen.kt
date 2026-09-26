@@ -52,6 +52,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
@@ -105,6 +106,9 @@ public fun MaterialDetailRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val exportScope = rememberCoroutineScope()
+    val exportSuccessMessage = stringResource(R.string.material_export_success)
+    val exportFailedMessage = stringResource(R.string.material_export_failed)
+    val exportUnsupportedMessage = stringResource(R.string.material_export_unsupported)
 
     LaunchedEffect(materialId) {
         viewModel.onEvent(MaterialDetailUiEvent.Load(materialId))
@@ -133,13 +137,11 @@ public fun MaterialDetailRoute(
                 Toast
                     .makeText(
                         context,
-                        context.getString(
-                            when (result) {
-                                MaterialExportResult.Exported -> R.string.material_export_success
-                                MaterialExportResult.Failed -> R.string.material_export_failed
-                                MaterialExportResult.Unsupported -> R.string.material_export_unsupported
-                            },
-                        ),
+                        when (result) {
+                            MaterialExportResult.Exported -> exportSuccessMessage
+                            MaterialExportResult.Failed -> exportFailedMessage
+                            MaterialExportResult.Unsupported -> exportUnsupportedMessage
+                        },
                         Toast.LENGTH_SHORT,
                     ).show()
             }

@@ -1,3 +1,5 @@
+@file:Suppress("ktlint:standard:filename")
+
 package dev.studyflow.feature.materials
 
 import android.content.ContentValues
@@ -17,6 +19,7 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import java.io.OutputStream
 
 /**
@@ -25,12 +28,17 @@ import java.io.OutputStream
  * Returns [MaterialExportResult.Exported] only after the bytes were copied and the MediaStore row
  * was marked complete. The injectable lambdas are test seams for the MediaStore calls.
  */
+@Suppress("TooGenericExceptionCaught", "ThrowsCount")
 internal suspend fun exportLocalMaterialToDownloads(
     context: Context,
     material: Material,
     source: MaterialPreviewSource?,
     insertDownload: (ContentValues) -> Uri? = { values ->
-        context.contentResolver.insert(downloadsCollectionUri(), values)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            null
+        } else {
+            context.contentResolver.insert(downloadsCollectionUri(), values)
+        }
     },
     openOutput: (Uri) -> OutputStream? = { uri -> context.contentResolver.openOutputStream(uri) },
     markFinished: (Uri) -> Unit = { uri -> context.markDownloadFinished(uri) },
@@ -85,18 +93,18 @@ private suspend fun copyLocalFileToDownload(
     openOutput: (Uri) -> OutputStream?,
 ): Boolean {
     val output = openOutput(downloadUri) ?: return false
-    val buffer = ByteArray(EXPORT_COPY_BUFFER_BYTES)
-    output.use { target ->
-        sourceFile.inputStream().use { input ->
-            while (true) {
-                currentCoroutineContext().ensureActive()
-                val read = input.read(buffer)
-                if (read == -1) break
-                target.write(buffer, 0, read)
-            }
-        }
-    }
+    output.use { target -> sourceFile.inputStream().use { input -> input.copyToChecked(target) } }
     return true
+}
+
+private suspend fun InputStream.copyToChecked(target: OutputStream) {
+    val buffer = ByteArray(EXPORT_COPY_BUFFER_BYTES)
+    while (true) {
+        currentCoroutineContext().ensureActive()
+        val read = read(buffer)
+        if (read == -1) break
+        target.write(buffer, 0, read)
+    }
 }
 
 private fun String.toLocalFile(): File? {
@@ -108,6 +116,7 @@ private fun String.toLocalFile(): File? {
     }
 }
 
+@Suppress("TooGenericExceptionCaught")
 private fun deleteDownloadSafely(
     uri: Uri,
     deleteDownload: (Uri) -> Unit,

@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import androidx.core.net.toUri
 import dev.studyflow.core.testing.data.testMaterial
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
@@ -37,7 +38,7 @@ class MaterialExportTest {
                     mimeType = "application/pdf",
                     sizeBytes = source.length(),
                 )
-            val uri = Uri.parse("content://downloads/1")
+            val uri = "content://downloads/1".toUri()
             val copied = ByteArrayOutputStream()
             lateinit var insertedValues: ContentValues
             var finishedUri: Uri? = null
@@ -58,7 +59,10 @@ class MaterialExportTest {
             assertEquals(MaterialExportResult.Exported, exported)
             assertEquals("notes.pdf", insertedValues.getAsString(MediaStore.MediaColumns.DISPLAY_NAME))
             assertEquals("application/pdf", insertedValues.getAsString(MediaStore.MediaColumns.MIME_TYPE))
-            assertEquals(Environment.DIRECTORY_DOWNLOADS, insertedValues.getAsString(MediaStore.MediaColumns.RELATIVE_PATH))
+            assertEquals(
+                Environment.DIRECTORY_DOWNLOADS,
+                insertedValues.getAsString(MediaStore.MediaColumns.RELATIVE_PATH),
+            )
             assertEquals(1, insertedValues.getAsInteger(MediaStore.MediaColumns.IS_PENDING))
             assertArrayEquals(source.readBytes(), copied.toByteArray())
             assertEquals(uri, finishedUri)
@@ -69,7 +73,7 @@ class MaterialExportTest {
         runTest {
             val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
             val material = testMaterial(id = "material-1", displayName = "notes.txt")
-            val uri = Uri.parse("content://downloads/2")
+            val uri = "content://downloads/2".toUri()
             var deletedUri: Uri? = null
 
             val exported =
@@ -91,7 +95,7 @@ class MaterialExportTest {
         runTest {
             val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
             val material = testMaterial(id = "material-1", displayName = "notes.txt")
-            val uri = Uri.parse("content://downloads/3")
+            val uri = "content://downloads/3".toUri()
             var deletedUri: Uri? = null
 
             val exported =
@@ -113,7 +117,7 @@ class MaterialExportTest {
         runTest {
             val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
             val material = testMaterial(id = "material-1", displayName = "notes.txt")
-            val uri = Uri.parse("content://downloads/7")
+            val uri = "content://downloads/7".toUri()
             var deletedUri: Uri? = null
 
             val exported =
@@ -159,7 +163,7 @@ class MaterialExportTest {
                     source = MaterialPreviewSource.Remote("content://materials/notes.txt"),
                     insertDownload = {
                         insertCalled = true
-                        Uri.parse("content://downloads/4")
+                        "content://downloads/4".toUri()
                     },
                 )
 
@@ -179,7 +183,7 @@ class MaterialExportTest {
                     source = MaterialPreviewSource.Local(File(tempDir.root, "missing.txt").absolutePath),
                     insertDownload = {
                         insertCalled = true
-                        Uri.parse("content://downloads/5")
+                        "content://downloads/5".toUri()
                     },
                 )
 
@@ -199,7 +203,7 @@ class MaterialExportTest {
                     source = MaterialPreviewSource.Local("content://materials/notes.txt"),
                     insertDownload = {
                         insertCalled = true
-                        Uri.parse("content://downloads/6")
+                        "content://downloads/6".toUri()
                     },
                 )
 
@@ -256,8 +260,6 @@ class MaterialExportTest {
         }
 
     private object FailingOutputStream : OutputStream() {
-        override fun write(b: Int) {
-            throw IOException("disk full")
-        }
+        override fun write(b: Int): Unit = throw IOException("disk full")
     }
 }
