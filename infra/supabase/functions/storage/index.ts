@@ -25,6 +25,9 @@ const ALLOWED_MIME_TYPES = new Set([
     "text/plain",
     "video/mp4",
 ]);
+const OPERATIONS = new Set(["initUpload", "completeUpload", "getDownloadUrl", "delete", "reapOrphans"]);
+const TRACE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
+const responseEgressBytes = new WeakMap<Response, number>();
 
 type Json = Record<string, unknown>;
 type UploadRow = {
@@ -43,6 +46,14 @@ type Reservation = {
     created: boolean;
     expires_at: string;
     provider_upload_id: string | null;
+};
+type ObservabilityEvent = {
+    requestId: string;
+    operation: string;
+    status: number;
+    durationMs: number;
+    errorCode?: string;
+    egressBytes?: number;
 };
 
 class ApiError extends Error {
@@ -80,6 +91,60 @@ const json = (status: number, body: Json, headers: HeadersInit = {}): Response =
         status,
         headers: { "content-type": "application/json", ...headers },
     });
+
+export function requestTraceId(request: Request): string {
+    const provided = request.headers.get("x-request-id") ?? request.headers.get("traceparent");
+    return provided && TRACE_ID_PATTERN.test(provided) ? provided : crypto.randomUUID();
+}
+
+function operationName(request: Request): string {
+    const candidate = new URL(request.url).pathname.split("/").filter(Boolean).at(-1) ?? "";
+    return OPERATIONS.has(candidate) ? candidate : "unknown";
+}
+
+function observabilityPayload(event: ObservabilityEvent): Json {
+    return {
+        request_id: event.requestId,
+        operation: event.operation,
+        status: event.status,
+        duration_ms: event.durationMs,
+        error_code: event.errorCode ?? null,
+        egress_bytes: event.egressBytes ?? 0,
+    };
+}
+
+export function observabilityLogLine(event: ObservabilityEvent): string {
+    return JSON.stringify({
+        event: "storage_request",
+        ...observabilityPayload(event),
+    });
+}
+
+async function recordObservability(event: ObservabilityEvent): Promise<void> {
+    console.info(observabilityLogLine(event));
+    await database("backend_observability_events", {
+        method: "POST",
+        headers: { prefer: "return=minimal" },
+        body: JSON.stringify(observabilityPayload(event)),
+    }).catch((error) => {
+        console.warn(error instanceof Error ? `observability_write_failed:${error.name}` : "observability_write_failed");
+    });
+}
+
+function recordObservabilityAfterResponse(event: ObservabilityEvent): void {
+    const promise = recordObservability(event);
+    const runtime = (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime;
+    if (runtime) {
+        runtime.waitUntil(promise);
+    } else {
+        void promise;
+    }
+}
+
+function withTrace(response: Response, requestId: string): Response {
+    response.headers.set("x-request-id", requestId);
+    return response;
+}
 
 async function database(path: string, init: RequestInit = {}): Promise<Response> {
     const headers = new Headers(init.headers);
@@ -449,7 +514,10 @@ async function getDownloadUrl(request: Request, owner: string): Promise<Response
         { expiresIn: SIGNED_URL_TTL_SECONDS },
     );
     await audit(owner, "download", upload.object_key, expiresAt);
-    return json(200, { url, expiresAt });
+    const response = json(200, { url, expiresAt });
+    // The BFF only sees URL issuance, not the provider's later transfer log; this is projected egress.
+    responseEgressBytes.set(response, upload.size_bytes);
+    return response;
 }
 
 async function deleteObject(request: Request, owner: string): Promise<Response> {
@@ -532,34 +600,63 @@ async function equalTokens(provided: string | null, expected: string): Promise<b
 }
 
 export async function handleRequest(request: Request): Promise<Response> {
+    const startedAt = performance.now();
+    const requestId = requestTraceId(request);
+    const operation = operationName(request);
+    let status = 503;
+    let errorCode: string | undefined;
+    let response: Response | undefined;
     try {
         if (request.method !== "POST") throw new ApiError(405, "method_not_allowed", "Use POST.");
-        const operation = new URL(request.url).pathname.split("/").filter(Boolean).at(-1);
-        if (operation === "reapOrphans") return await reapOrphans(request);
+        if (operation === "reapOrphans") {
+            response = await reapOrphans(request);
+            status = response.status;
+            return withTrace(response, requestId);
+        }
         const owner = await userId(request);
         switch (operation) {
             case "initUpload":
-                return await initUpload(request, owner);
+                response = await initUpload(request, owner);
+                break;
             case "completeUpload":
-                return await completeUpload(request, owner);
+                response = await completeUpload(request, owner);
+                break;
             case "getDownloadUrl":
-                return await getDownloadUrl(request, owner);
+                response = await getDownloadUrl(request, owner);
+                break;
             case "delete":
-                return await deleteObject(request, owner);
+                response = await deleteObject(request, owner);
+                break;
             default:
                 throw new ApiError(404, "endpoint_not_found", "Storage endpoint not found.");
         }
+        status = response.status;
+        return withTrace(response, requestId);
     } catch (error) {
         if (error instanceof ApiError) {
             const headers: HeadersInit = error.status === 429 ? { "retry-after": "60" } : {};
-            return json(error.status, {
+            status = error.status;
+            errorCode = error.code;
+            response = json(error.status, {
                 code: error.code,
                 message: error.message,
                 ...(error.details ? { details: error.details } : {}),
             }, headers);
+            return withTrace(response, requestId);
         }
-        console.error(error instanceof Error ? error.message : "Unknown storage service failure");
-        return json(503, { code: "storage_unavailable", message: "Cloud storage is temporarily unavailable." });
+        errorCode = "storage_unavailable";
+        console.error(error instanceof Error ? `storage_unavailable:${error.name}` : "storage_unavailable");
+        response = json(503, { code: "storage_unavailable", message: "Cloud storage is temporarily unavailable." });
+        return withTrace(response, requestId);
+    } finally {
+        recordObservabilityAfterResponse({
+            requestId,
+            operation,
+            status,
+            durationMs: Math.max(0, Math.round(performance.now() - startedAt)),
+            errorCode,
+            egressBytes: response ? responseEgressBytes.get(response) : 0,
+        });
     }
 }
 
