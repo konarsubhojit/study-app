@@ -1,0 +1,47 @@
+name: Deploy storage function
+
+on:
+  workflow_dispatch:
+    inputs:
+      project_ref:
+        description: Supabase project reference
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy production storage function
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: 2.118.0
+
+      - name: Deploy storage function
+        env:
+          PROJECT_REF: ${{ inputs.project_ref }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          STORAGE_S3_ENDPOINT: ${{ secrets.STORAGE_S3_ENDPOINT }}
+          STORAGE_S3_BUCKET: ${{ secrets.STORAGE_S3_BUCKET }}
+          STORAGE_S3_ACCESS_KEY_ID: ${{ secrets.STORAGE_S3_ACCESS_KEY_ID }}
+          STORAGE_S3_SECRET_ACCESS_KEY: ${{ secrets.STORAGE_S3_SECRET_ACCESS_KEY }}
+          ORPHAN_REAPER_TOKEN: ${{ secrets.ORPHAN_REAPER_TOKEN }}
+          STORAGE_S3_REGION: ${{ secrets.STORAGE_S3_REGION }}
+          STORAGE_SCAN_HOOK_URL: ${{ secrets.STORAGE_SCAN_HOOK_URL }}
+          STORAGE_SCAN_HOOK_TOKEN: ${{ secrets.STORAGE_SCAN_HOOK_TOKEN }}
+        run: |
+          test -n "$SUPABASE_ACCESS_TOKEN"
+          test -n "$STORAGE_S3_ENDPOINT"
+          test -n "$STORAGE_S3_BUCKET"
+          test -n "$STORAGE_S3_ACCESS_KEY_ID"
+          test -n "$STORAGE_S3_SECRET_ACCESS_KEY"
+          test -n "$ORPHAN_REAPER_TOKEN"
+          infra/scripts/deploy-storage-function.sh "$PROJECT_REF"
