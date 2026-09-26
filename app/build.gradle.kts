@@ -133,4 +133,7 @@ dependencies {
     implementation(libs.timber)
 
     testImplementation(projects.core.testing)
+    // ProductionReleaseSmokeInstrumentedTest reads logcat directly rather than through Espresso,
+    // so it works the same way against a black-box, minified `productionReleaseTest` install.
+    androidTestImplementation(libs.androidx.test.uiautomator)
 }

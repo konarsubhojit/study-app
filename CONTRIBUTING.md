@@ -36,6 +36,52 @@ The workflow signs both artifacts from the `STUDYFLOW_RELEASE_KEYSTORE_BASE64`,
 Release APKs are inspected by `infra/scripts/verify-release-artifact.sh`; the workflow fails if
 LeakCanary, Compose inspection, overlay, or sample-data seeder classes are present.
 
+## Minification and keep rules
+
+`productionRelease` (and every tagged release) builds with `isMinifyEnabled = true` and
+`isShrinkResources = true`; R8 renames, inlines and removes anything it cannot prove is reachable.
+Reflection — `Class.forName`, `ServiceLoader`, Room/Hilt/kotlinx.serialization codegen, Gradle's
+own `androidx.startup.Initializer` and Glance's app-widget lookup — is invisible to that analysis,
+so a missing keep rule does not fail the build. It fails at runtime, on whichever device reaches
+that code path first, with an `UninitializedPropertyAccessException`, `ClassNotFoundException` or
+`NoSuchFieldError`. `app/proguard-rules.pro` exists to make those failures build-time instead.
+
+If you ship a new reflective dependency — anything resolved by class name, string, service-loader
+entry or generated codegen rather than a direct reference — add its keep rules to
+`app/proguard-rules.pro` (or the owning module's `consumerProguardFiles`, see below) **in the same
+pull request**. Do not rely on someone hitting the crash later.
+
+### Diagnosing a release-only crash
+
+1. Build with shrinking on and check `app/build/outputs/mapping/productionRelease/missing_rules.txt`.
+   AGP writes this file with R8's own suggested rules whenever it can prove a rule is missing; most
+   reflection is invisible to that analysis, so an empty file does not mean the build is safe.
+2. Reproduce with shrinking off to confirm R8 is actually the cause before writing any rule:
+   `./gradlew :app:assembleProductionRelease -Pstudyflow.minifyRelease=false`. If the crash
+   disappears, it is a keep-rule gap; if it persists, it is a regular bug.
+3. Narrow the rule to the smallest scope that fixes it — prefer `-keepclassmembers` (keeps only the
+   members R8 would otherwise strip or rename) over a blanket `-keep class ... { *; }`, which also
+   disables shrinking and obfuscation for the whole hierarchy. Comment the rule with which library
+   needs it and why, matching the existing blocks in `app/proguard-rules.pro`.
+4. Confirm against the real thing: `./gradlew :app:installProductionRelease` and exercise the
+   affected path while reading `adb logcat`. Only that install is both shrunk and obfuscated the
+   way a shipped build is; `pixel6Api34ProductionReleaseTestAndroidTest` (see
+   [Testing](#minified-release-smoke-test) below) is a useful fast regression check for a rule a
+   *shrinking* gap needs, but it cannot confirm a rule that only a *renaming* gap needs, since its
+   build type has to be debuggable to be instrumented at all, and AGP never obfuscates a debuggable
+   build.
+
+### Library-owned rules vs. `app/proguard-rules.pro`
+
+Keep a rule in `app/proguard-rules.pro` when it exists only because of how `:app` wires a library
+together (for example, Ktor's engine/plugin service loading, which is selected in
+`app/di/NetworkModule.kt`, or a manifest-only component such as `AppStartupInitializer`). Prefer a
+module's own `consumerProguardFiles` when the module itself owns the reflective type, so the rule
+travels with the type instead of being rediscovered every time `:app`'s dependency graph changes.
+Several dependencies already ship their own consumer rules this way — Room keeps its generated
+`_Impl` classes, Hilt keeps `@EntryPoint` and `@HiltWorker` classes, and WorkManager keeps
+`ListenableWorker` subclasses — which is why `app/proguard-rules.pro` does not repeat them.
+
 ## Module layout
 
 - `:app` wires Android application concerns together.
@@ -120,6 +166,32 @@ Destructive fallback is development-only and is rejected at runtime when the APK
 `./gradlew build` (what CI runs on every pull request) includes the fast suite. The emulator and
 quarantine runs happen nightly in the `Slow verification` workflow. Keep it that way: nothing that
 needs a device or minutes of wall clock belongs in the inner loop.
+
+### Minified release smoke test
+
+`pixel6Api34DebugAndroidTest` runs against the debug build, which is never minified, so it cannot
+catch a missing R8 keep rule. `pixel6Api34ProductionReleaseTestAndroidTest` runs the same
+instrumented tests — including `ProductionReleaseSmokeInstrumentedTest` — against the
+`productionReleaseTest` build type: `isMinifyEnabled`/`isShrinkResources` copied from `release`, but
+`isDebuggable = true` so the instrumentation runner can attach to it. That smoke test launches the
+app, reads settings from DataStore, and navigates to the task list, history and timer, then scans
+logcat for the exception types a keep-rule gap produces.
+
+This catches a keep-rule gap that only shrinking exposes — a reflectively-used class or member R8
+removed entirely, which throws `ClassNotFoundException`/`NoSuchMethodError`. It does **not** catch a
+gap that only *renaming* exposes, such as the original `Field theme_ for ea6 not found` crash:
+`isDebuggable = true` makes AGP skip obfuscation outright, on every build type, so nothing under
+`productionReleaseTest` is ever renamed (compare `app/build/outputs/mapping/productionReleaseTest/`
+against `.../productionRelease/` — the same class keeps its own name in one and is `a1`-style
+renamed in the other). This is a platform restriction, not a configuration bug: `am instrument`
+refuses to attach to a non-debuggable target at all, so no on-device automated test can exercise
+real obfuscation. The one check that does is the manual one in the pull request template — install
+the actual `productionRelease` APK and read `adb logcat` — and it stays required for that reason.
+It complements, and does not replace, the Robolectric tests in this suite: Robolectric never runs
+R8 at all, so it cannot see even a shrinking-only gap.
+
+Both managed-device tasks run nightly in `Slow verification`; run either locally the same way you
+would `pixel6Api34DebugAndroidTest`.
 
 ### Flaky tests are quarantined, never ignored
 

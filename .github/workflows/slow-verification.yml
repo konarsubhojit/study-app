@@ -31,18 +31,29 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
-      # Includes :app:pixel6Api34DebugAndroidTest for timer process-death coverage when configured.
+      # Includes :app:pixel6Api34ProductionReleaseTestAndroidTest, which runs every instrumented
+      # test in :app (timer process-death coverage and the minified-release smoke test) against
+      # `productionReleaseTest` — the `productionRelease` variant with only `isDebuggable` flipped
+      # to `true`, so R8 shrinking (though not obfuscation, which AGP always skips on a debuggable
+      # build type) gets an on-device run. See "Minified release smoke test" in CONTRIBUTING.md;
+      # a plain `release`/`productionRelease` APK cannot be instrumented at all, since the
+      # platform requires a debuggable target to attach a test runner.
       - name: Run configured managed-device tests
         shell: bash
         run: |
           mkdir -p build/ci
           ./gradlew tasks --all --console=plain > build/ci/gradle-tasks.txt
-          timer_task=":app:pixel6Api34DebugAndroidTest"
+          timer_task=":app:pixel6Api34ProductionReleaseTestAndroidTest"
           timer_task_path="${timer_task#:}"
           timer_task_available=false
           managed_device_tasks=()
+          # Matched on the managed device name (`pixel6Api34`, from AndroidCommon.kt) rather than
+          # on any particular build type, so a module's `*DebugAndroidTest` and `:app`'s
+          # `*ProductionReleaseTestAndroidTest`/`*MockReleaseTestAndroidTest` are all discovered the
+          # same way; this deliberately excludes the per-module aggregate tasks (`assembleAndroidTest`,
+          # `connectedAndroidTest`, ...), which do not run on a managed device at all.
           mapfile -t additional_managed_device_tasks < <(
-            awk '/^[[:space:]]*[^[:space:]]+DebugAndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
+            awk '/^[[:space:]]*[^[:space:]]+pixel6Api34[^[:space:]]*AndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
           )
 
           for task in "${additional_managed_device_tasks[@]}"; do

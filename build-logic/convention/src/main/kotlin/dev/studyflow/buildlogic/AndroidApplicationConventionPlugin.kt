@@ -6,6 +6,12 @@ import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.dependencies
 
+/** `-Pstudyflow.minifyRelease=false` disables R8 to isolate a shrinking-only crash; see CONTRIBUTING.md. */
+private const val MINIFY_RELEASE_PROPERTY = "studyflow.minifyRelease"
+
+/** `-Pstudyflow.shrinkReleaseResources=false` is the equivalent knob for resource shrinking. */
+private const val SHRINK_RELEASE_RESOURCES_PROPERTY = "studyflow.shrinkReleaseResources"
+
 /**
  * Convention for the installable application module (issue #11).
  *
@@ -19,6 +25,15 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
             pluginManager.apply("studyflow.hilt")
             pluginManager.apply("studyflow.quality")
             pluginManager.apply("studyflow.test")
+
+            // Both default to `true`: the shipped release path is always fully shrunk. Flipping
+            // either off is a debugging aid for telling an R8 keep-rule bug apart from an
+            // unrelated crash, never a mode to ship (see "Diagnosing a release-only crash" in
+            // CONTRIBUTING.md).
+            val minifyRelease =
+                providers.gradleProperty(MINIFY_RELEASE_PROPERTY).map(String::toBoolean).getOrElse(true)
+            val shrinkReleaseResources =
+                providers.gradleProperty(SHRINK_RELEASE_RESOURCES_PROPERTY).map(String::toBoolean).getOrElse(true)
 
             extensions.configure<ApplicationExtension> {
                 configureAndroid(this)
@@ -34,8 +49,8 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                 buildFeatures.buildConfig = true
 
                 buildTypes.getByName("release") {
-                    isMinifyEnabled = true
-                    isShrinkResources = true
+                    isMinifyEnabled = minifyRelease
+                    isShrinkResources = shrinkReleaseResources
                     proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
                     // Module-specific keep rules are optional; R8 fails outright on a file that
                     // is listed but absent, which is a poor welcome for a new application module.
@@ -44,6 +59,25 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                         proguardFiles(moduleRules)
                     }
                 }
+
+                // A minified, non-debuggable APK cannot be instrumented (the platform requires
+                // `android:debuggable="true"` to attach a test runner) — see
+                // "Minified release smoke test" in CONTRIBUTING.md. `releaseTest` is `release`
+                // (same `isMinifyEnabled`/`isShrinkResources`/keep rules) with only that flag
+                // flipped, so the Gradle Managed Device instrumented suite exercises the same R8
+                // *shrinking* the shipped `release` build type gets, instead of only ever running
+                // against `debug`, where R8 never runs at all. It does not exercise *obfuscation*:
+                // AGP skips renaming outright on any debuggable build type, so a keep-rule gap
+                // that only renaming exposes (the original protobuf field crash this file's other
+                // rules fix) still needs the manual `installProductionRelease` + logcat check in
+                // CONTRIBUTING.md, not this build type.
+                buildTypes.create("releaseTest") {
+                    initWith(buildTypes.getByName("release"))
+                    matchingFallbacks += "release"
+                    isDebuggable = true
+                    signingConfig = buildTypes.getByName("debug").signingConfig
+                }
+                testBuildType = "releaseTest"
             }
 
             dependencies {
