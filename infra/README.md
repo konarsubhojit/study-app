@@ -21,6 +21,7 @@ infra/
     dev-down.sh              # stop it
     test.sh                   # run the authorisation test suite locally
     deploy-prod.sh           # push migrations to the linked prod project
+    deploy-storage-function.sh # set secrets and deploy the storage Edge Function
 ```
 
 ## Prerequisites
@@ -60,14 +61,40 @@ no local machine, Docker, or Supabase CLI.
 
 ### GitHub Actions setup
 
-Add these repository Actions secrets:
+Add the following repository Actions secrets for each operation.
+
+#### Database deploy
 
 | Secret | Purpose | Where to get it |
 | --- | --- | --- |
 | `SUPABASE_ACCESS_TOKEN` | Authenticates the CLI to the Supabase account | Supabase dashboard → Account → Access Tokens |
 | `SUPABASE_DB_PASSWORD` | The target project's database password | Supabase dashboard → Project → Settings → Database |
-| `STORAGE_REAPER_URL` | Endpoint hit hourly by `reap-storage-orphans.yml` | Deployed storage Edge Function URL |
-| `STORAGE_REAPER_TOKEN` | Must match `ORPHAN_REAPER_TOKEN` on the Edge Function | The managed secret chosen when deploying the function |
+
+#### Storage function deploy
+
+| Setting | Required? | Purpose | Where it comes from |
+| --- | --- | --- | --- |
+| `SUPABASE_ACCESS_TOKEN` | Required | Authenticates the CLI to the Supabase account | Same repository Actions secret used by the database deploy |
+| `SUPABASE_URL` | Required, platform-provided | Project API URL used by the function | Supabase injects it automatically into hosted Edge Functions; do not add it as an Actions secret |
+| `SUPABASE_SERVICE_ROLE_KEY` | Required, platform-provided | Server-only key used by the function | Supabase injects it automatically into hosted Edge Functions; do not add it as an Actions secret |
+| `STORAGE_S3_ENDPOINT` | Required | S3-compatible API endpoint | Storage provider dashboard |
+| `STORAGE_S3_BUCKET` | Required | Storage bucket name | Storage provider dashboard |
+| `STORAGE_S3_ACCESS_KEY_ID` | Required | Storage API access key | Storage provider dashboard |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | Required | Storage API secret key | Storage provider dashboard |
+| `ORPHAN_REAPER_TOKEN` | Required | Authenticates hourly orphan-reaper requests | Generate it yourself, for example with `openssl rand -hex 32` |
+| `STORAGE_S3_REGION` | Optional | Storage region; defaults to `us-east-1` | Storage provider dashboard, when the provider requires a different region |
+| `STORAGE_SCAN_HOOK_URL` | Optional | Malware scanner webhook | Malware scanner provider |
+| `STORAGE_SCAN_HOOK_TOKEN` | Optional | Authenticates malware scanner requests | Malware scanner provider |
+
+Except for the two platform-provided `SUPABASE_*` settings, add each setting that applies as a
+repository Actions secret with the same name.
+
+#### Hourly orphan reaper
+
+| Secret | Purpose | Where to get it |
+| --- | --- | --- |
+| `STORAGE_REAPER_URL` | Base endpoint hit hourly by `reap-storage-orphans.yml` | After deploying the function, set it to `https://<project-ref>.supabase.co/functions/v1/storage` with no trailing `/reapOrphans` |
+| `STORAGE_REAPER_TOKEN` | Authenticates hourly orphan-reaper requests | Use the exact same self-generated value as the function's `ORPHAN_REAPER_TOKEN` |
 
 In GitHub, open **Repository → Settings → Secrets and variables → Actions → New repository
 secret**, enter each name and value, then save it. `project_ref` is a workflow input, not a secret;
@@ -115,15 +142,33 @@ migrations rather than a hand-written approximation of them.
 ## Presigned storage service
 
 `supabase/functions/storage` is the only component that receives S3-compatible storage
-credentials. Deploy it with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `STORAGE_S3_ENDPOINT`,
-`STORAGE_S3_REGION`, `STORAGE_S3_BUCKET`, `STORAGE_S3_ACCESS_KEY_ID`, and
-`STORAGE_S3_SECRET_ACCESS_KEY`. Set `ORPHAN_REAPER_TOKEN` to a random managed secret, then configure
-the repository's `STORAGE_REAPER_URL` and `STORAGE_REAPER_TOKEN` Actions secrets so
-`reap-storage-orphans.yml` aborts abandoned multipart uploads hourly.
+credentials. Its primary deployment path is the manually-run **Deploy storage function** GitHub
+Actions workflow: select it in the **Actions** tab, choose **Run workflow**, enter the project ref,
+and tap **Run workflow**. Like the database deploy, it works from a mobile browser without a local
+machine, Docker, or Supabase CLI.
+
+The required deployment order is:
+
+1. Run **Deploy backend** to apply the database migrations.
+2. Run **Deploy storage function**.
+3. Set `STORAGE_REAPER_URL` and `STORAGE_REAPER_TOKEN` as described above.
+4. The hourly `reap-storage-orphans.yml` workflow starts succeeding.
+
+Until step 3 is complete, the reaper workflow fails its `test -n` guard. This is expected and
+harmless. `ORPHAN_REAPER_TOKEN` and `STORAGE_REAPER_TOKEN` are two copies of one self-generated
+secret on opposite ends of the reaper's HTTP call; neither value can be looked up before it is
+created. Similarly, `STORAGE_REAPER_URL` does not exist until the function is deployed.
 
 An optional malware scanner can be enabled with `STORAGE_SCAN_HOOK_URL` and
 `STORAGE_SCAN_HOOK_TOKEN`. The hook must return `{"clean":true,"sha256":"<expected digest>"}`;
 rejected objects are deleted before their metadata becomes downloadable.
+
+For a local deployment, export the same settings and run
+`./infra/scripts/deploy-storage-function.sh <project-ref>`. The pinned Supabase CLI version in both
+deploy workflows must remain compatible with the feature set in `supabase/config.toml`. Older CLI
+versions fail before deployment with `has invalid keys` errors for settings including `local_smtp`,
+`storage.s3_protocol`, `storage.analytics`, `storage.vector`, `db.health_timeout`,
+`auth.oauth_server`, `auth.external.apple.email_optional`, and `experimental.pgdelta`.
 
 ## Operations
 
