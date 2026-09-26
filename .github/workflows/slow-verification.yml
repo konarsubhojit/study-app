@@ -34,10 +34,10 @@ jobs:
       # Includes :app:pixel6Api34ProductionReleaseTestAndroidTest, which runs every instrumented
       # test in :app (timer process-death coverage and the minified-release smoke test) against
       # `productionReleaseTest` — the `productionRelease` variant with only `isDebuggable` flipped
-      # to `true`, so the same R8 output that ships gets an on-device run (see "Testing the
-      # minified build" in CONTRIBUTING.md; a plain `release`/`productionRelease` APK cannot be
-      # instrumented at all, since the platform requires a debuggable target to attach a test
-      # runner).
+      # to `true`, so R8 shrinking (though not obfuscation, which AGP always skips on a debuggable
+      # build type) gets an on-device run. See "Minified release smoke test" in CONTRIBUTING.md;
+      # a plain `release`/`productionRelease` APK cannot be instrumented at all, since the
+      # platform requires a debuggable target to attach a test runner.
       - name: Run configured managed-device tests
         shell: bash
         run: |

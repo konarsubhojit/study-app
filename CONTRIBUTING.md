@@ -63,9 +63,13 @@ pull request**. Do not rely on someone hitting the crash later.
    members R8 would otherwise strip or rename) over a blanket `-keep class ... { *; }`, which also
    disables shrinking and obfuscation for the whole hierarchy. Comment the rule with which library
    needs it and why, matching the existing blocks in `app/proguard-rules.pro`.
-4. Confirm with the minified build: `./gradlew :app:installProductionRelease` and exercise the
-   affected path, or run the `pixel6Api34ProductionReleaseTestAndroidTest` managed-device task (see
-   [Testing](#minified-release-smoke-test) below), which drives the same variant end to end.
+4. Confirm against the real thing: `./gradlew :app:installProductionRelease` and exercise the
+   affected path while reading `adb logcat`. Only that install is both shrunk and obfuscated the
+   way a shipped build is; `pixel6Api34ProductionReleaseTestAndroidTest` (see
+   [Testing](#minified-release-smoke-test) below) is a useful fast regression check for a rule a
+   *shrinking* gap needs, but it cannot confirm a rule that only a *renaming* gap needs, since its
+   build type has to be debuggable to be instrumented at all, and AGP never obfuscates a debuggable
+   build.
 
 ### Library-owned rules vs. `app/proguard-rules.pro`
 
@@ -171,9 +175,20 @@ instrumented tests — including `ProductionReleaseSmokeInstrumentedTest` — ag
 `productionReleaseTest` build type: `isMinifyEnabled`/`isShrinkResources` copied from `release`, but
 `isDebuggable = true` so the instrumentation runner can attach to it. That smoke test launches the
 app, reads settings from DataStore, and navigates to the task list, history and timer, then scans
-logcat for the exception types a keep-rule gap produces. It complements, and does not replace, the
-Robolectric tests in this suite: Robolectric never runs R8, so it cannot see the classes and members
-R8 removed or renamed.
+logcat for the exception types a keep-rule gap produces.
+
+This catches a keep-rule gap that only shrinking exposes — a reflectively-used class or member R8
+removed entirely, which throws `ClassNotFoundException`/`NoSuchMethodError`. It does **not** catch a
+gap that only *renaming* exposes, such as the original `Field theme_ for ea6 not found` crash:
+`isDebuggable = true` makes AGP skip obfuscation outright, on every build type, so nothing under
+`productionReleaseTest` is ever renamed (compare `app/build/outputs/mapping/productionReleaseTest/`
+against `.../productionRelease/` — the same class keeps its own name in one and is `a1`-style
+renamed in the other). This is a platform restriction, not a configuration bug: `am instrument`
+refuses to attach to a non-debuggable target at all, so no on-device automated test can exercise
+real obfuscation. The one check that does is the manual one in the pull request template — install
+the actual `productionRelease` APK and read `adb logcat` — and it stays required for that reason.
+It complements, and does not replace, the Robolectric tests in this suite: Robolectric never runs
+R8 at all, so it cannot see even a shrinking-only gap.
 
 Both managed-device tasks run nightly in `Slow verification`; run either locally the same way you
 would `pixel6Api34DebugAndroidTest`.

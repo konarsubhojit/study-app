@@ -15,11 +15,19 @@ import org.junit.Test
 
 /**
  * Exercises every reflective dependency `app/proguard-rules.pro` protects, end to end, against
- * whatever build R8 actually produced — this only means something when the `Slow verification`
- * workflow runs it as `pixel6Api34ProductionReleaseTestAndroidTest`, the one instrumented task that
- * targets the `productionReleaseTest` build type (`productionRelease` plus `isDebuggable`, see
+ * R8-shrunk output — this only means something when the `Slow verification` workflow runs it as
+ * `pixel6Api34ProductionReleaseTestAndroidTest`, the one instrumented task that targets the
+ * `productionReleaseTest` build type (`productionRelease` plus `isDebuggable`, see
  * `AndroidApplicationConventionPlugin`). A local `./gradlew test` run of this same class compiles
  * against whichever variant Android Studio picked and proves nothing about R8.
+ *
+ * This build type is shrunk but never *obfuscated*: AGP skips renaming outright on any debuggable
+ * build type, which `productionReleaseTest` has to be for the instrumentation runner to attach at
+ * all. So this test catches a keep-rule gap a stripped class or member exposes
+ * (`ClassNotFoundException`, `NoSuchMethodError`), but not one only a *renamed* class or member
+ * exposes (`NoSuchFieldError` for a field like the original protobuf crash this file guards
+ * against) — that needs the manual `installProductionRelease` + `adb logcat` check described in
+ * CONTRIBUTING.md, against the real, fully-shrunk-and-obfuscated `productionRelease` build.
  *
  * A crash anywhere in this walk fails the test directly (Compose's `IdlingResource` propagates it
  * from the composition), but the class of bug this guards — `UninitializedPropertyAccessException`,

@@ -62,11 +62,15 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
 
                 // A minified, non-debuggable APK cannot be instrumented (the platform requires
                 // `android:debuggable="true"` to attach a test runner) — see
-                // "Testing the minified build" in CONTRIBUTING.md. `releaseTest` is `release`
+                // "Minified release smoke test" in CONTRIBUTING.md. `releaseTest` is `release`
                 // (same `isMinifyEnabled`/`isShrinkResources`/keep rules) with only that flag
-                // flipped, so the Gradle Managed Device instrumented suite exercises the exact
-                // shrinking the shipped `release` build type gets, instead of only ever running
-                // against `debug`, where R8 never runs at all.
+                // flipped, so the Gradle Managed Device instrumented suite exercises the same R8
+                // *shrinking* the shipped `release` build type gets, instead of only ever running
+                // against `debug`, where R8 never runs at all. It does not exercise *obfuscation*:
+                // AGP skips renaming outright on any debuggable build type, so a keep-rule gap
+                // that only renaming exposes (the original protobuf field crash this file's other
+                // rules fix) still needs the manual `installProductionRelease` + logcat check in
+                // CONTRIBUTING.md, not this build type.
                 buildTypes.create("releaseTest") {
                     initWith(buildTypes.getByName("release"))
                     matchingFallbacks += "release"
