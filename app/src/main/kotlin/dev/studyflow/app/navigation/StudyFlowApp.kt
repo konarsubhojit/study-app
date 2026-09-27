@@ -2,24 +2,34 @@ package dev.studyflow.app.navigation
 
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Insights
+import androidx.compose.material.icons.outlined.Timer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.navigation3.runtime.NavBackStack
 import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
 import androidx.navigation3.ui.NavDisplay
-import dev.studyflow.core.designsystem.layout.StudyFlowScaffold
 import dev.studyflow.core.designsystem.motion.StudyFlowMotion
+import dev.studyflow.core.designsystem.navigation.StudyFlowNavigationItem
+import dev.studyflow.core.designsystem.navigation.StudyFlowNavigationSuite
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
 import dev.studyflow.feature.auth.AccountRoute
 import dev.studyflow.feature.materials.MaterialDetailRoute
@@ -57,18 +67,12 @@ internal fun StudyFlowApp(
             onDispose { currentRegisterDeepLinkHandler({}) }
         }
 
-        StudyFlowScaffold(
-            bottomBar = {
-                DestinationBar(
-                    current = backStack.lastOrNull() as? AppRoute ?: HomeRoute,
-                    onNavigate = navigate,
-                )
-            },
-        ) { padding ->
-            AppNavDisplay(
-                backStack = backStack,
-                modifier = Modifier.padding(padding),
-            )
+        StudyFlowNavigationSuite(
+            items = remember { navigationItems() },
+            selected = (backStack.lastOrNull() as? AppRoute)?.topLevelRoute,
+            onSelect = navigate,
+        ) {
+            AppNavDisplay(backStack = backStack)
         }
     }
 }
@@ -91,6 +95,7 @@ private fun AppNavDisplay(
                             onOpenTask = { taskId -> backStack.add(TasksRoute(taskId)) },
                             onOpenMaterial = { materialId -> backStack.add(MaterialsRoute(materialId)) },
                             onOpenHistory = { backStack.add(HistoryRoute) },
+                            onOpenSettings = { backStack.add(SettingsRoute) },
                         )
                     }
                     entry<TimerRoute> { route ->
@@ -115,7 +120,10 @@ private fun AppNavDisplay(
                         HistoryScreenRoute()
                     }
                     entry<InsightsRoute> {
-                        InsightsScreenRoute(onOpenWeeklySummary = { backStack.add(WeeklySummaryRoute) })
+                        InsightsScreenRoute(
+                            onOpenWeeklySummary = { backStack.add(WeeklySummaryRoute) },
+                            onOpenHistory = { backStack.add(HistoryRoute) },
+                        )
                     }
                     entry<WeeklySummaryRoute> {
                         WeeklySummaryScreenRoute()
@@ -182,59 +190,31 @@ private fun MaterialsEntry(
     }
 }
 
-@Composable
-private fun DestinationBar(
-    current: AppRoute,
-    onNavigate: (AppRoute) -> Unit,
-) {
-    NavigationBar {
-        topLevelRoutes.forEach { route ->
-            val label = route.label
-            NavigationBarItem(
-                selected = current.topLevelRoute == route,
-                onClick = { onNavigate(route) },
-                icon = { Text(label.take(1)) },
-                label = { Text(label) },
-            )
+/**
+ * The icons a top-level destination is drawn with: outlined normally, filled when selected.
+ *
+ * A destination that reaches this and has no icon is a destination that was added to
+ * [topLevelRoutes] without being finished, which is worth failing loudly for in a `when` rather
+ * than falling back to a placeholder that ships.
+ */
+private val AppRoute.navigationIcons: Pair<ImageVector, ImageVector>
+    get() =
+        when (this) {
+            HomeRoute -> Icons.Outlined.Home to Icons.Filled.Home
+            is TimerRoute -> Icons.Outlined.Timer to Icons.Filled.Timer
+            is MaterialsRoute -> Icons.AutoMirrored.Outlined.MenuBook to Icons.AutoMirrored.Filled.MenuBook
+            is TasksRoute -> Icons.Outlined.CheckCircle to Icons.Filled.CheckCircle
+            InsightsRoute -> Icons.Outlined.Insights to Icons.Filled.Insights
+            else -> error("$this is not a top-level destination")
         }
+
+private fun navigationItems(): List<StudyFlowNavigationItem<AppRoute>> =
+    topLevelRoutes.map { route ->
+        val (icon, selectedIcon) = route.navigationIcons
+        StudyFlowNavigationItem(
+            key = route,
+            label = route.label,
+            icon = icon,
+            selectedIcon = selectedIcon,
+        )
     }
-}
-
-private val AppRoute.topLevelRoute: AppRoute
-    get() =
-        when (this) {
-            HomeRoute -> HomeRoute
-
-            is TimerRoute -> TimerRoute()
-
-            is MaterialsRoute -> MaterialsRoute()
-
-            is TasksRoute -> TasksRoute()
-
-            HistoryRoute -> HistoryRoute
-
-            InsightsRoute -> InsightsRoute
-
-            // The weekly recap is a detail of the statistics it is computed from, so the bottom bar
-            // keeps Insights selected while it is open.
-            WeeklySummaryRoute -> InsightsRoute
-
-            SettingsRoute -> SettingsRoute
-
-            // Data & privacy is opened from settings and belongs to it as far as the bar is concerned.
-            DataPrivacyRoute -> SettingsRoute
-        }
-
-private val AppRoute.label: String
-    get() =
-        when (this) {
-            HomeRoute -> "Home"
-            is TimerRoute -> "Timer"
-            is MaterialsRoute -> "Materials"
-            is TasksRoute -> "Tasks"
-            HistoryRoute -> "History"
-            InsightsRoute -> "Insights"
-            WeeklySummaryRoute -> "Weekly summary"
-            SettingsRoute -> "Settings"
-            DataPrivacyRoute -> "Data & privacy"
-        }
