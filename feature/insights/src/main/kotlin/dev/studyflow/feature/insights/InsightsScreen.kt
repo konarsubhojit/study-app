@@ -104,8 +104,8 @@ public fun InsightsScreen(
     state: InsightsUiState,
     onEvent: (InsightsUiEvent) -> Unit,
     onOpenWeeklySummary: () -> Unit,
-    onOpenHistory: () -> Unit = {},
     modifier: Modifier = Modifier,
+    onOpenHistory: () -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         StudyFlowTopAppBar(
