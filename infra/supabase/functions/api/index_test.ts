@@ -11,7 +11,9 @@ const settings = {
 };
 Object.entries(settings).forEach(([name, value]) => Deno.env.set(name, value));
 
-const { handleRequest, observabilityLogLine, resolveRoute, routedPath } = await import("./index.ts");
+const { decodeSyncCursor, encodeSyncCursor, handleRequest, observabilityLogLine, resolveRoute, routedPath } = await import(
+    "./index.ts"
+);
 
 Deno.test("router strips the Supabase gateway prefix and matches full paths", () => {
     const path = routedPath("/functions/v1/api/v1/auth/signin/challenge");
@@ -228,7 +230,255 @@ Deno.test("router keeps colliding last path segments distinct", () => {
         throw new Error("sync sessions path changed");
     }
     if (resolveRoute("POST", "/v1/sessions")) throw new Error("out-of-scope sessions endpoint was routed");
-    if (resolveRoute("POST", "/v1/sync/sessions")) throw new Error("out-of-scope sync endpoint was routed");
+    if (resolveRoute("POST", "/v1/sync/sessions")?.operation !== "pushSessionChanges") {
+        throw new Error("sync push was not routed to its own operation");
+    }
+});
+
+const ALICE = "11111111-1111-1111-1111-111111111111";
+const SESSION_ID = "a2222222-1111-1111-1111-111111111111";
+const authorized = { authorization: ["Bearer", "valid-test-token"].join(" ") };
+
+function stoppedSession(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        id: SESSION_ID,
+        deviceId: "device-a",
+        updatedAt: "2026-03-01T10:00:00.000Z",
+        startedAt: "2026-03-01T09:00:00.000Z",
+        endedAt: "2026-03-01T09:30:00.000Z",
+        status: "STOPPED",
+        note: "private note text",
+        deleted: false,
+        manualOverride: false,
+        countedMillis: 1_800_000,
+        unverifiedMillis: 0,
+        events: [
+            {
+                id: "e1",
+                sessionId: SESSION_ID,
+                type: "STARTED",
+                sequence: 0,
+                wallClock: "2026-03-01T09:00:00.000Z",
+                uptimeMillis: 1234,
+                bootId: "boot-a",
+            },
+        ],
+        ...overrides,
+    };
+}
+
+type Recorded = { rpc: Record<string, unknown>[]; telemetry: Record<string, unknown>[] };
+
+function syncBackend(rpcName: string, rpcResult: (body: Record<string, unknown>) => unknown, recorded: Recorded) {
+    return (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: ALICE });
+        if (url.endsWith(`/rest/v1/rpc/${rpcName}`)) {
+            const body = JSON.parse(String(init?.body));
+            recorded.rpc.push(body);
+            return jsonResponse(200, rpcResult(body));
+        }
+        if (url.includes("/rest/v1/backend_observability_events")) {
+            recorded.telemetry.push(JSON.parse(String(init?.body)));
+            return jsonResponse(201, {});
+        }
+        throw new Error(`unexpected fetch ${url}`);
+    };
+}
+
+Deno.test("sync routes require JWT and share one path under two operations", () => {
+    const pull = resolveRoute("GET", routedPath("/functions/v1/api/v1/sync/sessions"));
+    const push = resolveRoute("POST", routedPath("/functions/v1/api/v1/sync/sessions"));
+    if (pull?.operation !== "pullSessionChanges" || pull.auth !== "jwt") throw new Error("wrong pull route policy");
+    if (push?.operation !== "pushSessionChanges" || push.auth !== "jwt") throw new Error("wrong push route policy");
+    if (resolveRoute("DELETE", "/v1/sync/sessions")) throw new Error("wrong method routed");
+});
+
+Deno.test("sync endpoints reject unauthenticated calls before touching the database", async () => {
+    await withFetch((input) => {
+        const url = String(input);
+        if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+        throw new Error(`unexpected fetch ${url}`);
+    }, async () => {
+        for (const method of ["GET", "POST"]) {
+            const response = await handleRequest(new Request("https://example.test/v1/sync/sessions", {
+                method,
+                ...(method === "POST" ? { body: JSON.stringify({ deviceId: "d", changes: [] }) } : {}),
+            }));
+            const body = await response.json();
+            if (response.status !== 401 || body.code !== "authentication_required") {
+                throw new Error(`${method} was not rejected as unauthenticated`);
+            }
+        }
+    });
+});
+
+Deno.test("sync cursors round-trip opaquely and reject anything the server did not issue", () => {
+    for (const seq of [0, 1, 50, 9_007_199_254_740_991]) {
+        const cursor = encodeSyncCursor(seq);
+        if (!/^[A-Za-z0-9_-]+$/.test(cursor)) throw new Error(`cursor ${cursor} is not URL-safe`);
+        if (decodeSyncCursor(cursor) !== seq) throw new Error(`cursor for ${seq} did not round-trip`);
+    }
+    for (const forged of ["", "42", "not base64!", btoa("v2:1"), btoa("v1:-1"), btoa("v1:01"), btoa("v1:1;drop"), btoa("v1:99999999999999999")]) {
+        let rejected = false;
+        try {
+            decodeSyncCursor(forged);
+        } catch (error) {
+            rejected = (error as { code?: string }).code === "invalid_cursor";
+        }
+        if (!rejected) throw new Error(`forged cursor ${forged} was accepted`);
+    }
+});
+
+Deno.test("delta pull scopes to the JWT owner, pages with a look-ahead row, and never returns anchors", async () => {
+    const recorded: Recorded = { rpc: [], telemetry: [] };
+    const leaky = stoppedSession();
+    await withFetch(syncBackend("sync_pull_study_sessions", () => [
+        { change_seq: 7, session: leaky },
+        { change_seq: 9, session: { ...leaky, id: "b2222222-1111-1111-1111-111111111111", events: [] } },
+        { change_seq: 12, session: leaky },
+    ], recorded), async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/sync/sessions?limit=2", {
+            headers: authorized,
+        }));
+        const body = await response.json();
+        if (response.status !== 200) throw new Error(`pull failed with ${response.status}`);
+        if (response.headers.get("x-minimum-client-version") !== "1.2.3") throw new Error("minimum version header missing");
+        const args = recorded.rpc[0];
+        if (args.p_user_id !== ALICE || args.p_after !== 0 || args.p_limit !== 3) {
+            throw new Error(`pull was not owner-scoped with a look-ahead row: ${JSON.stringify(args)}`);
+        }
+        if (body.changes.length !== 2 || body.hasMore !== true) throw new Error("look-ahead row leaked or hasMore wrong");
+        if (decodeSyncCursor(body.nextCursor) !== 9) throw new Error("nextCursor does not point at the last returned change");
+        const text = JSON.stringify(body);
+        if (text.includes("uptimeMillis") || text.includes("bootId") || text.includes("boot-a")) {
+            throw new Error("device-local anchors were returned");
+        }
+        const event = body.changes[0].events[0];
+        if (JSON.stringify(Object.keys(event).sort()) !== JSON.stringify(["id", "sequence", "sessionId", "type", "wallClock"])) {
+            throw new Error("returned event carried unexpected fields");
+        }
+        const telemetry = JSON.stringify(recorded.telemetry);
+        if (!telemetry.includes('"operation":"pullSessionChanges"')) throw new Error("pull operation was not recorded");
+        if (telemetry.includes(ALICE) || telemetry.includes("private note text") || telemetry.includes("valid-test-token")) {
+            throw new Error("telemetry leaked identity, content or credentials");
+        }
+    });
+});
+
+Deno.test("delta pull resumes from a mid-stream cursor and echoes the cursor verbatim when nothing changed", async () => {
+    const recorded: Recorded = { rpc: [], telemetry: [] };
+    const cursor = encodeSyncCursor(9);
+    await withFetch(syncBackend("sync_pull_study_sessions", (args) =>
+        args.p_after === 9 ? [{ change_seq: 12, session: stoppedSession({ events: [] }) }] : [], recorded), async () => {
+        const resumed = await handleRequest(new Request(`https://example.test/v1/sync/sessions?cursor=${cursor}&limit=50`, {
+            headers: authorized,
+        }));
+        const page = await resumed.json();
+        if (recorded.rpc[0].p_after !== 9 || recorded.rpc[0].p_limit !== 51) throw new Error("pull did not resume after the cursor");
+        if (page.changes.length !== 1 || page.hasMore !== false || decodeSyncCursor(page.nextCursor) !== 12) {
+            throw new Error("resumed page was wrong");
+        }
+
+        const unchanged = await handleRequest(new Request(`https://example.test/v1/sync/sessions?cursor=${page.nextCursor}`, {
+            headers: authorized,
+        }));
+        const empty = await unchanged.json();
+        // SyncEngine treats "no changes and the cursor it sent" as unchanged and writes nothing.
+        if (empty.changes.length !== 0 || empty.nextCursor !== page.nextCursor || empty.hasMore !== false) {
+            throw new Error(`unchanged pull did not echo the cursor: ${JSON.stringify(empty)}`);
+        }
+
+        const first = await (await handleRequest(new Request("https://example.test/v1/sync/sessions?cursor=" + encodeSyncCursor(99), {
+            headers: authorized,
+        }))).json();
+        if (first.nextCursor !== encodeSyncCursor(99)) throw new Error("empty page did not echo the cursor");
+    });
+    const fresh: Recorded = { rpc: [], telemetry: [] };
+    await withFetch(syncBackend("sync_pull_study_sessions", () => [], fresh), async () => {
+        const body = await (await handleRequest(new Request("https://example.test/v1/sync/sessions", { headers: authorized })))
+            .json();
+        if (body.nextCursor !== null || body.changes.length !== 0) throw new Error("empty first pull invented a cursor");
+    });
+});
+
+Deno.test("delta pull rejects a forged cursor or bad limit without querying", async () => {
+    const recorded: Recorded = { rpc: [], telemetry: [] };
+    await withFetch(syncBackend("sync_pull_study_sessions", () => [], recorded), async () => {
+        for (const [query, code] of [["cursor=" + btoa("v1:1;x"), "invalid_cursor"], ["limit=0", "invalid_request"], ["limit=ten", "invalid_request"]]) {
+            const response = await handleRequest(new Request(`https://example.test/v1/sync/sessions?${query}`, { headers: authorized }));
+            const body = await response.json();
+            if (response.status !== 400 || body.code !== code) throw new Error(`${query} gave ${response.status} ${body.code}`);
+        }
+        if (recorded.rpc.length !== 0) throw new Error("an invalid pull reached the database");
+    });
+});
+
+Deno.test("push strips device-local anchors, scopes to the owner, and reports stale changes as rejections", async () => {
+    const recorded: Recorded = { rpc: [], telemetry: [] };
+    const staleId = "b2222222-1111-1111-1111-111111111111";
+    await withFetch(syncBackend("sync_push_study_sessions", () => ({ acceptedIds: [SESSION_ID], rejectedIds: [staleId] }), recorded), async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/sync/sessions", {
+            method: "POST",
+            headers: authorized,
+            body: JSON.stringify({
+                deviceId: "device-a",
+                changes: [
+                    stoppedSession({ id: SESSION_ID.toUpperCase() }),
+                    stoppedSession({ id: staleId, deleted: true, events: [] }),
+                ],
+            }),
+        }));
+        const body = await response.json();
+        if (response.status !== 200) throw new Error(`a stale push was an error (${response.status})`);
+        if (JSON.stringify(body) !== JSON.stringify({ acceptedIds: [SESSION_ID], rejectedIds: [staleId] })) {
+            throw new Error(`per-entity outcome was not returned: ${JSON.stringify(body)}`);
+        }
+        const args = recorded.rpc[0];
+        if (args.p_user_id !== ALICE) throw new Error("push was not scoped to the JWT owner");
+        const changes = args.p_changes as Record<string, unknown>[];
+        const sent = JSON.stringify(changes);
+        if (sent.includes("uptimeMillis") || sent.includes("bootId") || sent.includes("boot-a")) {
+            throw new Error("device-local anchors reached the database");
+        }
+        if (changes[0].id !== SESSION_ID) throw new Error("session id was not normalised");
+        if (changes[1].deleted !== true) throw new Error("tombstone flag was lost");
+        if (!JSON.stringify(recorded.telemetry).includes('"operation":"pushSessionChanges"')) {
+            throw new Error("push operation was not recorded");
+        }
+        if (JSON.stringify(recorded.telemetry).includes("private note text")) throw new Error("telemetry leaked note text");
+    });
+});
+
+Deno.test("push refuses an active session with 409 and malformed input with 400, writing nothing", async () => {
+    const recorded: Recorded = { rpc: [], telemetry: [] };
+    await withFetch(syncBackend("sync_push_study_sessions", () => ({ acceptedIds: [], rejectedIds: [] }), recorded), async () => {
+        const cases: [unknown, number, string][] = [
+            [{ deviceId: "d", changes: [stoppedSession(), stoppedSession({ status: "RUNNING", endedAt: null })] }, 409, "active_session_not_syncable"],
+            [{ deviceId: "d", changes: [stoppedSession({ status: "PAUSED" })] }, 409, "active_session_not_syncable"],
+            [{ deviceId: "d", changes: [stoppedSession({ id: "not-a-uuid" })] }, 400, "invalid_request"],
+            [{ deviceId: "d", changes: [stoppedSession({ endedAt: "2026-03-01T08:00:00Z" })] }, 400, "invalid_request"],
+            [{ deviceId: "d", changes: [stoppedSession({ countedMillis: -1 })] }, 400, "invalid_request"],
+            [{ deviceId: "d", changes: [stoppedSession({ updatedAt: "yesterday" })] }, 400, "invalid_request"],
+            [{ deviceId: "d", changes: [stoppedSession({ events: [{ id: "e", sessionId: "other", type: "STARTED", sequence: 0, wallClock: "2026-03-01T09:00:00Z" }] })] }, 400, "invalid_request"],
+            [{ deviceId: "d", changes: [stoppedSession({ events: [{ id: "e", sessionId: SESSION_ID, type: "TICK", sequence: 0, wallClock: "2026-03-01T09:00:00Z" }] })] }, 400, "invalid_request"],
+            [{ changes: [] }, 400, "invalid_request"],
+            [{ deviceId: "d", changes: "all" }, 400, "invalid_request"],
+        ];
+        for (const [payload, status, code] of cases) {
+            const response = await handleRequest(new Request("https://example.test/v1/sync/sessions", {
+                method: "POST",
+                headers: authorized,
+                body: JSON.stringify(payload),
+            }));
+            const body = await response.json();
+            if (response.status !== status || body.code !== code) {
+                throw new Error(`${JSON.stringify(payload).slice(0, 80)} gave ${response.status} ${body.code}`);
+            }
+            if (response.headers.get("x-minimum-client-version") !== "1.2.3") throw new Error("minimum version header missing");
+        }
+        if (recorded.rpc.length !== 0) throw new Error("a refused batch reached the database");
+    });
 });
 
 Deno.test("refresh translates client and GoTrue token field names", async () => {
