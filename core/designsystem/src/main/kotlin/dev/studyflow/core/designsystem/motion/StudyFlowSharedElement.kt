@@ -32,9 +32,12 @@ public fun Modifier.studyFlowSharedElement(
 
 /** Stable, collision-free keys shared by list and detail destinations. */
 public object StudyFlowSharedElementKeys {
+    /** The title shared between a material grid cell and its detail app bar. */
     public fun materialTitle(id: String): String = "material-title-$id"
 
+    /** The image shared between a material grid cell and its full detail preview. */
     public fun materialPreview(id: String): String = "material-preview-$id"
 
+    /** The title shared between a task list row and its detail app bar. */
     public fun taskTitle(id: String): String = "task-title-$id"
 }
