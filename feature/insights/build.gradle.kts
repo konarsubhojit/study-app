@@ -1,5 +1,6 @@
 plugins {
     id("studyflow.android.feature")
+    id("studyflow.screenshot")
 }
 
 dependencies {
@@ -8,4 +9,6 @@ dependencies {
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)
+
+    add("screenshotTestImplementation", projects.core.testing)
 }

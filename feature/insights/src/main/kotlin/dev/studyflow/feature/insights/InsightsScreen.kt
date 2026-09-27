@@ -262,18 +262,22 @@ private fun SubjectBreakdownSection(
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
         ) {
             subjectTotals.forEach { total ->
+                val weights =
+                    subjectBarWeights(
+                        totalMinutes = total.totalCounted.inWholeMinutes,
+                        maxMinutes = maxMinutes,
+                    )
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Box(
                         modifier =
                             Modifier
-                                .weight(
-                                    total.totalCounted.inWholeMinutes
-                                        .toFloat()
-                                        .coerceAtLeast(MIN_BAR_WEIGHT),
-                                ).height(BAR_HEIGHT)
+                                .weight(weights.bar)
+                                .height(BAR_HEIGHT)
                                 .background(MaterialTheme.colorScheme.secondary),
                     )
-                    Box(modifier = Modifier.weight((maxMinutes - total.totalCounted.inWholeMinutes).toFloat()))
+                    weights.remainder?.let { remainder ->
+                        Box(modifier = Modifier.weight(remainder))
+                    }
                 }
             }
         }
@@ -385,3 +389,17 @@ private val BAR_HEIGHT = 24.dp
 private val HEATMAP_CELL = 20.dp
 private const val MIN_BAR_WEIGHT = 0.01f
 private const val MIN_ALPHA = 0.08f
+
+private data class SubjectBarWeights(
+    val bar: Float,
+    val remainder: Float?,
+)
+
+private fun subjectBarWeights(
+    totalMinutes: Long,
+    maxMinutes: Long,
+): SubjectBarWeights =
+    SubjectBarWeights(
+        bar = totalMinutes.toFloat().coerceAtLeast(MIN_BAR_WEIGHT),
+        remainder = (maxMinutes - totalMinutes).takeIf { it > 0 }?.toFloat(),
+    )
