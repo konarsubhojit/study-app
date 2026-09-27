@@ -54,6 +54,18 @@ class ReminderSchedulingServiceTest {
     }
 
     @Test
+    fun `alarm reminders downgrade to inexact with rationale and banner when permission is denied`() {
+        capabilities = SchedulingCapabilities(canScheduleExactAlarms = false)
+
+        val result = service.schedule(task(ReminderPrecision.ALARM)).single()
+
+        assertEquals(listOf("cancel:reminder-task-1", "inexact:reminder-task-1"), platform.calls)
+        assertEquals(ReminderDelivery.INEXACT, result.scheduledPlan().delivery)
+        assertNotNull(result.scheduled().permissionRationale)
+        assertNotNull(result.scheduled().banner)
+    }
+
+    @Test
     fun `revoking exact alarm permission mid-flight replaces the exact registration with inexact`() {
         service.schedule(task(ReminderPrecision.EXACT))
         capabilities = SchedulingCapabilities(canScheduleExactAlarms = false)

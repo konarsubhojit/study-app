@@ -145,12 +145,8 @@ public object ReminderScheduler {
 
             ReminderPrecision.ALARM -> {
                 when {
-                    // An alarm-clock alarm needs no separate exact-alarm permission, which is precisely
-                    // why it is reserved for reminders the user explicitly framed as an alarm.
                     capabilities.canUseAlarmClock -> ReminderDelivery.ALARM_CLOCK
-
                     capabilities.canScheduleExactAlarms -> ReminderDelivery.EXACT
-
                     else -> ReminderDelivery.INEXACT
                 }
             }
@@ -181,9 +177,8 @@ public object ReminderScheduler {
     /**
      * Whether the chosen precision can still be honoured to the minute.
      *
-     * An alarm-style reminder has a second route to precision — `setAlarmClock` needs no
-     * exact-alarm permission — so losing that permission only degrades it if the alarm-clock route
-     * is unavailable too.
+     * An alarm-style reminder can use `setAlarmClock` only while exact-alarm scheduling is
+     * permitted, so losing that permission degrades it to inexact delivery.
      */
     private fun canFirePrecisely(
         reminder: Reminder,
@@ -208,8 +203,8 @@ public data class SchedulingCapabilities(
     val canScheduleExactAlarms: Boolean = true,
     /** `POST_NOTIFICATIONS` granted on Android 13+, and the channel not blocked. */
     val notificationsEnabled: Boolean = true,
-    /** `setAlarmClock()` is usable; it does not require the exact-alarm permission. */
-    val canUseAlarmClock: Boolean = true,
+    /** `setAlarmClock()` is usable when exact-alarm scheduling is permitted. */
+    val canUseAlarmClock: Boolean = canScheduleExactAlarms,
     /** `USE_FULL_SCREEN_INTENT` granted — restricted to alarm/call apps on Android 14+. */
     val canUseFullScreenIntent: Boolean = true,
     /** The app is subject to battery optimisation, so delivery may be delayed further. */

@@ -68,18 +68,15 @@ class ReminderSchedulerTest {
         }
 
         @Test
-        fun `an alarm still works without the exact-alarm permission`() {
+        fun `an alarm falls back to inexact without the exact-alarm permission`() {
             val plan =
                 plan(
                     ReminderPrecision.ALARM,
                     SchedulingCapabilities(canScheduleExactAlarms = false),
                 )
 
-            assertEquals(ReminderDelivery.ALARM_CLOCK, plan.delivery)
-            assertFalse(
-                ReminderDegradation.EXACT_ALARMS_DENIED in plan.degradations,
-                "setAlarmClock does not need SCHEDULE_EXACT_ALARM, so nothing was lost",
-            )
+            assertEquals(ReminderDelivery.INEXACT, plan.delivery)
+            assertTrue(ReminderDegradation.EXACT_ALARMS_DENIED in plan.degradations)
         }
 
         @Test
