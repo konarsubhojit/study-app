@@ -6,11 +6,13 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 
+/** Navigation-owned scopes that let feature content participate in a shared-element transition. */
 public data class StudyFlowSharedElementScope(
     val sharedTransitionScope: SharedTransitionScope,
     val animatedVisibilityScope: AnimatedVisibilityScope,
 )
 
+/** Shares this element when [scope] is available and remains unchanged in standalone previews. */
 @OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 public fun Modifier.studyFlowSharedElement(
@@ -28,6 +30,7 @@ public fun Modifier.studyFlowSharedElement(
         }
     }
 
+/** Stable, collision-free keys shared by list and detail destinations. */
 public object StudyFlowSharedElementKeys {
     public fun materialTitle(id: String): String = "material-title-$id"
 

@@ -27,7 +27,7 @@ the only place the fallback rule is written down.
 | Type | `MaterialTheme.typography.bodyLarge` | `fontSize = 14.sp` |
 | Shape | `MaterialTheme.shapes.medium` | `RoundedCornerShape(12.dp)` |
 | Spacing | `MaterialTheme.spacing.medium` | `padding(16.dp)` |
-| Motion | `StudyFlowMotion.spatial()` | Feature-local animation specs |
+| Motion | `StudyFlowMotion.spatial()` | `spring(dampingRatio = 0.8f, stiffness = 380f)` |
 
 The spacing scale is `extraSmall` (4) · `small` (8) · `medium` (16) · `large` (24) ·
 `extraLarge` (32) · `huge` (48), all in dp and all on a 4.dp grid. Type sizes are declared in `sp`,
