@@ -5,14 +5,15 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -109,25 +110,43 @@ public fun InsightsScreen(
                 }
             },
         )
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = MaterialTheme.spacing.medium),
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding =
+                PaddingValues(
+                    start = MaterialTheme.spacing.medium,
+                    end = MaterialTheme.spacing.medium,
+                    top = MaterialTheme.spacing.small,
+                    // The bottom bar inset is already applied by the app scaffold; this only keeps
+                    // the last section clear of it rather than flush against it.
+                    bottom = MaterialTheme.spacing.huge,
+                ),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
         ) {
-            Spacer(Modifier.height(MaterialTheme.spacing.small))
-            RangePresetRow(state.rangePreset, onEvent)
-            BucketSizeRow(state.bucketSize, onEvent)
-            SubjectFilterRow(state.subjectId, state.subjectOptions, onEvent)
-            TrendSection(state.bucketTotals, state.bucketSize)
-            HorizontalDivider()
-            SubjectBreakdownSection(state.subjectTotals, state.subjectOptions)
-            HorizontalDivider()
-            HourOfDaySection(state.hourOfDayTotals)
-            HorizontalDivider()
-            AverageSessionLengthSection(state.averageSessionLength)
-            Spacer(Modifier.height(MaterialTheme.spacing.huge))
+            item(key = "range-preset") {
+                RangePresetRow(state.rangePreset, onEvent, Modifier.animateItem())
+            }
+            item(key = "bucket-size") {
+                BucketSizeRow(state.bucketSize, onEvent, Modifier.animateItem())
+            }
+            item(key = "subject-filter") {
+                SubjectFilterRow(state.subjectId, state.subjectOptions, onEvent, Modifier.animateItem())
+            }
+            item(key = "trend") {
+                TrendSection(state.bucketTotals, state.bucketSize, Modifier.animateItem())
+            }
+            item(key = "trend-divider") { HorizontalDivider(Modifier.animateItem()) }
+            item(key = "subject-breakdown") {
+                SubjectBreakdownSection(state.subjectTotals, state.subjectOptions, Modifier.animateItem())
+            }
+            item(key = "subject-divider") { HorizontalDivider(Modifier.animateItem()) }
+            item(key = "hour-of-day") {
+                HourOfDaySection(state.hourOfDayTotals, Modifier.animateItem())
+            }
+            item(key = "hour-divider") { HorizontalDivider(Modifier.animateItem()) }
+            item(key = "average-session-length") {
+                AverageSessionLengthSection(state.averageSessionLength, Modifier.animateItem())
+            }
         }
     }
 }
@@ -136,8 +155,9 @@ public fun InsightsScreen(
 private fun RangePresetRow(
     selected: RangePreset,
     onEvent: (InsightsUiEvent) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+    LazyRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
         items(RangePreset.entries, key = { it.name }) { preset ->
             FilterChip(
                 selected = preset == selected,
@@ -152,8 +172,9 @@ private fun RangePresetRow(
 private fun BucketSizeRow(
     selected: StatsBucketSize,
     onEvent: (InsightsUiEvent) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+    LazyRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
         items(StatsBucketSize.entries, key = { it.name }) { bucketSize ->
             FilterChip(
                 selected = bucketSize == selected,
@@ -169,8 +190,9 @@ private fun SubjectFilterRow(
     selectedSubjectId: String?,
     subjects: List<Subject>,
     onEvent: (InsightsUiEvent) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
+    LazyRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
         item {
             FilterChip(
                 selected = selectedSubjectId == null,
@@ -192,8 +214,9 @@ private fun SubjectFilterRow(
 private fun TrendSection(
     buckets: List<BucketTotal>,
     bucketSize: StatsBucketSize,
+    modifier: Modifier = Modifier,
 ) {
-    Column {
+    Column(modifier = modifier) {
         SectionHeading("Studied time (${bucketSize.label().lowercase()})")
         if (buckets.isEmpty()) {
             EmptyState(message = "No sessions in this range yet.")
@@ -242,8 +265,9 @@ private fun TrendSection(
 private fun SubjectBreakdownSection(
     subjectTotals: List<SubjectTotal>,
     subjectOptions: List<Subject>,
+    modifier: Modifier = Modifier,
 ) {
-    Column {
+    Column(modifier = modifier) {
         SectionHeading("By subject")
         if (subjectTotals.isEmpty()) {
             EmptyState(message = "No sessions in this range yet.")
@@ -295,8 +319,11 @@ private fun SubjectBreakdownSection(
 }
 
 @Composable
-private fun HourOfDaySection(hourOfDayTotals: List<HourOfDayTotal>) {
-    Column {
+private fun HourOfDaySection(
+    hourOfDayTotals: List<HourOfDayTotal>,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
         SectionHeading("Time of day")
         if (hourOfDayTotals.all { it.sessionCount == 0 }) {
             EmptyState(message = "No sessions in this range yet.")
@@ -338,8 +365,11 @@ private fun HourOfDaySection(hourOfDayTotals: List<HourOfDayTotal>) {
 }
 
 @Composable
-private fun AverageSessionLengthSection(average: AverageSessionLength) {
-    Column {
+private fun AverageSessionLengthSection(
+    average: AverageSessionLength,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
         SectionHeading("Average session length")
         Text(
             text =
