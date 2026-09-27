@@ -39,14 +39,16 @@ public class AndroidSchedulingCapabilitiesProvider(
     private val notificationManager: NotificationManager =
         context.getSystemService(NotificationManager::class.java),
 ) : SchedulingCapabilitiesProvider {
-    override fun currentCapabilities(): SchedulingCapabilities =
-        SchedulingCapabilities(
-            canScheduleExactAlarms = canScheduleExactAlarms(),
+    override fun currentCapabilities(): SchedulingCapabilities {
+        val canScheduleExactAlarms = canScheduleExactAlarms()
+        return SchedulingCapabilities(
+            canScheduleExactAlarms = canScheduleExactAlarms,
             notificationsEnabled = NotificationManagerCompat.from(context).areNotificationsEnabled(),
-            canUseAlarmClock = true,
+            canUseAlarmClock = canScheduleExactAlarms,
             canUseFullScreenIntent = canUseFullScreenIntent(),
             batteryOptimised = isBatteryOptimised(),
         )
+    }
 
     private fun canScheduleExactAlarms(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.S || alarmManager.canScheduleExactAlarms()
@@ -92,30 +94,34 @@ public class AndroidReminderPlatformScheduler(
     }
 
     override fun scheduleExact(plan: ReminderPlan): PlatformScheduleOutcome =
-        try {
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                plan.triggerAt.toEpochMilliseconds(),
-                operation(plan.reminderId, plan.taskId),
-            )
-            PlatformScheduleOutcome.SCHEDULED
-        } catch (exception: SecurityException) {
-            onExactAlarmDenied(exception)
-            alarmManager.cancel(operation(plan.reminderId, plan.taskId))
-            scheduleInexact(plan)
-            PlatformScheduleOutcome.EXACT_ALARM_DENIED_FALLBACK_TO_INEXACT
-        }
-
-    override fun scheduleAlarmClock(plan: ReminderPlan): PlatformScheduleOutcome {
-        alarmManager.setAlarmClock(
-            AlarmManager.AlarmClockInfo(
-                plan.triggerAt.toEpochMilliseconds(),
-                showIntent(plan.taskId),
-            ),
-            operation(plan.reminderId, plan.taskId),
+        scheduleExactAlarmWithFallback(
+            scheduleExact = {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    plan.triggerAt.toEpochMilliseconds(),
+                    operation(plan.reminderId, plan.taskId),
+                )
+            },
+            onExactAlarmDenied = onExactAlarmDenied,
+            cancel = { alarmManager.cancel(operation(plan.reminderId, plan.taskId)) },
+            scheduleInexact = { scheduleInexact(plan) },
         )
-        return PlatformScheduleOutcome.SCHEDULED
-    }
+
+    override fun scheduleAlarmClock(plan: ReminderPlan): PlatformScheduleOutcome =
+        scheduleExactAlarmWithFallback(
+            scheduleExact = {
+                alarmManager.setAlarmClock(
+                    AlarmManager.AlarmClockInfo(
+                        plan.triggerAt.toEpochMilliseconds(),
+                        showIntent(plan.taskId),
+                    ),
+                    operation(plan.reminderId, plan.taskId),
+                )
+            },
+            onExactAlarmDenied = onExactAlarmDenied,
+            cancel = { alarmManager.cancel(operation(plan.reminderId, plan.taskId)) },
+            scheduleInexact = { scheduleInexact(plan) },
+        )
 
     override fun cancel(reminderId: String) {
         alarmManager.cancel(operation(reminderId))
@@ -166,6 +172,22 @@ public class AndroidReminderPlatformScheduler(
         private const val ACTION_DELIVER_REMINDER = "dev.studyflow.core.scheduling.DELIVER_REMINDER"
     }
 }
+
+internal fun scheduleExactAlarmWithFallback(
+    scheduleExact: () -> Unit,
+    onExactAlarmDenied: (SecurityException) -> Unit,
+    cancel: () -> Unit,
+    scheduleInexact: () -> Unit,
+): PlatformScheduleOutcome =
+    try {
+        scheduleExact()
+        PlatformScheduleOutcome.SCHEDULED
+    } catch (exception: SecurityException) {
+        onExactAlarmDenied(exception)
+        cancel()
+        scheduleInexact()
+        PlatformScheduleOutcome.EXACT_ALARM_DENIED_FALLBACK_TO_INEXACT
+    }
 
 /**
  * WorkManager-triggered reminder delivery (issue #47).

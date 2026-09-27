@@ -40,6 +40,19 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
+internal fun scheduleTimerAlarmWithInexactFallback(
+    scheduleExact: () -> Unit,
+    onExactAlarmDenied: (SecurityException) -> Unit,
+    scheduleInexact: () -> Unit,
+) {
+    try {
+        scheduleExact()
+    } catch (denied: SecurityException) {
+        onExactAlarmDenied(denied)
+        scheduleInexact()
+    }
+}
+
 @Singleton
 internal class TimerIntervalCoordinator
     @Inject
@@ -312,19 +325,26 @@ internal class TimerIntervalCoordinator
             val operation = StudyFlowPendingIntents.broadcast(context, requestCode, intent)
             val triggerUptimeMillis =
                 maxOf(clock.anchor().uptime.inWholeMilliseconds, triggerAt.uptime.inWholeMilliseconds)
-            try {
-                alarmManager.setExactAndAllowWhileIdle(
-                    AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                    triggerUptimeMillis,
-                    operation,
-                )
-            } catch (denied: SecurityException) {
-                logger.warning(TAG, "Exact timer interval alarm denied; falling back to alarm clock", denied)
-                alarmManager.setAlarmClock(
-                    AlarmManager.AlarmClockInfo(triggerAt.wallClock.toEpochMilliseconds(), openIntent()),
-                    operation,
-                )
-            }
+            scheduleTimerAlarmWithInexactFallback(
+                scheduleExact = {
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        triggerUptimeMillis,
+                        operation,
+                    )
+                },
+                onExactAlarmDenied = { denied ->
+                    logger.warning(TAG, "Exact timer interval alarm denied; falling back to inexact", denied)
+                    alarmManager.cancel(operation)
+                },
+                scheduleInexact = {
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                        triggerUptimeMillis,
+                        operation,
+                    )
+                },
+            )
         }
 
         private fun cancelScheduledAlarms() {
