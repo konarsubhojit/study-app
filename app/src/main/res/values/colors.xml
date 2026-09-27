@@ -1,0 +1,12 @@
+<resources>
+    <!--
+        The adaptive launcher icon background (issue #169).
+
+        This must match `BrandPalette.Indigo40` in
+        `core/designsystem/src/main/kotlin/dev/studyflow/core/designsystem/theme/Color.kt` — the
+        same indigo used as `primary` in the light theme — so the launcher icon and the in-app
+        fallback palette agree. Resource files cannot reference Kotlin constants, so the literal is
+        duplicated here deliberately; if the brand primary ever changes, update both.
+    -->
+    <color name="ic_launcher_background">#FF4A57C6</color>
+</resources>
