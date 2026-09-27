@@ -971,7 +971,10 @@ private fun MaterialPreviewSource.playerUri(): Uri =
         is MaterialPreviewSource.Remote -> uri.toUri()
     }
 
-private fun MaterialPreviewSource.Local.toPreviewUri(): Uri = uri.toLocalFileOrNull()?.let(Uri::fromFile) ?: uri.toUri()
+private fun MaterialPreviewSource.Local.toPreviewUri(): Uri {
+    val parsed = uri.toUri()
+    return if (parsed.scheme == null) Uri.fromFile(File(uri)) else parsed
+}
 
 private fun shareLocalMaterial(
     context: Context,

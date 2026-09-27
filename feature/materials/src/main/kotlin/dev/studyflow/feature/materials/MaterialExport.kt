@@ -112,7 +112,7 @@ internal fun String.toLocalFileOrNull(): File? {
     val uri = runCatching(::URI).getOrNull() ?: return File(this)
     return when (uri.scheme) {
         null -> File(this)
-        "file" -> runCatching { File(uri) }.getOrNull()
+        "file" -> runCatching { File(uri) }.getOrElse { uri.path?.let(::File) }
         else -> null
     }
 }
