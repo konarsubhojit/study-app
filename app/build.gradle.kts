@@ -161,6 +161,7 @@ dependencies {
     implementation(projects.feature.timer)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
     // Home-screen widgets and their theming (issue #61); the Quick Settings tile is a platform API.
     implementation(libs.androidx.glance.appwidget)
     implementation(libs.androidx.glance.material3)

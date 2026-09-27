@@ -34,25 +34,44 @@ public class SignInCoordinator
                 try {
                     google.get()
                 } catch (_: IllegalStateException) {
-                    return SignInOutcome.Failed
+                    null
                 }
-            val challenge =
-                when (val result = api.beginSignIn()) {
-                    is ApiResult.Success -> result.value
-                    is ApiResult.Failure -> return result.error.toSignInOutcome()
+            return if (config == null) {
+                SignInOutcome.Failed
+            } else {
+                when (val challenge = api.beginSignIn()) {
+                    is ApiResult.Failure -> {
+                        challenge.error.toSignInOutcome()
+                    }
+
+                    is ApiResult.Success -> {
+                        when (val selection = selectCredential(challenge.value.requestJson, config, getCredential)) {
+                            is CredentialSelection.Unavailable -> selection.outcome
+                            is CredentialSelection.Selected -> exchange(selection.credential)
+                        }
+                    }
                 }
-            val credential =
-                try {
-                    getCredential(challenge.requestJson, config)
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (_: GetCredentialCancellationException) {
-                    return SignInOutcome.Cancelled
-                } catch (_: NoSignInCredentialAvailableException) {
-                    return SignInOutcome.NoCredential
-                } catch (_: GetCredentialException) {
-                    return SignInOutcome.Failed
-                }
+            }
+        }
+
+        private suspend fun selectCredential(
+            request: String,
+            config: GoogleSignInConfig,
+            getCredential: suspend (String, GoogleSignInConfig) -> SignInCredential,
+        ): CredentialSelection =
+            try {
+                CredentialSelection.Selected(getCredential(request, config))
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: GetCredentialCancellationException) {
+                CredentialSelection.Unavailable(SignInOutcome.Cancelled)
+            } catch (_: NoSignInCredentialAvailableException) {
+                CredentialSelection.Unavailable(SignInOutcome.NoCredential)
+            } catch (_: GetCredentialException) {
+                CredentialSelection.Unavailable(SignInOutcome.Failed)
+            }
+
+        private suspend fun exchange(credential: SignInCredential): SignInOutcome {
             val proof =
                 when (credential) {
                     is SignInCredential.Passkey -> SignInCredentialDto.Passkey(credential.authenticationResponseJson)
@@ -70,6 +89,16 @@ public class SignInCoordinator
             }
         }
     }
+
+private sealed interface CredentialSelection {
+    data class Selected(
+        val credential: SignInCredential,
+    ) : CredentialSelection
+
+    data class Unavailable(
+        val outcome: SignInOutcome,
+    ) : CredentialSelection
+}
 
 private fun ApiError.toSignInOutcome(): SignInOutcome =
     when (this) {

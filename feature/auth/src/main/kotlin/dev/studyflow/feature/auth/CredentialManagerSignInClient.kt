@@ -37,7 +37,7 @@ public class CredentialManagerSignInClient(
             )
         return try {
             credentialManager.getCredential(activity, request).credential.toSignInCredential()
-        } catch (noCredential: NoCredentialException) {
+        } catch (_: NoCredentialException) {
             try {
                 val googleRequest =
                     GetCredentialRequest(
