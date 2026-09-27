@@ -10,6 +10,9 @@ import dev.studyflow.core.network.auth.InMemoryTokenStore
 import dev.studyflow.core.network.auth.TokenStore
 import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.AuthTokensDto
+import dev.studyflow.core.network.model.PasskeyRegistrationChallengeDto
+import dev.studyflow.core.network.model.PasskeyRegistrationDto
+import dev.studyflow.core.network.model.PasskeyRegistrationRequestDto
 import dev.studyflow.core.network.model.SignInChallengeDto
 import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
@@ -54,6 +57,19 @@ internal class FakeStudyFlowBackend(
 
     override suspend fun signIn(credential: SignInCredentialDto): ApiResult<AuthTokensDto> =
         ApiResult.Success(AuthTokensDto("mock-access", "mock-refresh", expiresInSeconds = 3_600))
+
+    override suspend fun beginPasskeyRegistration(): ApiResult<PasskeyRegistrationChallengeDto> =
+        ApiResult.Success(
+            PasskeyRegistrationChallengeDto(
+                requestJson = """{"challenge":"mock-registration-challenge"}""",
+                expiresAtIso = "2026-03-01T09:05:00Z",
+            ),
+        )
+
+    override suspend fun registerPasskey(request: PasskeyRegistrationRequestDto): ApiResult<PasskeyRegistrationDto> =
+        ApiResult.Success(
+            PasskeyRegistrationDto(credentialId = "mock-credential", createdAtIso = "2026-03-01T09:00:00Z"),
+        )
 
     override suspend fun subjects(): ApiResult<List<SubjectDto>> = ApiResult.Success(subjects)
 

@@ -8,6 +8,8 @@ const settings = {
     STORAGE_S3_BUCKET: "test-bucket",
     STORAGE_S3_ACCESS_KEY_ID: "test-access-key",
     STORAGE_S3_SECRET_ACCESS_KEY: "test-secret-key",
+    PASSKEY_RP_ID: "studyflow.test",
+    PASSKEY_ANDROID_ORIGIN: "android:apk-key-hash:test-signing-certificate",
 };
 Object.entries(settings).forEach(([name, value]) => Deno.env.set(name, value));
 
@@ -68,7 +70,7 @@ Deno.test("subjects map signed ARGB colours and explicitly scope service-role re
     });
 });
 
-Deno.test("tasks derive completion, preserve DST-resolved due instants, filter by subject, and omit orphaned tasks", async () => {
+Deno.test("tasks derive completion, carry the DST-resolved due instant with its zone, filter by subject, and omit orphaned tasks", async () => {
     await withFetch((input, init) => {
         const url = String(input);
         if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: "11111111-1111-1111-1111-111111111111" });
@@ -78,9 +80,16 @@ Deno.test("tasks derive completion, preserve DST-resolved due instants, filter b
                 throw new Error("task list was not constrained to the verified owner and requested subject");
             }
             return jsonResponse(200, [
-                { id: "t1", subject_id: "s1", title: "Spring deadline", completed_at: "2026-03-08T12:00:00Z", due_at: "2026-03-08T13:00:00+00:00" },
-                { id: "t2", subject_id: "s1", title: "Incomplete", completed_at: null, due_at: null },
-                { id: "t3", subject_id: null, title: "Deleted subject", completed_at: null, due_at: null },
+                {
+                    id: "t1",
+                    subject_id: "s1",
+                    title: "Spring deadline",
+                    completed_at: "2026-03-08T12:00:00Z",
+                    due_at: "2026-03-08T13:00:00+00:00",
+                    time_zone: "America/New_York",
+                },
+                { id: "t2", subject_id: "s1", title: "Incomplete", completed_at: null, due_at: null, time_zone: "UTC" },
+                { id: "t3", subject_id: null, title: "Deleted subject", completed_at: null, due_at: null, time_zone: "UTC" },
             ]);
         }
         if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
@@ -91,8 +100,15 @@ Deno.test("tasks derive completion, preserve DST-resolved due instants, filter b
         }));
         const body = await response.json();
         if (response.status !== 200 || JSON.stringify(body) !== JSON.stringify([
-            { id: "t1", subjectId: "s1", title: "Spring deadline", completed: true, dueAt: "2026-03-08T13:00:00.000Z" },
-            { id: "t2", subjectId: "s1", title: "Incomplete", completed: false, dueAt: null },
+            {
+                id: "t1",
+                subjectId: "s1",
+                title: "Spring deadline",
+                completed: true,
+                dueAt: "2026-03-08T13:00:00.000Z",
+                dueAtTimeZone: "America/New_York",
+            },
+            { id: "t2", subjectId: "s1", title: "Incomplete", completed: false, dueAt: null, dueAtTimeZone: null },
         ])) throw new Error("tasks were not translated correctly");
     });
 });
@@ -565,6 +581,183 @@ Deno.test("account deletion telemetry contains only the established fields", () 
     }
 });
 
+Deno.test("passkey registration routes require a verified JWT and are distinct from sign-in", () => {
+    const challenge = resolveRoute("POST", routedPath("/functions/v1/api/v1/auth/passkey/registration/challenge"));
+    const register = resolveRoute("POST", routedPath("/functions/v1/api/v1/auth/passkey/registration"));
+    if (challenge?.operation !== "beginPasskeyRegistration" || challenge.auth !== "jwt") {
+        throw new Error("registration challenge route is not authenticated");
+    }
+    if (register?.operation !== "completePasskeyRegistration" || register.auth !== "jwt") {
+        throw new Error("registration route is not authenticated");
+    }
+    if (resolveRoute("GET", "/v1/auth/passkey/registration")) throw new Error("wrong method routed");
+});
+
+Deno.test("passkey registration rejects an unauthenticated caller without touching the credential store", async () => {
+    const state = passkeyState();
+    await withFetch(passkeyFetch({ ...state, authenticated: false }), async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/auth/passkey/registration", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ registrationResponseJson: "{}" }),
+        }));
+        if (response.status !== 401) throw new Error("registration accepted an anonymous caller");
+    });
+    if (state.inserted.length !== 0) throw new Error("a credential was stored without a verified caller");
+});
+
+Deno.test("passkey registration binds the stored credential to the JWT owner and echoes its id", async () => {
+    const passkey = await newPasskey();
+    const state = passkeyState();
+    state.challenges.push({ challenge_hash: "hash", user_id: OWNER });
+    await withFetch(passkeyFetch(state), async () => {
+        const options = await handleRequest(new Request("https://example.test/v1/auth/passkey/registration/challenge", {
+            method: "POST",
+            headers: { authorization: "Bearer " + "valid-test-token" },
+        }));
+        const issued = await options.json();
+        const creationOptions = JSON.parse(issued.requestJson);
+        if (options.status !== 200 || creationOptions.rp.id !== RP_ID) throw new Error("wrong relying party issued");
+        if (creationOptions.user.id !== base64Url(new TextEncoder().encode(OWNER))) {
+            throw new Error("the creation options did not identify the signed-in account");
+        }
+        if (Number.isNaN(Date.parse(issued.expiresAt))) throw new Error("the challenge has no expiry");
+
+        const response = await handleRequest(new Request("https://example.test/v1/auth/passkey/registration", {
+            method: "POST",
+            headers: { authorization: "Bearer " + "valid-test-token", "content-type": "application/json" },
+            body: JSON.stringify({
+                registrationResponseJson: await registrationResponseJson(passkey, creationOptions.challenge),
+            }),
+        }));
+        const body = await response.json();
+        if (response.status !== 201 || body.credentialId !== passkey.credentialId) {
+            throw new Error(`registration was not accepted: ${JSON.stringify(body)}`);
+        }
+    });
+    const stored = state.inserted[0] as Record<string, unknown>;
+    if (state.inserted.length !== 1 || stored.user_id !== OWNER || stored.credential_id !== passkey.credentialId) {
+        throw new Error("the credential was not bound to the verified caller");
+    }
+    if (state.consumed[0]?.p_purpose !== "registration") throw new Error("a sign-in challenge was consumed");
+    if (state.issued[0]?.purpose !== "registration" || state.issued[0]?.user_id !== OWNER) {
+        throw new Error("the challenge was not stored as a registration challenge for the signed-in account");
+    }
+});
+
+Deno.test("a registration challenge issued to another account cannot be redeemed", async () => {
+    const passkey = await newPasskey();
+    const state = passkeyState();
+    state.challenges.push({ challenge_hash: "hash", user_id: OTHER_OWNER });
+    await withFetch(passkeyFetch(state), async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/auth/passkey/registration", {
+            method: "POST",
+            headers: { authorization: "Bearer " + "valid-test-token", "content-type": "application/json" },
+            body: JSON.stringify({ registrationResponseJson: await registrationResponseJson(passkey, CHALLENGE) }),
+        }));
+        if (response.status !== 401) throw new Error("another account's challenge was accepted");
+    });
+    if (state.inserted.length !== 0) throw new Error("a credential was attached using another account's challenge");
+});
+
+Deno.test("a replayed registration challenge is refused once the database reports it consumed", async () => {
+    const passkey = await newPasskey();
+    const state = passkeyState();
+    await withFetch(passkeyFetch(state), async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/auth/passkey/registration", {
+            method: "POST",
+            headers: { authorization: "Bearer " + "valid-test-token", "content-type": "application/json" },
+            body: JSON.stringify({ registrationResponseJson: await registrationResponseJson(passkey, CHALLENGE) }),
+        }));
+        if (response.status !== 401) throw new Error("a spent registration challenge was accepted");
+    });
+    if (state.inserted.length !== 0) throw new Error("a credential was stored from a replayed challenge");
+});
+
+Deno.test("passkey sign-in verifies the assertion, consumes the challenge once and mints the owner's session", async () => {
+    const passkey = await newPasskey();
+    const state = passkeyState();
+    state.credentials[passkey.credentialId] = credentialRow(passkey, OWNER, 3);
+    state.challenges.push({ challenge_hash: "hash", user_id: null });
+    await withFetch(passkeyFetch(state), async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/auth/signin", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ type: "passkey", assertion: await assertionJson(passkey, { counter: 4 }) }),
+        }));
+        const body = await response.json();
+        if (response.status !== 200 || body.accessToken !== "passkey-access" || body.refreshToken !== "passkey-refresh") {
+            throw new Error(`passkey sign-in did not return a session: ${JSON.stringify(body)}`);
+        }
+        if (body.expiresInSeconds !== 3600) throw new Error("token fields were not translated");
+    });
+    if (state.consumed.length !== 1 || state.consumed[0].p_purpose !== "signin") {
+        throw new Error("the challenge was not claimed exactly once as a sign-in challenge");
+    }
+    if ((state.patched[0] as Record<string, unknown>)?.sign_count !== 4) {
+        throw new Error("the signature counter was not advanced");
+    }
+    if (state.calls.join(",") !== `adminUser:${OWNER},generateLink,verify`) {
+        throw new Error(`the session was minted for the wrong account: ${state.calls.join(",")}`);
+    }
+});
+
+Deno.test("a replayed passkey assertion is refused and mints no session", async () => {
+    const passkey = await newPasskey();
+    const state = passkeyState();
+    state.credentials[passkey.credentialId] = credentialRow(passkey, OWNER, 0);
+    // The database claims the challenge atomically, so the second attempt matches no row at all.
+    state.challenges.push({ challenge_hash: "hash", user_id: null });
+    const assertion = await assertionJson(passkey, { counter: 1 });
+    await withFetch(passkeyFetch(state), async () => {
+        const first = await handleRequest(passkeySignInRequest(assertion));
+        if (first.status !== 200) throw new Error("the first use of the challenge was rejected");
+        const second = await handleRequest(passkeySignInRequest(assertion));
+        if (second.status !== 401) throw new Error("a replayed assertion was accepted");
+    });
+    if (state.calls.filter((call) => call === "verify").length !== 1) {
+        throw new Error("the replay minted a second session");
+    }
+});
+
+Deno.test("passkey sign-in rejects an assertion from a foreign origin", async () => {
+    await expectPasskeySignInRejected({ origin: "https://phishing.example" }, "a foreign origin was accepted");
+});
+
+Deno.test("passkey sign-in rejects an assertion made against a different relying party", async () => {
+    await expectPasskeySignInRejected({ rpId: "evil.test" }, "a foreign relying party was accepted");
+});
+
+Deno.test("passkey sign-in rejects an assertion without the user-presence flag", async () => {
+    await expectPasskeySignInRejected({ flags: 0x04 }, "an assertion without user presence was accepted");
+});
+
+Deno.test("passkey sign-in rejects a signature counter that goes backwards", async () => {
+    await expectPasskeySignInRejected({ counter: 2, storedCounter: 5 }, "a rewound signature counter was accepted");
+});
+
+Deno.test("passkey sign-in rejects an assertion signed by a different key", async () => {
+    const other = await newPasskey();
+    await expectPasskeySignInRejected({ signWith: other }, "an assertion signed by another key was accepted");
+});
+
+Deno.test("passkey sign-in rejects a credential id that is not registered", async () => {
+    await expectPasskeySignInRejected({ storeCredential: false }, "an unregistered credential was accepted");
+});
+
+Deno.test("passkey sign-in never trusts a client-supplied user handle", async () => {
+    const passkey = await newPasskey();
+    const state = passkeyState();
+    state.credentials[passkey.credentialId] = credentialRow(passkey, OWNER, 0);
+    state.challenges.push({ challenge_hash: "hash", user_id: null });
+    await withFetch(passkeyFetch(state), async () => {
+        const assertion = await assertionJson(passkey, { counter: 1, userHandle: OTHER_OWNER });
+        const response = await handleRequest(passkeySignInRequest(assertion));
+        if (response.status !== 401) throw new Error("a user handle naming another account was accepted");
+    });
+    if (state.calls.length !== 0) throw new Error("a session was minted for a client-named account");
+});
+
 function jsonResponse(status: number, body: unknown): Response {
     return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
@@ -580,4 +773,308 @@ async function withFetch(
     } finally {
         globalThis.fetch = original;
     }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Passkey fixtures.
+//
+// The assertions and attestations below are produced with WebCrypto rather than recorded from a
+// handset, because the point of every negative test is to change exactly one signed field — the
+// origin, the RP ID, a flag bit, the counter, the signing key — and observe that verification
+// still fails. A captured fixture cannot be edited that way without invalidating its signature,
+// which would make every test pass for the wrong reason.
+// ---------------------------------------------------------------------------------------------
+
+const OWNER = "11111111-1111-1111-1111-111111111111";
+const OTHER_OWNER = "22222222-2222-2222-2222-222222222222";
+const RP_ID = "studyflow.test";
+const ORIGIN = "android:apk-key-hash:test-signing-certificate";
+const CHALLENGE = "dGVzdC1jaGFsbGVuZ2UtMzItYnl0ZXMtbG9uZy12YWx1ZQ";
+
+type Passkey = { keyPair: CryptoKeyPair; cose: Uint8Array; credentialId: string };
+type ChallengeRow = { challenge_hash: string; user_id: string | null };
+type PasskeyState = {
+    authenticated: boolean;
+    credentials: Record<string, Record<string, unknown>>;
+    challenges: ChallengeRow[];
+    issued: Record<string, unknown>[];
+    consumed: { p_purpose: string; p_challenge_hash: string }[];
+    inserted: unknown[];
+    patched: unknown[];
+    calls: string[];
+};
+
+function passkeyState(): PasskeyState {
+    return {
+        authenticated: true,
+        credentials: {},
+        challenges: [],
+        issued: [],
+        consumed: [],
+        inserted: [],
+        patched: [],
+        calls: [],
+    };
+}
+
+function credentialRow(passkey: Passkey, owner: string, signCount: number): Record<string, unknown> {
+    return {
+        credential_id: passkey.credentialId,
+        user_id: owner,
+        public_key: base64Url(passkey.cose),
+        sign_count: signCount,
+        transports: ["internal"],
+    };
+}
+
+function passkeySignInRequest(assertion: string): Request {
+    return new Request("https://example.test/v1/auth/signin", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ type: "passkey", assertion }),
+    });
+}
+
+function passkeyFetch(state: PasskeyState): (input: RequestInfo | URL, init?: RequestInit) => Response {
+    return (input, init) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+        if (url.endsWith("/auth/v1/user")) {
+            return state.authenticated ? jsonResponse(200, { id: OWNER }) : jsonResponse(401, {});
+        }
+        if (url.includes("/rest/v1/auth_signin_challenges")) {
+            state.issued.push(JSON.parse(String(init?.body)));
+            return jsonResponse(201, {});
+        }
+        if (url.endsWith("/rest/v1/rpc/consume_auth_challenge")) {            state.consumed.push(JSON.parse(String(init?.body)));
+            const row = state.challenges.shift();
+            return jsonResponse(200, row ? [row] : []);
+        }
+        if (url.includes("/rest/v1/passkey_credentials")) {
+            if (method === "POST") {
+                state.inserted.push(JSON.parse(String(init?.body)));
+                return jsonResponse(201, {});
+            }
+            if (method === "PATCH") {
+                state.patched.push(JSON.parse(String(init?.body)));
+                return jsonResponse(200, {});
+            }
+            const credentialId = url.match(/credential_id=eq\.([^&]+)/)?.[1];
+            if (credentialId) {
+                const row = state.credentials[decodeURIComponent(credentialId)];
+                return jsonResponse(200, row ? [row] : []);
+            }
+            return jsonResponse(200, Object.values(state.credentials));
+        }
+        if (url.endsWith("/auth/v1/admin/generate_link")) {
+            state.calls.push("generateLink");
+            return jsonResponse(200, { hashed_token: "hashed-magic-token" });
+        }
+        if (url.includes("/auth/v1/admin/users/")) {
+            state.calls.push("adminUser:" + url.slice(url.lastIndexOf("/") + 1));
+            return jsonResponse(200, { id: OWNER, email: "alice@example.com" });
+        }
+        if (url.endsWith("/auth/v1/verify")) {
+            state.calls.push("verify");
+            return jsonResponse(200, {
+                access_token: "passkey-access",
+                refresh_token: "passkey-refresh",
+                expires_in: 3600,
+            });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+    };
+}
+
+async function expectPasskeySignInRejected(
+    options: {
+        origin?: string;
+        rpId?: string;
+        flags?: number;
+        counter?: number;
+        storedCounter?: number;
+        storeCredential?: boolean;
+        signWith?: Passkey;
+    },
+    message: string,
+): Promise<void> {
+    const passkey = await newPasskey();
+    const state = passkeyState();
+    if (options.storeCredential !== false) {
+        state.credentials[passkey.credentialId] = credentialRow(passkey, OWNER, options.storedCounter ?? 0);
+    }
+    state.challenges.push({ challenge_hash: "hash", user_id: null });
+    await withFetch(passkeyFetch(state), async () => {
+        const assertion = await assertionJson(options.signWith ?? passkey, {
+            counter: options.counter ?? 1,
+            origin: options.origin,
+            rpId: options.rpId,
+            flags: options.flags,
+            credentialId: passkey.credentialId,
+        });
+        const response = await handleRequest(passkeySignInRequest(assertion));
+        if (response.status !== 401) throw new Error(message);
+    });
+    if (state.calls.length !== 0) throw new Error(`${message}: a session was minted anyway`);
+}
+
+async function newPasskey(): Promise<Passkey> {
+    const keyPair = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+    const raw = new Uint8Array(await crypto.subtle.exportKey("raw", keyPair.publicKey));
+    return {
+        keyPair,
+        cose: coseKey(raw.slice(1, 33), raw.slice(33, 65)),
+        credentialId: base64Url(crypto.getRandomValues(new Uint8Array(16))),
+    };
+}
+
+async function assertionJson(
+    passkey: Passkey,
+    options: { counter: number; origin?: string; rpId?: string; flags?: number; credentialId?: string; userHandle?: string },
+): Promise<string> {
+    const credentialId = options.credentialId ?? passkey.credentialId;
+    const clientDataJSON = new TextEncoder().encode(JSON.stringify({
+        type: "webauthn.get",
+        challenge: CHALLENGE,
+        origin: options.origin ?? ORIGIN,
+        androidPackageName: "dev.studyflow",
+    }));
+    const authenticatorData = await authData(options.rpId ?? RP_ID, options.flags ?? 0x05, options.counter);
+    const signed = concat(authenticatorData, new Uint8Array(await crypto.subtle.digest("SHA-256", clientDataJSON)));
+    const raw = new Uint8Array(await crypto.subtle.sign(
+        { name: "ECDSA", hash: "SHA-256" },
+        passkey.keyPair.privateKey,
+        signed,
+    ));
+    return JSON.stringify({
+        id: credentialId,
+        rawId: credentialId,
+        type: "public-key",
+        clientExtensionResults: {},
+        response: {
+            clientDataJSON: base64Url(clientDataJSON),
+            authenticatorData: base64Url(authenticatorData),
+            signature: base64Url(derSignature(raw)),
+            ...(options.userHandle ? { userHandle: base64Url(new TextEncoder().encode(options.userHandle)) } : {}),
+        },
+    });
+}
+
+async function registrationResponseJson(passkey: Passkey, challenge: string): Promise<string> {
+    const clientDataJSON = new TextEncoder().encode(JSON.stringify({
+        type: "webauthn.create",
+        challenge,
+        origin: ORIGIN,
+        androidPackageName: "dev.studyflow",
+    }));
+    const credentialId = decodeBase64Url(passkey.credentialId);
+    // The attested-credential-data flag (0x40) is what tells a verifier the credential id and
+    // public key follow the counter; without it the authenticator data is an assertion, not a
+    // registration.
+    const attested = concat(
+        await authData(RP_ID, 0x45, 0),
+        new Uint8Array(16),
+        Uint8Array.from([credentialId.length >> 8, credentialId.length & 0xFF]),
+        credentialId,
+        passkey.cose,
+    );
+    const attestationObject = cborMap([
+        ["fmt", cborText("none")],
+        ["attStmt", cborMap([])],
+        ["authData", cborBytes(attested)],
+    ]);
+    return JSON.stringify({
+        id: passkey.credentialId,
+        rawId: passkey.credentialId,
+        type: "public-key",
+        clientExtensionResults: {},
+        response: {
+            clientDataJSON: base64Url(clientDataJSON),
+            attestationObject: base64Url(attestationObject),
+            transports: ["internal", "hybrid"],
+        },
+    });
+}
+
+async function authData(rpId: string, flags: number, counter: number): Promise<Uint8Array> {
+    const rpIdHash = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(rpId)));
+    return concat(
+        rpIdHash,
+        Uint8Array.from([flags]),
+        Uint8Array.from([counter >>> 24 & 0xFF, counter >>> 16 & 0xFF, counter >>> 8 & 0xFF, counter & 0xFF]),
+    );
+}
+
+function coseKey(x: Uint8Array, y: Uint8Array): Uint8Array {
+    return cborMap([
+        [1, cborInt(2)],
+        [3, cborInt(-7)],
+        [-1, cborInt(1)],
+        [-2, cborBytes(x)],
+        [-3, cborBytes(y)],
+    ]);
+}
+
+// A WebCrypto ECDSA signature is the raw r||s pair; WebAuthn carries the ASN.1 DER encoding, so a
+// fixture that skipped this step would be rejected for its shape rather than for what it proves.
+function derSignature(raw: Uint8Array): Uint8Array {
+    const parts = [raw.slice(0, 32), raw.slice(32)].map((value) => {
+        let start = 0;
+        while (start < value.length - 1 && value[start] === 0) start++;
+        const trimmed = Array.from(value.slice(start));
+        if (trimmed[0] & 0x80) trimmed.unshift(0);
+        return [0x02, trimmed.length, ...trimmed];
+    });
+    const body = [...parts[0], ...parts[1]];
+    return Uint8Array.from([0x30, body.length, ...body]);
+}
+
+function cborHead(major: number, value: number): number[] {
+    if (value < 24) return [major << 5 | value];
+    if (value < 0x100) return [major << 5 | 24, value];
+    if (value < 0x10000) return [major << 5 | 25, value >> 8, value & 0xFF];
+    return [major << 5 | 26, value >>> 24 & 0xFF, value >>> 16 & 0xFF, value >>> 8 & 0xFF, value & 0xFF];
+}
+
+function cborInt(value: number): Uint8Array {
+    return Uint8Array.from(value >= 0 ? cborHead(0, value) : cborHead(1, -1 - value));
+}
+
+function cborBytes(value: Uint8Array): Uint8Array {
+    return concat(Uint8Array.from(cborHead(2, value.length)), value);
+}
+
+function cborText(value: string): Uint8Array {
+    const bytes = new TextEncoder().encode(value);
+    return concat(Uint8Array.from(cborHead(3, bytes.length)), bytes);
+}
+
+function cborMap(entries: [number | string, Uint8Array][]): Uint8Array {
+    return entries.reduce(
+        (encoded, [key, value]) =>
+            concat(encoded, typeof key === "number" ? cborInt(key) : cborText(key), value),
+        Uint8Array.from(cborHead(5, entries.length)),
+    );
+}
+
+function concat(...parts: Uint8Array[]): Uint8Array {
+    const joined = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
+    parts.reduce((offset, part) => {
+        joined.set(part, offset);
+        return offset + part.length;
+    }, 0);
+    return joined;
+}
+
+function base64Url(bytes: Uint8Array): string {
+    let binary = "";
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
+}
+
+function decodeBase64Url(value: string): Uint8Array {
+    const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+    const binary = atob(base64 + "=".repeat((4 - base64.length % 4) % 4));
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
 }

@@ -90,6 +90,8 @@ Add the following repository Actions secrets for each operation.
 | `GOOGLE_SERVER_CLIENT_ID` | Required for `api` | Google OAuth server client ID accepted as the ID-token audience | Google Cloud Console OAuth client used by the Android Credential Manager flow |
 | `API_MINIMUM_CLIENT_VERSION` | Required for `api` | Value sent in every `X-Minimum-Client-Version` response header | The oldest app version the backend currently supports, for example `1.0.0` |
 | `API_BACKUP_RETENTION_DAYS` | Required for `api` | Maximum number of days before pre-deletion provider backups expire; must match enforced provider backup policies (use `0` only if no historical backups exist) | Database and object-storage backup settings |
+| `PASSKEY_RP_ID` | Required for `api` | WebAuthn relying-party id the app's passkeys are bound to, for example `studyflow.dev` | The domain hosting `assetlinks.json` for the Android app |
+| `PASSKEY_ANDROID_ORIGIN` | Required for `api` | Comma-separated list of accepted `android:apk-key-hash:<base64url SHA-256 of the signing certificate>` origins | `keytool -list -v` on each signing certificate (upload key and Play release key), SHA-256 fingerprint re-encoded as base64url |
 
 Except for the two platform-provided `SUPABASE_*` settings, add each setting that applies as a
 repository Actions secret with the same name.
@@ -151,17 +153,73 @@ migrations rather than a hand-written approximation of them.
 
 `supabase/functions/api` serves the versioned StudyFlow API contract under the single Supabase
 Edge Function described by ADR 0017. The gateway leaves the `/functions/v1/api` prefix in the
-request path, so the function strips that prefix and routes on the remaining full path; it does not
-route by the final path segment. Authentication policy is declared per route inside the function.
-The first three routes are unauthenticated by contract, but future authenticated routes must opt in
-to Supabase JWT verification in that route table rather than relying on the gateway.
+request path, so `routedPath()` strips that prefix and the router matches the remaining path in
+full. It deliberately does not dispatch on the final path segment the way the `storage` function
+does: that approach cannot tell `/v1/sessions` from `/v1/sync/sessions`, since both end in
+`sessions`. ADR 0017 requires full-path matching for exactly that reason, and
+[`index_test.ts`](supabase/functions/api/index_test.ts) holds the router to it.
+Authentication policy is declared per route inside the function.
+The three `/v1/auth/signin`, `/v1/auth/signin/challenge` and `/v1/auth/refresh` routes are
+unauthenticated by contract; every other route, passkey registration included, opts in to Supabase
+JWT verification in that route table rather than relying on the gateway.
 
 Every response includes `X-Minimum-Client-Version`, sourced from the `API_MINIMUM_CLIENT_VERSION`
 function secret. Google sign-in verifies the ID token against the configured
-`GOOGLE_SERVER_CLIENT_ID` audience and then asks Supabase Auth to mint the token pair. Passkey
-sign-in intentionally returns `not_implemented` until full WebAuthn assertion verification can be
-implemented safely. Neither credentials nor tokens are logged; request telemetry uses only
-`request_id`, `operation`, `status`, `duration_ms`, `error_code`, and `egress_bytes`.
+`GOOGLE_SERVER_CLIENT_ID` audience and then asks Supabase Auth to mint the token pair.
+
+That audience is one half of a pair. The app requests the ID token with the same value, supplied at
+build time as `-Pstudyflow.googleServerClientId=...` (or `STUDYFLOW_GOOGLE_SERVER_CLIENT_ID`) and
+surfaced as `BuildConfig.GOOGLE_SERVER_CLIENT_ID`. Both must be the Google Cloud OAuth **Web
+application** client id — the Android client id is a different value and never validates. This is a
+public identifier: it travels in every sign-in request and ships in the APK by design, so it is
+build configuration rather than a secret. A mismatch has no distinctive symptom: the token is
+minted happily by Google, audience validation rejects it here, and the user sees sign-in that
+simply fails. If Google sign-in returns `401 invalid_credentials` for everyone while passkey
+sign-in works, compare these two values first.
+
+The app's base URL must point at this function — `https://<project-ref>.supabase.co/functions/v1/api`,
+built with `-Pstudyflow.supabaseProjectRef=<project-ref>`. The gateway prefix stays in the path and
+the function strips it, so no client endpoint path changes.
+
+Neither credentials nor tokens are logged; request telemetry uses only `request_id`, `operation`,
+`status`, `duration_ms`, `error_code`, and `egress_bytes`.
+
+#### Passkeys
+
+| Operation | Endpoint | Authentication |
+| --- | --- | --- |
+| `beginPasskeyRegistration` | `POST /v1/auth/passkey/registration/challenge` | Supabase JWT |
+| `completePasskeyRegistration` | `POST /v1/auth/passkey/registration` | Supabase JWT |
+| `signIn` (`{"type":"passkey"}`) | `POST /v1/auth/signin` | None, by contract |
+
+Registration is authenticated because a passkey is attached to an account Google sign-in already
+created; `docs/authentication.md` records that decision. Assertion and attestation verification is
+delegated to `npm:@simplewebauthn/server`, pinned to an exact version.
+
+WebAuthn verification is configured by two function secrets. `PASSKEY_RP_ID` is the relying-party
+id every credential is bound to. `PASSKEY_ANDROID_ORIGIN` is the expected caller origin, and on
+Android that is **not** a web origin: Credential Manager reports
+`android:apk-key-hash:<base64url SHA-256 of the APK signing certificate>`. It accepts a
+comma-separated list so a rollout signed with a different key than the installed build still
+verifies.
+
+Misconfiguration presents in two distinct ways:
+
+* A value that is not an `android:apk-key-hash:` origin, or an empty list, **fails the function at
+  boot** with `PASSKEY_ANDROID_ORIGIN must be a comma-separated list of ...`, so every route
+  returns `503`. This is deliberate: a silently wrong origin would instead surface as universal
+  sign-in failure long after anyone suspected the secret.
+* A syntactically valid but wrong `PASSKEY_RP_ID` or origin — the fingerprint of the other signing
+  key, say — passes boot and then rejects **every** passkey assertion with
+  `401 invalid_credentials`, while Google sign-in keeps working. A sudden all-passkey `401` rate
+  with healthy Google sign-ins means these two secrets, not the client.
+
+Registration and sign-in challenges are single-use rows in `auth_signin_challenges`, claimed by the
+`consume_auth_challenge` function in one statement so a concurrent replay cannot observe an
+unclaimed row. Credentials live in `passkey_credentials`, which has RLS enabled and no policy: the
+service role is the only reader. Passkey sign-in mints its session through GoTrue's admin
+magic-link route, generated and redeemed inside the function, because GoTrue exposes no admin
+"create a session" endpoint.
 
 **Account deletion is immediate, not deferred.** `DELETE /v1/account` authenticates the caller,
 lists and removes all S3 objects and multipart uploads under their server-derived user prefix,
@@ -206,6 +264,8 @@ Deploy it with the **Deploy Edge Function** workflow by choosing `api`, or local
 ```sh
 export SUPABASE_ACCESS_TOKEN=...
 export GOOGLE_SERVER_CLIENT_ID=...
+export PASSKEY_RP_ID=studyflow.dev
+export PASSKEY_ANDROID_ORIGIN=android:apk-key-hash:...
 export API_MINIMUM_CLIENT_VERSION=1.0.0
 export API_BACKUP_RETENTION_DAYS=30 # replace with the verified provider backup lifetime
 export STORAGE_S3_ENDPOINT=...

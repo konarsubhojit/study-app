@@ -2,6 +2,9 @@ package dev.studyflow.core.network
 
 import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.AuthTokensDto
+import dev.studyflow.core.network.model.PasskeyRegistrationChallengeDto
+import dev.studyflow.core.network.model.PasskeyRegistrationDto
+import dev.studyflow.core.network.model.PasskeyRegistrationRequestDto
 import dev.studyflow.core.network.model.SignInChallengeDto
 import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
@@ -24,6 +27,23 @@ public interface StudyFlowApi {
 
     /** `POST /v1/auth/signin` — exchanges a server-verifiable credential for a token pair. */
     public suspend fun signIn(credential: SignInCredentialDto): ApiResult<AuthTokensDto>
+
+    /**
+     * `POST /v1/auth/passkey/registration/challenge` — creation options for a new passkey
+     * (issue #158).
+     *
+     * Requires a signed-in caller: the passkey is attached to the account the bearer token names,
+     * because account creation is the Google sign-in path, not this one.
+     */
+    public suspend fun beginPasskeyRegistration(): ApiResult<PasskeyRegistrationChallengeDto>
+
+    /**
+     * `POST /v1/auth/passkey/registration` — attaches the created passkey to that account.
+     *
+     * Not idempotent: replaying it answers `credential_already_registered` rather than storing a
+     * second copy, because the challenge it carries is spent by the first attempt.
+     */
+    public suspend fun registerPasskey(request: PasskeyRegistrationRequestDto): ApiResult<PasskeyRegistrationDto>
 
     /** `GET /v1/subjects` — every subject the signed-in user owns. */
     public suspend fun subjects(): ApiResult<List<SubjectDto>>

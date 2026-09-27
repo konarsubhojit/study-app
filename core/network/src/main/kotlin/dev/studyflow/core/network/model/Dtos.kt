@@ -69,6 +69,31 @@ public data class AuthTokensDto(
     val expiresInSeconds: Long,
 )
 
+/**
+ * Response body of `POST /v1/auth/passkey/registration/challenge` (issue #158).
+ *
+ * The account is the one the request's bearer token names — a passkey is added to an account that
+ * already exists — so nothing here identifies the user to the client.
+ */
+@Serializable
+public data class PasskeyRegistrationChallengeDto(
+    val requestJson: String,
+    @SerialName("expiresAt") val expiresAtIso: String,
+)
+
+/** Request body of `POST /v1/auth/passkey/registration`. */
+@Serializable
+public data class PasskeyRegistrationRequestDto(
+    val registrationResponseJson: String,
+)
+
+/** Response body of `POST /v1/auth/passkey/registration`. */
+@Serializable
+public data class PasskeyRegistrationDto(
+    val credentialId: String,
+    @SerialName("createdAt") val createdAtIso: String,
+)
+
 /** An element of `GET /v1/subjects`. */
 @Serializable
 public data class SubjectDto(
@@ -77,7 +102,15 @@ public data class SubjectDto(
     val colorHex: String? = null,
 )
 
-/** An element of `GET /v1/tasks`. */
+/**
+ * An element of `GET /v1/tasks`.
+ *
+ * @property dueAtIso the due time resolved to an instant, valid only for the offset [dueAtZoneId]
+ *   was in when the server read it. Due times float with their zone — "09:00 Europe/London" stays
+ *   09:00 across a daylight-saving transition — so the pair must travel together, exactly as
+ *   `study_tasks` stores a naive wall-clock time beside its zone.
+ * @property dueAtZoneId IANA zone [dueAtIso] was resolved in, null exactly when [dueAtIso] is.
+ */
 @Serializable
 public data class TaskDto(
     val id: String,
@@ -85,6 +118,7 @@ public data class TaskDto(
     val title: String,
     val completed: Boolean = false,
     @SerialName("dueAt") val dueAtIso: String? = null,
+    @SerialName("dueAtTimeZone") val dueAtZoneId: String? = null,
 )
 
 /** Body and response of `POST /v1/sessions`. */
@@ -127,7 +161,16 @@ public data class SyncSessionDto(
     val events: List<SyncSessionEventDto> = emptyList(),
 )
 
-/** One entry of a session's append-only log. */
+/**
+ * One entry of a session's append-only log.
+ *
+ * [uptimeMillis] and [bootId] are write-only: ADR 0017 has the server accept them on upload and
+ * then discard them, because a monotonic-clock reading and a boot identifier from another handset
+ * are uninterpretable facts, not replicated data. They are therefore absent from every response,
+ * and must stay optional here — a required field would make a delta carrying events fail to
+ * decode, surfacing as the non-retryable [dev.studyflow.core.network.ApiError.Malformed] and
+ * stalling sync permanently rather than visibly.
+ */
 @Serializable
 public data class SyncSessionEventDto(
     val id: String,
@@ -135,8 +178,8 @@ public data class SyncSessionEventDto(
     val type: String,
     val sequence: Long,
     @SerialName("wallClock") val wallClockIso: String,
-    val uptimeMillis: Long,
-    val bootId: String,
+    val uptimeMillis: Long? = null,
+    val bootId: String? = null,
 )
 
 /** Request body of `POST /v1/sync/sessions`. */

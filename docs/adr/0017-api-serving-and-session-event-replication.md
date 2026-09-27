@@ -15,7 +15,7 @@ models are not the same model:
 | --- | --- | --- |
 | `SubjectDto.colorHex: String?` | `subjects.color_argb integer not null` | There is no `colorHex` key. The client ignores unknown fields and defaults the missing nullable property to `null`, so parsing succeeds and every subject renders without its colour. |
 | `TaskDto.completed: Boolean = false` | `study_tasks.completed_at timestamptz` | There is no `completed` key. Parsing succeeds with `false`, so every completed task appears incomplete. |
-| `TaskDto.dueAt` (`format: date-time`) | `study_tasks.due_at timestamp` plus `time_zone text` | The migration deliberately keeps a naive wall-clock value and its zone separate so a due time does not drift across DST. Returning one database column cannot implement the contracted value without interpreting both. |
+| `TaskDto.dueAt` (`format: date-time`) plus `TaskDto.dueAtTimeZone` | `study_tasks.due_at timestamp` plus `time_zone text` | The migration deliberately keeps a naive wall-clock value and its zone separate so a due time does not drift across DST. Returning one database column cannot implement the contracted value without interpreting both, and the contract carries the zone alongside the resolved instant so the floating wall-clock meaning is recoverable rather than frozen at the offset it was read under. |
 | required `TaskDto.subjectId: String` | nullable `study_tasks.subject_id` with `on delete set null` | A task whose subject was deleted cannot satisfy the required wire field. |
 
 These claims come from

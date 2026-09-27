@@ -20,10 +20,9 @@ public class CredentialManagerSignInClient(
     public suspend fun getCredential(
         activity: Activity,
         passkeyRequestJson: String,
-        googleServerClientId: String,
+        google: GoogleSignInConfig,
     ): SignInCredential {
         require(passkeyRequestJson.isNotBlank()) { "passkeyRequestJson must not be blank" }
-        require(googleServerClientId.isNotBlank()) { "googleServerClientId must not be blank" }
 
         val request =
             GetCredentialRequest(
@@ -31,7 +30,7 @@ public class CredentialManagerSignInClient(
                     GetPublicKeyCredentialOption(passkeyRequestJson),
                     GetGoogleIdOption
                         .Builder()
-                        .setServerClientId(googleServerClientId)
+                        .setServerClientId(google.serverClientId)
                         .setFilterByAuthorizedAccounts(false)
                         .build(),
                 ),

@@ -12,6 +12,9 @@ import dev.studyflow.core.network.http.studyFlowHttpClient
 import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.model.AuthTokensDto
+import dev.studyflow.core.network.model.PasskeyRegistrationChallengeDto
+import dev.studyflow.core.network.model.PasskeyRegistrationDto
+import dev.studyflow.core.network.model.PasskeyRegistrationRequestDto
 import dev.studyflow.core.network.model.SignInChallengeDto
 import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudyFlowJson
@@ -87,6 +90,20 @@ public class FakeStudyFlowBackend(
     public var signInTokens: AuthTokensDto =
         AuthTokensDto(accessToken = "test-access", refreshToken = "test-refresh", expiresInSeconds = 3_600)
 
+    /** What `POST /v1/auth/passkey/registration/challenge` answers with. */
+    public var passkeyRegistrationChallenge: PasskeyRegistrationChallengeDto =
+        PasskeyRegistrationChallengeDto(
+            requestJson = """{"challenge":"test-registration-challenge","rp":{"id":"studyflow.test"}}""",
+            expiresAtIso = "2026-03-01T09:05:00Z",
+        )
+
+    /** Credentials received on `POST /v1/auth/passkey/registration`, in order. */
+    public val registeredPasskeys: MutableList<PasskeyRegistrationRequestDto> = mutableListOf()
+
+    /** What `POST /v1/auth/passkey/registration` answers with. */
+    public var passkeyRegistration: PasskeyRegistrationDto =
+        PasskeyRegistrationDto(credentialId = "test-credential", createdAtIso = "2026-03-01T09:00:00Z")
+
     /** How many account deletions the backend accepted; the endpoint is idempotent by contract. */
     public var acceptedAccountDeletions: Int = 0
         private set
@@ -125,17 +142,7 @@ public class FakeStudyFlowBackend(
             return respondJson("""{"code":"test_failure","message":"forced by the test"}""", status)
         }
 
-        return when (path) {
-            ApiEndpoint.BeginSignIn.path -> {
-                respondJson(StudyFlowJson.encodeToString(signInChallenge))
-            }
-
-            ApiEndpoint.SignIn.path -> {
-                val body = request.body.toByteArray().decodeToString()
-                receivedSignInCredentials += StudyFlowJson.decodeFromString<SignInCredentialDto>(body)
-                respondJson(StudyFlowJson.encodeToString(signInTokens))
-            }
-
+        return authResponse(request, path) ?: when (path) {
             ApiEndpoint.ListSubjects.path -> {
                 respondJson(StudyFlowJson.encodeToString(subjects))
             }
@@ -160,7 +167,7 @@ public class FakeStudyFlowBackend(
                         )
                     respondJson(StudyFlowJson.encodeToString(response))
                 } else {
-                    respondJson(StudyFlowJson.encodeToString(syncDelta))
+                    respondJson(StudyFlowJson.encodeToString(syncDelta.withoutDeviceAnchors()))
                 }
             }
 
@@ -183,6 +190,37 @@ public class FakeStudyFlowBackend(
         }
     }
 
+    /** The credential exchanges, kept apart so [handle] stays a readable table of data endpoints. */
+    private suspend fun MockRequestHandleScope.authResponse(
+        request: HttpRequestData,
+        path: String,
+    ): HttpResponseData? =
+        when (path) {
+            ApiEndpoint.BeginSignIn.path -> {
+                respondJson(StudyFlowJson.encodeToString(signInChallenge))
+            }
+
+            ApiEndpoint.SignIn.path -> {
+                val body = request.body.toByteArray().decodeToString()
+                receivedSignInCredentials += StudyFlowJson.decodeFromString<SignInCredentialDto>(body)
+                respondJson(StudyFlowJson.encodeToString(signInTokens))
+            }
+
+            ApiEndpoint.BeginPasskeyRegistration.path -> {
+                respondJson(StudyFlowJson.encodeToString(passkeyRegistrationChallenge))
+            }
+
+            ApiEndpoint.RegisterPasskey.path -> {
+                val body = request.body.toByteArray().decodeToString()
+                registeredPasskeys += StudyFlowJson.decodeFromString<PasskeyRegistrationRequestDto>(body)
+                respondJson(StudyFlowJson.encodeToString(passkeyRegistration), HttpStatusCode.Created)
+            }
+
+            else -> {
+                null
+            }
+        }
+
     private fun MockRequestHandleScope.respondJson(
         body: String,
         status: HttpStatusCode = HttpStatusCode.OK,
@@ -199,3 +237,20 @@ public class FakeStudyFlowBackend(
         const val BASE_URL = "https://mock.studyflow.test"
     }
 }
+
+/**
+ * Strips the device-local anchors the real server discards (ADR 0017).
+ *
+ * A fake that echoes `uptimeMillis` and `bootId` back is more permissive than production, so every
+ * test passes while the deployed server's response would fail to decode. Applying the server's own
+ * rule here is what makes these tests evidence about the real wire.
+ */
+private fun SyncDeltaDto.withoutDeviceAnchors(): SyncDeltaDto =
+    copy(
+        changes =
+            changes.map { change ->
+                change.copy(
+                    events = change.events.map { it.copy(uptimeMillis = null, bootId = null) },
+                )
+            },
+    )

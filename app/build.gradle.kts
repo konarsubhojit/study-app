@@ -10,8 +10,45 @@ plugins {
 // Pointing the app at a local mock backend is a build flag rather than a code change (issue #63):
 //   ./gradlew installDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080
 // 10.0.2.2 is the host machine as seen from the emulator.
+//
+// The contract is served by the `api` Supabase Edge Function (ADR 0017), whose URL is
+// `https://<project-ref>.supabase.co/functions/v1/api`. The gateway prefix stays in the path and
+// the function strips it internally, so the base URL ends at the function name and `ApiEndpoint`
+// paths are appended unchanged. The project ref is deployment configuration rather than a secret —
+// it appears in every request URL — so it is supplied the same way the release signing values and
+// version overrides are, never committed as a Kotlin constant:
+//   ./gradlew assembleProductionRelease -Pstudyflow.supabaseProjectRef=<project-ref>
 val defaultApiBaseUrl = "https://api.studyflow.dev"
-val apiBaseUrl: String = providers.gradleProperty("studyflow.apiBaseUrl").getOrElse(defaultApiBaseUrl)
+val supabaseProjectRef: String? =
+    providers
+        .gradleProperty("studyflow.supabaseProjectRef")
+        .orElse(providers.environmentVariable("STUDYFLOW_SUPABASE_PROJECT_REF"))
+        .orNull
+        ?.takeIf(String::isNotBlank)
+        ?.also {
+            require(Regex("""[a-z0-9]{8,}""").matches(it)) {
+                "studyflow.supabaseProjectRef '$it' is not a Supabase project ref"
+            }
+        }
+val apiBaseUrl: String =
+    providers
+        .gradleProperty("studyflow.apiBaseUrl")
+        .getOrElse(
+            supabaseProjectRef?.let { "https://$it.supabase.co/functions/v1/api" } ?: defaultApiBaseUrl,
+        )
+
+// The Google *Web application* OAuth client id, which is a public identifier and ships in the APK
+// by design: Credential Manager needs it to ask for an ID token, and the server needs the same
+// value in its GOOGLE_SERVER_CLIENT_ID secret to validate that token's audience. Do not "harden" it
+// into a secret store — that hides a value the request already carries, and a *mismatch* with the
+// server, not disclosure, is the failure that matters: audience validation then rejects every
+// token and sign-in looks broken rather than misconfigured. The Android client id is a different
+// value and will not work here.
+val googleServerClientId: String =
+    providers
+        .gradleProperty("studyflow.googleServerClientId")
+        .orElse(providers.environmentVariable("STUDYFLOW_GOOGLE_SERVER_CLIENT_ID"))
+        .getOrElse("")
 val versionProperties =
     Properties().apply {
         file("version.properties").inputStream().use(::load)
@@ -64,7 +101,6 @@ extensions.configure<ApplicationExtension> {
         versionCode = appVersionCode
         versionName = appVersionName
 
-        buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
         // The server uses this to decide when an installed build is too old to serve.
         buildConfigField("String", "API_CLIENT_VERSION", "\"$appVersionName\"")
     }
@@ -73,7 +109,12 @@ extensions.configure<ApplicationExtension> {
     productFlavors {
         create("production") {
             dimension = "backend"
+            buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+            buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         }
+        // The mock flavour is served entirely by `FakeStudyFlowBackend` and performs no network
+        // I/O, so it is given no base URL at all: a build config field it never reads is an
+        // invitation for someone to start reading it.
         create("mock") {
             dimension = "backend"
             applicationIdSuffix = ".mock"

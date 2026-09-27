@@ -5,6 +5,7 @@ import dev.studyflow.core.network.auth.AuthTokens
 import dev.studyflow.core.network.auth.InMemoryTokenStore
 import dev.studyflow.core.network.error.ApiError
 import dev.studyflow.core.network.error.UserFacingMessage
+import dev.studyflow.core.network.model.PasskeyRegistrationRequestDto
 import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.version.ClientVersion
@@ -38,6 +39,31 @@ class KtorStudyFlowApiTest {
             assertEquals("access", result.valueOrNull()?.accessToken)
             assertEquals("""{"type":"passkey","assertion":"assertion-secret"}""", body)
             assertEquals(null, authorization)
+        }
+
+    @Test
+    fun `passkey registration is authenticated, unlike sign-in, and posts the platform response verbatim`() =
+        runTest {
+            var authorization: String? = null
+            var path = ""
+            var body = ""
+            val api =
+                MockBackend.api { request ->
+                    authorization = request.headers["Authorization"]
+                    path = request.url.encodedPath
+                    body = request.body.toByteArray().decodeToString()
+                    json("""{"credentialId":"cred-1","createdAt":"2026-03-01T09:00:00Z"}""", HttpStatusCode.Created)
+                }
+
+            val result = api.registerPasskey(PasskeyRegistrationRequestDto("""{"id":"cred-1"}"""))
+
+            assertEquals("cred-1", result.valueOrNull()?.credentialId)
+            assertEquals(ApiEndpoint.RegisterPasskey.path, path)
+            assertEquals("""{"registrationResponseJson":"{\"id\":\"cred-1\"}"}""", body)
+            assertTrue(
+                authorization?.startsWith("Bearer ") == true,
+                "registration is an authenticated operation, unlike the sign-in exchange above",
+            )
         }
 
     @Test
