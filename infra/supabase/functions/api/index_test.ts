@@ -61,12 +61,18 @@ Deno.test("account deletion purges storage before Auth, returns configured reten
         const name = (command as { constructor: { name: string } }).constructor.name;
         calls.push(name);
         if (command instanceof ListMultipartUploadsCommand) {
+            if (command.input.Prefix !== "11111111-1111-1111-1111-111111111111/") {
+                throw new Error("multipart purge used an unverified owner");
+            }
             return {
                 Uploads: [{ Key: "11111111-1111-1111-1111-111111111111/pending", UploadId: "pending-upload" }],
                 IsTruncated: false,
             };
         }
         if (command instanceof ListObjectsV2Command) {
+            if (command.input.Prefix !== "11111111-1111-1111-1111-111111111111/") {
+                throw new Error("object purge used an unverified owner");
+            }
             return { Contents: [{ Key: "11111111-1111-1111-1111-111111111111/file" }], IsTruncated: false };
         }
         if (name === "AbortMultipartUploadCommand" || name === "DeleteObjectCommand") return {};
@@ -89,6 +95,9 @@ Deno.test("account deletion purges storage before Auth, returns configured reten
             }
             if (url.includes("/auth/v1/admin/users/")) {
                 if (init?.method === "DELETE") {
+                    if (!url.endsWith("/11111111-1111-1111-1111-111111111111")) {
+                        throw new Error("request body selected a different deletion target");
+                    }
                     calls.push("authDelete");
                     removed = true;
                     return jsonResponse(200, {});
