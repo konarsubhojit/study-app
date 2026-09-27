@@ -14,9 +14,9 @@ const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 type Json = Record<string, unknown>;
 type AuthMode = "none" | "jwt";
 type Route = {
-    method: "POST" | "DELETE";
+    method: "GET" | "POST" | "DELETE";
     path: string;
-    operation: "beginSignIn" | "signIn" | "refreshTokens" | "deleteAccount";
+    operation: "beginSignIn" | "signIn" | "refreshTokens" | "listSubjects" | "listTasks" | "deleteAccount";
     auth: AuthMode;
     handler: (request: Request, owner?: string) => Promise<Response>;
 };
@@ -41,6 +41,8 @@ type GoogleClaims = {
     sub?: unknown;
 };
 type GoogleJwk = Json & { kid?: string; kty?: string; alg?: string; use?: string; n?: string; e?: string };
+type SubjectRow = { id: unknown; name: unknown; color_argb: unknown };
+type TaskRow = { id: unknown; subject_id: unknown; title: unknown; completed_at: unknown; due_at: unknown };
 
 class ApiError extends Error {
     constructor(
@@ -265,6 +267,58 @@ async function deleteAccount(request: Request, owner?: string): Promise<Response
     return json(200, { acceptedAt: new Date().toISOString(), retentionWindowDays: backupRetentionDays });
 }
 
+function stringField(value: unknown, field: string): string {
+    if (typeof value !== "string") throw new Error(`Database response was missing ${field}`);
+    return value;
+}
+
+function colorHex(colorArgb: unknown): string {
+    if (!Number.isInteger(colorArgb)) throw new Error("Database response had invalid color_argb");
+    return "#" + ((colorArgb as number) >>> 0 & 0xFFFFFF).toString(16).padStart(6, "0").toUpperCase();
+}
+
+function subjectDto(row: SubjectRow): Json {
+    return {
+        id: stringField(row.id, "subject id"),
+        name: stringField(row.name, "subject name"),
+        colorHex: colorHex(row.color_argb),
+    };
+}
+
+function taskDto(row: TaskRow): Json | undefined {
+    if (typeof row.subject_id !== "string") return undefined;
+    const dueAt = row.due_at === null ? null : new Date(stringField(row.due_at, "due_at")).toISOString();
+    if (dueAt !== null && Number.isNaN(Date.parse(dueAt))) throw new Error("Database response had invalid due_at");
+    return {
+        id: stringField(row.id, "task id"),
+        subjectId: row.subject_id,
+        title: stringField(row.title, "task title"),
+        completed: row.completed_at !== null,
+        dueAt,
+    };
+}
+
+async function listSubjects(_request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    const rows = await databaseJson<SubjectRow[]>(
+        `subjects?user_id=eq.${encodeURIComponent(owner)}&deleted_at=is.null&select=id,name,color_argb&order=updated_at.asc,id.asc`,
+    );
+    return json(200, rows.map(subjectDto));
+}
+
+async function listTasks(request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    const subjectId = new URL(request.url).searchParams.get("subjectId");
+    const rows = await databaseJson<TaskRow[]>("rpc/list_study_tasks", {
+        method: "POST",
+        body: JSON.stringify({
+            p_user_id: owner,
+            ...(subjectId ? { p_subject_id: subjectId } : {}),
+        }),
+    });
+    return json(200, rows.map(taskDto).filter((task): task is Json => task !== undefined));
+}
+
 async function body(request: Request): Promise<Json> {
     try {
         const value = await request.json();
@@ -435,6 +489,8 @@ const routes: Route[] = [
     { method: "POST", path: "/v1/auth/signin/challenge", operation: "beginSignIn", auth: "none", handler: beginSignIn },
     { method: "POST", path: "/v1/auth/signin", operation: "signIn", auth: "none", handler: signIn },
     { method: "POST", path: "/v1/auth/refresh", operation: "refreshTokens", auth: "none", handler: refreshTokens },
+    { method: "GET", path: "/v1/subjects", operation: "listSubjects", auth: "jwt", handler: listSubjects },
+    { method: "GET", path: "/v1/tasks", operation: "listTasks", auth: "jwt", handler: listTasks },
     { method: "DELETE", path: "/v1/account", operation: "deleteAccount", auth: "jwt", handler: deleteAccount },
 ];
 

@@ -31,6 +31,70 @@ Deno.test("account deletion route requires JWT and is distinct from other endpoi
     if (resolveRoute("POST", "/v1/account")) throw new Error("wrong method routed");
 });
 
+Deno.test("list routes require JWT and are distinct", () => {
+    const subjects = resolveRoute("GET", routedPath("/functions/v1/api/v1/subjects"));
+    const tasks = resolveRoute("GET", routedPath("/functions/v1/api/v1/tasks"));
+    if (subjects?.operation !== "listSubjects" || subjects.auth !== "jwt") throw new Error("wrong subjects route policy");
+    if (tasks?.operation !== "listTasks" || tasks.auth !== "jwt") throw new Error("wrong tasks route policy");
+    if (resolveRoute("POST", "/v1/tasks")) throw new Error("wrong method routed");
+});
+
+Deno.test("subjects map signed ARGB colours and explicitly scope service-role reads to the JWT owner", async () => {
+    await withFetch((input) => {
+        const url = String(input);
+        if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: "11111111-1111-1111-1111-111111111111" });
+        if (url.includes("/rest/v1/subjects?")) {
+            if (!url.includes("user_id=eq.11111111-1111-1111-1111-111111111111") || !url.includes("deleted_at=is.null")) {
+                throw new Error("subject list was not constrained to the verified owner and active rows");
+            }
+            return jsonResponse(200, [
+                { id: "s1", name: "Maths", color_argb: -16711936 },
+                { id: "s2", name: "History", color_argb: 0x7F2E7D32 },
+            ]);
+        }
+        if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+        throw new Error(`unexpected fetch ${url}`);
+    }, async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/subjects", {
+            headers: { authorization: ["Bearer", "valid-test-token"].join(" ") },
+        }));
+        const body = await response.json();
+        if (response.status !== 200 || JSON.stringify(body) !== JSON.stringify([
+            { id: "s1", name: "Maths", colorHex: "#00FF00" },
+            { id: "s2", name: "History", colorHex: "#2E7D32" },
+        ])) throw new Error("subjects were not translated to client colour format");
+    });
+});
+
+Deno.test("tasks derive completion, preserve DST-resolved due instants, filter by subject, and omit orphaned tasks", async () => {
+    await withFetch((input, init) => {
+        const url = String(input);
+        if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: "11111111-1111-1111-1111-111111111111" });
+        if (url.endsWith("/rest/v1/rpc/list_study_tasks")) {
+            const body = JSON.parse(String(init?.body));
+            if (body.p_user_id !== "11111111-1111-1111-1111-111111111111" || body.p_subject_id !== "s1") {
+                throw new Error("task list was not constrained to the verified owner and requested subject");
+            }
+            return jsonResponse(200, [
+                { id: "t1", subject_id: "s1", title: "Spring deadline", completed_at: "2026-03-08T12:00:00Z", due_at: "2026-03-08T13:00:00+00:00" },
+                { id: "t2", subject_id: "s1", title: "Incomplete", completed_at: null, due_at: null },
+                { id: "t3", subject_id: null, title: "Deleted subject", completed_at: null, due_at: null },
+            ]);
+        }
+        if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+        throw new Error(`unexpected fetch ${url}`);
+    }, async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/tasks?subjectId=s1", {
+            headers: { authorization: ["Bearer", "valid-test-token"].join(" ") },
+        }));
+        const body = await response.json();
+        if (response.status !== 200 || JSON.stringify(body) !== JSON.stringify([
+            { id: "t1", subjectId: "s1", title: "Spring deadline", completed: true, dueAt: "2026-03-08T13:00:00.000Z" },
+            { id: "t2", subjectId: "s1", title: "Incomplete", completed: false, dueAt: null },
+        ])) throw new Error("tasks were not translated correctly");
+    });
+});
+
 Deno.test("account deletion rejects missing and invalid JWTs without deleting data", async () => {
     let deletes = 0;
     await withFetch((input, init) => {
