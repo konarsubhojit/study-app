@@ -5,6 +5,7 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -15,13 +16,12 @@ import androidx.compose.animation.scaleOut
  * Motion tokens (issue #17).
  *
  * Animation is the part of a design system features are most likely to reinvent, because every
- * `tween(300)` looks harmless on its own. These are the only durations and easing curves the app
- * uses; `docs/design-system.md` explains which to reach for.
+ * `tween(300)` looks harmless on its own. These are the only motion specifications the app uses;
+ * `docs/design-system.md` explains which to reach for.
  *
- * The transitions are deliberately short and fade-led. Predictive back hands the system a
- * user-driven progress value, so a screen transition must look correct at every point between 0 and
- * 1 and must not depend on running to completion — a slide that travels the full width of the
- * screen cannot do that, a fade with a small scale can.
+ * Effects remain short and fade-led, while spatial changes use an interruption-safe spring.
+ * Predictive back hands the system a user-driven progress value, so a screen transition must look
+ * correct at every point between 0 and 1 and must not depend on running to completion.
  */
 public object StudyFlowMotion {
     /** Durations, in milliseconds. */
@@ -49,8 +49,8 @@ public object StudyFlowMotion {
     }
 
     /** Spec for anything that moves or resizes. */
-    public fun <T> spatial(durationMillis: Int = Durations.LONG): FiniteAnimationSpec<T> =
-        tween(durationMillis = durationMillis, easing = Easings.Standard)
+    public fun <T> spatial(): FiniteAnimationSpec<T> =
+        spring(dampingRatio = SPATIAL_DAMPING_RATIO, stiffness = SPATIAL_STIFFNESS)
 
     /** Spec for anything that only changes colour or alpha. */
     public fun <T> effects(durationMillis: Int = Durations.MEDIUM): FiniteAnimationSpec<T> =
@@ -58,7 +58,7 @@ public object StudyFlowMotion {
 
     /** Destination arriving, forwards. */
     public val enter: EnterTransition =
-        fadeIn(animationSpec = arriving()) + scaleIn(initialScale = GROW_FROM, animationSpec = arriving())
+        fadeIn(animationSpec = arriving()) + scaleIn(initialScale = GROW_FROM, animationSpec = spatial())
 
     /** Destination leaving, forwards. */
     public val exit: ExitTransition = fadeOut(animationSpec = leaving())
@@ -68,7 +68,7 @@ public object StudyFlowMotion {
 
     /** Destination leaving on back; scales down so the gesture reads as "putting this away". */
     public val popExit: ExitTransition =
-        fadeOut(animationSpec = leaving()) + scaleOut(targetScale = SHRINK_TO, animationSpec = leaving())
+        fadeOut(animationSpec = leaving()) + scaleOut(targetScale = SHRINK_TO, animationSpec = spatial())
 
     private fun <T> arriving(): FiniteAnimationSpec<T> =
         tween(durationMillis = Durations.LONG, easing = Easings.EmphasizedDecelerate)
@@ -78,4 +78,6 @@ public object StudyFlowMotion {
 
     private const val GROW_FROM = 0.95f
     private const val SHRINK_TO = 0.95f
+    private const val SPATIAL_DAMPING_RATIO = 0.8f
+    private const val SPATIAL_STIFFNESS = 380f
 }

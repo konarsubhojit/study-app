@@ -183,6 +183,7 @@ public fun NotificationSettingsScreen(
                 blockedAppWide = state.notificationsBlocked,
                 onOpenSettings = { onEvent(NotificationSettingsUiEvent.OpenChannelSettings(status.channel)) },
                 onPickAlarmRingtone = { onEvent(NotificationSettingsUiEvent.PickAlarmRingtone) },
+                modifier = Modifier.animateItem(),
             )
         }
 
@@ -327,6 +328,7 @@ private fun WeeklySummaryDayRow(
                     )
                 },
                 label = { Text(DAY_NAMES[index]) },
+                modifier = Modifier.animateItem(),
             )
         }
     }
@@ -421,8 +423,9 @@ private fun ChannelCard(
     blockedAppWide: Boolean,
     onOpenSettings: () -> Unit,
     onPickAlarmRingtone: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(modifier = modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier.padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),

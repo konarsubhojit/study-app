@@ -19,8 +19,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -67,6 +72,7 @@ public fun TimerScreen(
     modifier: Modifier = Modifier,
 ) {
     KeepScreenOn(enabled = state.keepScreenOn)
+    TimerPhaseHaptics(phase = state.phase)
 
     Column(
         modifier = modifier.fillMaxSize(),
@@ -189,6 +195,7 @@ private fun SubjectPicker(
                 selected = subject.id == state.selectedSubjectId,
                 enabled = editable,
                 onClick = { onEvent(TimerUiEvent.SubjectSelected(subject.id)) },
+                modifier = Modifier.animateItem(),
             )
         }
     }
@@ -200,14 +207,31 @@ private fun SubjectChip(
     selected: Boolean,
     enabled: Boolean,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     FilterChip(
         selected = selected,
         enabled = enabled,
         onClick = onClick,
         label = { Text(text = subject.name) },
-        modifier = Modifier.semantics { contentDescription = "Subject ${subject.name}" },
+        modifier = modifier.semantics { contentDescription = "Subject ${subject.name}" },
     )
+}
+
+@Composable
+private fun TimerPhaseHaptics(phase: TimerPhase) {
+    val hapticFeedback = LocalHapticFeedback.current
+    var previousPhase by remember { mutableStateOf(phase) }
+    LaunchedEffect(phase) {
+        if (phase != previousPhase) {
+            when (phase) {
+                TimerPhase.RUNNING -> hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                TimerPhase.IDLE -> hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+                TimerPhase.PAUSED -> Unit
+            }
+            previousPhase = phase
+        }
+    }
 }
 
 @Composable

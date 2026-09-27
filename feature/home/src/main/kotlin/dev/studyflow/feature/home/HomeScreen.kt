@@ -109,6 +109,7 @@ public fun HomeScreen(
                                 .lowercase()
                                 .replaceFirstChar(Char::uppercase),
                         onClick = { actions.onOpenMaterial(material.id) },
+                        modifier = Modifier.animateItem(),
                     )
                 }
             }
@@ -124,8 +125,9 @@ private fun SummaryCard(
     title: String,
     detail: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    Card(modifier = modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(
             modifier = Modifier.padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),

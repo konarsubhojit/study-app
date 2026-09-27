@@ -179,6 +179,7 @@ private fun RangePresetRow(
                 selected = preset == selected,
                 onClick = { onEvent(InsightsUiEvent.RangePresetSelected(preset)) },
                 label = { Text(preset.label()) },
+                modifier = Modifier.animateItem(),
             )
         }
     }
@@ -196,6 +197,7 @@ private fun BucketSizeRow(
                 selected = bucketSize == selected,
                 onClick = { onEvent(InsightsUiEvent.BucketSizeChanged(bucketSize)) },
                 label = { Text(bucketSize.label()) },
+                modifier = Modifier.animateItem(),
             )
         }
     }
@@ -221,6 +223,7 @@ private fun SubjectFilterRow(
                 selected = selectedSubjectId == subject.id,
                 onClick = { onEvent(InsightsUiEvent.SubjectFilterChanged(subject.id)) },
                 label = { Text(subject.name) },
+                modifier = Modifier.animateItem(),
             )
         }
     }
@@ -434,6 +437,7 @@ private fun HourOfDaySection(
                 Box(
                     modifier =
                         Modifier
+                            .animateItem()
                             .size(HEATMAP_CELL)
                             .clip(MaterialTheme.shapes.extraSmall)
                             .background(

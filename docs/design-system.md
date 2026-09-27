@@ -27,7 +27,7 @@ the only place the fallback rule is written down.
 | Type | `MaterialTheme.typography.bodyLarge` | `fontSize = 14.sp` |
 | Shape | `MaterialTheme.shapes.medium` | `RoundedCornerShape(12.dp)` |
 | Spacing | `MaterialTheme.spacing.medium` | `padding(16.dp)` |
-| Motion | `StudyFlowMotion.spatial()` | `tween(300)` |
+| Motion | `StudyFlowMotion.spatial()` | Feature-local animation specs |
 
 The spacing scale is `extraSmall` (4) · `small` (8) · `medium` (16) · `large` (24) ·
 `extraLarge` (32) · `huge` (48), all in dp and all on a 4.dp grid. Type sizes are declared in `sp`,
@@ -91,6 +91,10 @@ Transitions are fade-led with a small scale, and never travel the full width of 
 a predictive-back requirement rather than a taste: the system drives the transition from the user's
 gesture, so every frame between 0 and 1 has to look deliberate — including the frames of a gesture
 that is abandoned halfway and reversed.
+
+Spatial movement and resizing use the interruption-safe `spatial()` spring. Alpha and colour changes
+remain duration-based through `effects()`. Shared list-to-detail elements use
+`studyFlowSharedElement`; their keys come from `StudyFlowSharedElementKeys`.
 
 Motion is also an accessibility setting. Respect the platform's reduced-motion preference rather
 than animating unconditionally, and never make an animation the only signal that something changed.

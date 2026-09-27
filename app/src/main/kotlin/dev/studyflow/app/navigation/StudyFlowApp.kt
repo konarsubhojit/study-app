@@ -26,8 +26,10 @@ import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.entryProvider
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.runtime.rememberSaveableStateHolderNavEntryDecorator
+import androidx.navigation3.ui.LocalNavAnimatedContentScope
 import androidx.navigation3.ui.NavDisplay
 import dev.studyflow.core.designsystem.motion.StudyFlowMotion
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementScope
 import dev.studyflow.core.designsystem.navigation.StudyFlowNavigationItem
 import dev.studyflow.core.designsystem.navigation.StudyFlowNavigationSuite
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
@@ -102,10 +104,26 @@ private fun AppNavDisplay(
                         TimerScreenRoute(taskId = route.taskId, subjectId = route.subjectId)
                     }
                     entry<MaterialsRoute> { route ->
-                        MaterialsEntry(route = route, backStack = backStack)
+                        MaterialsEntry(
+                            route = route,
+                            backStack = backStack,
+                            sharedElementScope =
+                                StudyFlowSharedElementScope(
+                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                    animatedVisibilityScope = LocalNavAnimatedContentScope.current,
+                                ),
+                        )
                     }
                     entry<TasksRoute> { route ->
-                        TasksEntry(route = route, backStack = backStack)
+                        TasksEntry(
+                            route = route,
+                            backStack = backStack,
+                            sharedElementScope =
+                                StudyFlowSharedElementScope(
+                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                    animatedVisibilityScope = LocalNavAnimatedContentScope.current,
+                                ),
+                        )
                     }
                     entry<SettingsRoute> {
                         NotificationSettingsRoute(
@@ -148,9 +166,11 @@ private fun AppNavDisplay(
 private fun TasksEntry(
     route: TasksRoute,
     backStack: NavBackStack<NavKey>,
+    sharedElementScope: StudyFlowSharedElementScope,
 ) {
     if (route.taskId == null) {
         TasksListRoute(
+            sharedElementScope = sharedElementScope,
             onTaskSelect = { taskId ->
                 if (backStack.lastOrNull() != TasksRoute(taskId)) {
                     backStack.add(TasksRoute(taskId))
@@ -160,6 +180,7 @@ private fun TasksEntry(
     } else {
         TaskDetailRoute(
             taskId = route.taskId,
+            sharedElementScope = sharedElementScope,
             onBack = { backStack.removeLastOrNull() },
             onStartStudySession = { taskId, subjectId ->
                 backStack.add(TimerRoute(taskId = taskId, subjectId = subjectId))
@@ -172,9 +193,11 @@ private fun TasksEntry(
 private fun MaterialsEntry(
     route: MaterialsRoute,
     backStack: NavBackStack<NavKey>,
+    sharedElementScope: StudyFlowSharedElementScope,
 ) {
     if (route.materialId == null) {
         MaterialsScreenRoute(
+            sharedElementScope = sharedElementScope,
             onOpenMaterial = { materialId ->
                 if (backStack.lastOrNull() != MaterialsRoute(materialId)) {
                     backStack.add(MaterialsRoute(materialId))
@@ -184,6 +207,7 @@ private fun MaterialsEntry(
     } else {
         MaterialDetailRoute(
             materialId = route.materialId,
+            sharedElementScope = sharedElementScope,
             onBack = { backStack.removeLastOrNull() },
             onStartStudySession = { subjectId -> backStack.add(TimerRoute(subjectId = subjectId)) },
         )

@@ -3,10 +3,12 @@ package dev.studyflow.core.ui.state
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -17,7 +19,16 @@ import dev.studyflow.core.domain.result.UserMessage
 @Composable
 public fun LoadingState(modifier: Modifier = Modifier) {
     StateContainer(modifier) {
-        CircularProgressIndicator()
+        repeat(SKELETON_LINE_COUNT) { index ->
+            Surface(
+                modifier =
+                    Modifier
+                        .fillMaxWidth(if (index == SKELETON_LINE_COUNT - 1) 0.6f else 1f)
+                        .height(MaterialTheme.spacing.large),
+                shape = MaterialTheme.shapes.small,
+                color = MaterialTheme.colorScheme.surfaceVariant,
+            ) {}
+        }
     }
 }
 
@@ -77,3 +88,5 @@ private fun UserMessage.copy(): String =
         UserMessage.Validation -> "Check the information and try again."
         UserMessage.Unknown -> "Something went wrong. Please try again."
     }
+
+private const val SKELETON_LINE_COUNT = 3

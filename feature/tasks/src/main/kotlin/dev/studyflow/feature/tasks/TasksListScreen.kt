@@ -1,5 +1,9 @@
 package dev.studyflow.feature.tasks
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,6 +49,10 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.studyflow.core.designsystem.motion.StudyFlowMotion
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementKeys
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementScope
+import dev.studyflow.core.designsystem.motion.studyFlowSharedElement
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.TaskPriority
@@ -64,6 +72,7 @@ import kotlin.time.Instant
 public fun TasksListRoute(
     modifier: Modifier = Modifier,
     onTaskSelect: (String) -> Unit = {},
+    sharedElementScope: StudyFlowSharedElementScope? = null,
     viewModel: TasksListViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -77,7 +86,12 @@ public fun TasksListRoute(
         }
     }
 
-    TasksListScreen(state = state, onEvent = viewModel::onEvent, modifier = modifier)
+    TasksListScreen(
+        state = state,
+        onEvent = viewModel::onEvent,
+        modifier = modifier,
+        sharedElementScope = sharedElementScope,
+    )
 }
 
 @Composable
@@ -85,6 +99,7 @@ public fun TasksListScreen(
     state: TasksListUiState,
     onEvent: (TasksListUiEvent) -> Unit,
     modifier: Modifier = Modifier,
+    sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
     Box(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
@@ -97,7 +112,7 @@ public fun TasksListScreen(
                 onSubmit = { onEvent(TasksListUiEvent.QuickAddSubmitted) },
             )
             FilterBar(state = state, onEvent = onEvent)
-            TaskListContent(state = state, onEvent = onEvent)
+            TaskListContent(state = state, onEvent = onEvent, sharedElementScope = sharedElementScope)
         }
 
         state.undo?.let { undo ->
@@ -110,23 +125,36 @@ public fun TasksListScreen(
 private fun TaskListContent(
     state: TasksListUiState,
     onEvent: (TasksListUiEvent) -> Unit,
+    sharedElementScope: StudyFlowSharedElementScope?,
 ) {
-    when {
-        state.loading -> {
-            LoadingState(modifier = Modifier.fillMaxSize())
-        }
+    AnimatedContent(
+        targetState = state.displayState,
+        transitionSpec = {
+            fadeIn(StudyFlowMotion.effects()) togetherWith fadeOut(StudyFlowMotion.effects())
+        },
+        label = "task list state",
+    ) { displayState ->
+        when (displayState) {
+            ListDisplayState.Loading -> {
+                LoadingState(modifier = Modifier.fillMaxSize())
+            }
 
-        state.hasNoTasksWhatsoever -> {
-            EmptyState(
-                message =
-                    "No tasks yet. Type a title above and tap Add to create your first one — " +
-                        "add Today, Tomorrow or Next week to see it grouped automatically.",
-                modifier = Modifier.fillMaxSize(),
-            )
-        }
+            ListDisplayState.Empty -> {
+                EmptyState(
+                    message =
+                        "No tasks yet. Type a title above and tap Add to create your first one — " +
+                            "add Today, Tomorrow or Next week to see it grouped automatically.",
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
 
-        else -> {
-            TaskSectionsList(state = state, onEvent = onEvent)
+            ListDisplayState.Content -> {
+                TaskSectionsList(
+                    state = state,
+                    onEvent = onEvent,
+                    sharedElementScope = sharedElementScope,
+                )
+            }
         }
     }
 }
@@ -135,6 +163,7 @@ private fun TaskListContent(
 private fun TaskSectionsList(
     state: TasksListUiState,
     onEvent: (TasksListUiEvent) -> Unit,
+    sharedElementScope: StudyFlowSharedElementScope?,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -145,18 +174,21 @@ private fun TaskSectionsList(
             tasks = state.overdue,
             emptyMessage = sectionEmptyMessage("Nothing overdue.", state.filter.isNarrowed),
             onEvent = onEvent,
+            sharedElementScope = sharedElementScope,
         )
         taskSection(
             title = "Today",
             tasks = state.today,
             emptyMessage = sectionEmptyMessage("Nothing due today.", state.filter.isNarrowed),
             onEvent = onEvent,
+            sharedElementScope = sharedElementScope,
         )
         taskSection(
             title = "Upcoming",
             tasks = state.upcoming,
             emptyMessage = sectionEmptyMessage("Nothing coming up.", state.filter.isNarrowed),
             onEvent = onEvent,
+            sharedElementScope = sharedElementScope,
         )
         taskSection(
             title = "Someday",
@@ -164,6 +196,7 @@ private fun TaskSectionsList(
             emptyMessage =
                 sectionEmptyMessage("No undated tasks — nice and tidy.", state.filter.isNarrowed),
             onEvent = onEvent,
+            sharedElementScope = sharedElementScope,
         )
     }
 }
@@ -212,9 +245,10 @@ private fun LazyListScope.taskSection(
     tasks: List<StudyTask>,
     emptyMessage: String,
     onEvent: (TasksListUiEvent) -> Unit,
+    sharedElementScope: StudyFlowSharedElementScope?,
 ) {
     item(key = "header-$title") {
-        TaskSectionHeader(title = title, count = tasks.size)
+        TaskSectionHeader(title = title, count = tasks.size, modifier = Modifier.animateItem())
     }
     if (tasks.isEmpty()) {
         item(key = "empty-$title") {
@@ -223,13 +257,19 @@ private fun LazyListScope.taskSection(
                 style = MaterialTheme.typography.bodyMedium,
                 modifier =
                     Modifier
+                        .animateItem()
                         .fillMaxWidth()
                         .padding(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small),
             )
         }
     } else {
         items(tasks, key = { it.id }) { task ->
-            TaskRow(task = task, onEvent = onEvent)
+            TaskRow(
+                task = task,
+                onEvent = onEvent,
+                modifier = Modifier.animateItem(),
+                sharedElementScope = sharedElementScope,
+            )
         }
     }
 }
@@ -238,12 +278,13 @@ private fun LazyListScope.taskSection(
 private fun TaskSectionHeader(
     title: String,
     count: Int,
+    modifier: Modifier = Modifier,
 ) {
     Text(
         text = "$title ($count)",
         style = MaterialTheme.typography.titleMedium,
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .padding(horizontal = MaterialTheme.spacing.medium, vertical = MaterialTheme.spacing.small)
                 .semantics { heading() },
@@ -255,6 +296,8 @@ private fun TaskSectionHeader(
 private fun TaskRow(
     task: StudyTask,
     onEvent: (TasksListUiEvent) -> Unit,
+    modifier: Modifier = Modifier,
+    sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
     val dismissState = rememberSwipeToDismissBoxState()
     val currentOnEvent by rememberUpdatedState(onEvent)
@@ -275,9 +318,15 @@ private fun TaskRow(
     SwipeToDismissBox(
         state = dismissState,
         backgroundContent = { SwipeBackground(direction = dismissState.dismissDirection) },
+        modifier = modifier,
     ) {
         StudyFlowListItem(
             headline = task.title,
+            headlineModifier =
+                Modifier.studyFlowSharedElement(
+                    StudyFlowSharedElementKeys.taskTitle(task.id),
+                    sharedElementScope,
+                ),
             supportingText = task.notes,
             overlineText = task.dueAt?.let { "Due ${it.date}" },
             onClick = { onEvent(TasksListUiEvent.TaskOpened(task.id)) },
@@ -528,6 +577,16 @@ private fun FilterBar(
     }
 }
 
+private enum class ListDisplayState { Loading, Empty, Content }
+
+private val TasksListUiState.displayState: ListDisplayState
+    get() =
+        when {
+            loading -> ListDisplayState.Loading
+            hasNoTasksWhatsoever -> ListDisplayState.Empty
+            else -> ListDisplayState.Content
+        }
+
 @Composable
 private fun FilterSearchField(
     query: String,
@@ -579,6 +638,7 @@ private fun FilterChipsRow(
                     )
                 },
                 label = { Text(text = priority.name.lowercase().replaceFirstChar(Char::uppercase)) },
+                modifier = Modifier.animateItem(),
             )
         }
         items(state.filterOptions.subjectIds.toList()) { subjectId ->
@@ -592,6 +652,7 @@ private fun FilterChipsRow(
                     )
                 },
                 label = { Text(text = subjectId) },
+                modifier = Modifier.animateItem(),
             )
         }
         items(state.filterOptions.tags.toList()) { tag ->
@@ -601,6 +662,7 @@ private fun FilterChipsRow(
                     onEvent(TasksListUiEvent.TagFilterChanged(if (state.filter.tag == tag) null else tag))
                 },
                 label = { Text(text = "#$tag") },
+                modifier = Modifier.animateItem(),
             )
         }
     }
