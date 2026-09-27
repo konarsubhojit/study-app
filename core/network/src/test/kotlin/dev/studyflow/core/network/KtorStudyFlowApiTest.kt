@@ -155,21 +155,6 @@ class KtorStudyFlowApiTest {
                     json("""{"code":"upstream_unavailable","message":"boom"}""", HttpStatusCode.ServiceUnavailable)
                 }
 
-    @Test
-    fun `a sign-in exchange is never replayed`() =
-                runTest {
-                    val attempts = AtomicInteger()
-                    val api =
-                        MockBackend.api {
-                            attempts.incrementAndGet()
-                            json("""{"code":"upstream_unavailable","message":"boom"}""", HttpStatusCode.ServiceUnavailable)
-                        }
-
-                    api.signIn(SignInCredentialDto.Google("token-secret"))
-
-                    assertEquals(1, attempts.get())
-                }
-
             api.uploadSession(
                 StudySessionDto(
                     id = "session-1",
@@ -180,6 +165,24 @@ class KtorStudyFlowApiTest {
             )
 
             assertEquals(1, attempts.get())
+        }
+
+    @Test
+    fun `a sign-in exchange is never replayed`() =
+        runTest {
+            val signInAttempts = AtomicInteger()
+            val signInApi =
+                MockBackend.api {
+                    signInAttempts.incrementAndGet()
+                    json(
+                        """{"code":"upstream_unavailable","message":"boom"}""",
+                        HttpStatusCode.ServiceUnavailable,
+                    )
+                }
+
+            signInApi.signIn(SignInCredentialDto.Google("token-secret"))
+
+            assertEquals(1, signInAttempts.get())
         }
 
     @Test

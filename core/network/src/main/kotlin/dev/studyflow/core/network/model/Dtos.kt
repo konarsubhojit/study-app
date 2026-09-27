@@ -1,8 +1,8 @@
 package dev.studyflow.core.network.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.JsonClassDiscriminator
 
 // Wire models, hand-written against `docs/api/openapi.yaml` (issue #63).
