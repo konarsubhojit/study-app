@@ -258,7 +258,11 @@ public class MaterialDetailViewModel
                     previewSource.value = MaterialPreviewSourceState(source = MaterialPreviewSource.Local(localPath))
                     if (material.kind == MaterialKind.ARCHIVE) {
                         val archiveFile = localPath.toLocalFileOrNull()
-                        if (archiveFile != null) loadArchivePreview(archiveFile)
+                        if (archiveFile != null) {
+                            loadArchivePreview(archiveFile)
+                        } else {
+                            archivePreview.value = ArchivePreviewUiState(message = "This archive could not be opened.")
+                        }
                     }
                 }
 

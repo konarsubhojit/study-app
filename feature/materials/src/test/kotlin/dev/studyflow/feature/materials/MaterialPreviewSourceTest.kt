@@ -30,4 +30,13 @@ class MaterialPreviewSourceTest {
 
         assertEquals(Uri.fromFile(image), model)
     }
+
+    @Test
+    fun `local image preview preserves a content URI for Coil`() {
+        val contentUri = "content://media/external/images/media/1"
+
+        val model = MaterialPreviewSource.Local(contentUri).previewModel()
+
+        assertEquals(contentUri.toUri(), model)
+    }
 }
