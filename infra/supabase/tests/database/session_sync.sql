@@ -140,7 +140,8 @@ select is(
   'a re-delivered event is stored once'
 );
 select is(
-  (select wall_clock from public.study_session_events where id = 'e1'),
+  (select wall_clock from public.study_session_events
+     where session_id = 'c0000000-0000-0000-0000-00000000003a' and id = 'e1'),
   '2026-03-01 09:00:00+00'::timestamptz,
   'the stored event is the first delivery'
 );
@@ -162,7 +163,8 @@ select is(
   'two halves of one log end up unioned by id'
 );
 select is(
-  (select wall_clock from public.study_session_events where id = 'e1'),
+  (select wall_clock from public.study_session_events
+     where session_id = 'c0000000-0000-0000-0000-00000000003a' and id = 'e1'),
   '2026-03-01 09:00:00+00'::timestamptz,
   'an event is never overwritten by a later delivery'
 );

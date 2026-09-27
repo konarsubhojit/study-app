@@ -285,6 +285,11 @@ paths:
 
         A client that is already up to date receives an empty `changes` array and the cursor it
         sent, which is how "nothing changed" costs one conditional request and no data.
+
+        Changes are ordered by the server's commit order for the caller, so resuming from any
+        cursor returns every later change exactly once, including a late upload whose
+        `updatedAt` is older than rows already delivered. A cursor the server did not issue is
+        refused with `400 invalid_cursor`. Events never carry `uptimeMillis` or `bootId` here.
       parameters:
         - $ref: '#/components/parameters/ClientVersion'
         - name: cursor
@@ -321,7 +326,13 @@ paths:
         already applied is a no-op and a client may safely retry one it never got an answer for.
 
         Only completed sessions may be sent: a running or paused session belongs to the device it
-        runs on, and the server rejects one with `active_session_not_syncable`.
+        runs on, and the server rejects one with `409 active_session_not_syncable`.
+
+        Losing the comparison is not an error: the id is listed in `rejectedIds` and the
+        client learns the winning state from its next delta. Exact `updatedAt` ties go to the
+        lexicographically greater `deviceId` (code-point order), and a tombstone beats a live
+        row on a full tie. Events are unioned by id whatever the outcome, so a re-delivered
+        event is a no-op. A malformed batch is refused as a whole with `400 invalid_request`.
       parameters:
         - $ref: '#/components/parameters/ClientVersion'
       requestBody:
@@ -720,8 +731,12 @@ components:
 
     SyncSessionEvent:
       type: object
-      required: [id, sessionId, type, sequence, wallClock, uptimeMillis, bootId]
-      description: One append-only log entry. Merged by union on id; never overwritten.
+      required: [id, sessionId, type, sequence, wallClock]
+      description: |
+        One append-only log entry. Merged by union on id; never overwritten; ordered by
+        `(sequence, id)`. The device-local anchors `uptimeMillis` and `bootId` are accepted on
+        upload and discarded (ADR 0017): another device's boot id is an uninterpretable fact, so
+        the server neither stores nor returns them.
       properties:
         id:
           type: string
@@ -739,8 +754,12 @@ components:
         uptimeMillis:
           type: integer
           format: int64
+          writeOnly: true
+          description: Device-local anchor; discarded by the server and never returned.
         bootId:
           type: string
+          writeOnly: true
+          description: Device-local anchor; discarded by the server and never returned.
 
     SyncPushRequest:
       type: object

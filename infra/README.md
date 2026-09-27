@@ -178,6 +178,29 @@ leaves the Auth user intact for retry. A repeat with the same revoked bearer tok
 only when a recorded deletion attempt is confirmed absent in Auth; other invalid tokens return
 `401`. The retry receipt table holds only a token digest and account id, never the token itself.
 
+**Session sync (ADR 0012).** `GET /v1/sync/sessions` is the delta pull and `POST /v1/sync/sessions`
+is the push. Both authenticate the caller and pass the JWT's owner to the service-role RPCs
+`sync_pull_study_sessions` and `sync_push_study_sessions`, which filter explicitly by it.
+Conflict resolution lives in the push RPC, under a row lock. It mirrors `SessionSyncMerge` rule for rule:
+
+- only `STOPPED` sessions sync
+- last-writer-wins on `updatedAt`
+- an exact tie goes to the greater `deviceId` in code-point (`COLLATE "C"`) order, not the database locale, which orders `a`/`B` the other way
+- a tombstone beats a live row on a full tie
+- events are unioned by id and never overwritten
+
+A change that loses comes back in `rejectedIds` with `200`; it is not an error.
+
+The pull cursor is an opaque encoding of a per-user **change sequence**, stamped under a per-user clock-row lock, so it follows commit order. It deliberately does not use `(updated_at, id)`:
+
+- `updated_at` is server time on write
+- the LWW term (`sync_updated_at`) is client time, so a late offline upload can carry an older value than rows already paged past
+- neither is in commit order
+
+An unchanged pull returns the request's cursor verbatim. That is the client's "nothing changed" signal (`SyncEngine`), not an `ETag`.
+
+`study_session_events` stores stopped sessions' logs **without** `uptime_millis` or `boot_id`. ADR 0017 treats those as device-local anchors, so the API drops them on upload and never returns them. This supersedes the `study_sessions` migration's comment that the log "never leaves the device (ADR 0003)". Applied migrations are append-only, so that comment is corrected in `20260927130000_session_sync.sql` rather than edited in place.
+
 Deploy it with the **Deploy Edge Function** workflow by choosing `api`, or locally with:
 
 ```sh
