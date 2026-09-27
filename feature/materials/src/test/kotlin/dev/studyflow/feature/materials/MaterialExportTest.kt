@@ -47,7 +47,7 @@ class MaterialExportTest {
                 exportLocalMaterialToDownloads(
                     context = RuntimeEnvironment.getApplication(),
                     material = material,
-                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    source = MaterialPreviewSource.Local(source.toURI().toString()),
                     insertDownload = { values ->
                         insertedValues = ContentValues(values)
                         uri
@@ -67,6 +67,16 @@ class MaterialExportTest {
             assertArrayEquals(source.readBytes(), copied.toByteArray())
             assertEquals(uri, finishedUri)
         }
+
+    @Test
+    fun `local image preview keeps the imported file URI for Coil`() {
+        val image = tempDir.newFile("photo.png")
+        val importedUri = image.toURI().toString()
+
+        val model = MaterialPreviewSource.Local(importedUri).previewModel()
+
+        assertEquals(importedUri, (model as Uri).toString())
+    }
 
     @Test
     fun `export deletes the inserted Downloads row when copying fails`() =

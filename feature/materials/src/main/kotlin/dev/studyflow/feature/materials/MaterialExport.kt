@@ -10,7 +10,6 @@ import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
 import androidx.annotation.RequiresApi
-import androidx.core.net.toUri
 import dev.studyflow.core.model.Material
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -21,6 +20,7 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.URI
 
 /**
  * Copies a cached material into the public Downloads collection.
@@ -46,7 +46,7 @@ internal suspend fun exportLocalMaterialToDownloads(
 ): MaterialExportResult {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return MaterialExportResult.Unsupported
     if (source !is MaterialPreviewSource.Local) return MaterialExportResult.Failed
-    val sourceFile = source.uri.toLocalFile() ?: return MaterialExportResult.Failed
+    val sourceFile = source.uri.toLocalFileOrNull() ?: return MaterialExportResult.Failed
     if (!sourceFile.isFile) return MaterialExportResult.Failed
 
     val downloadUri =
@@ -107,11 +107,11 @@ private suspend fun InputStream.copyToChecked(target: OutputStream) {
     }
 }
 
-private fun String.toLocalFile(): File? {
-    val uri = toUri()
+internal fun String.toLocalFileOrNull(): File? {
+    val uri = runCatching(::URI).getOrNull() ?: return null
     return when (uri.scheme) {
         null -> File(this)
-        "file" -> uri.path?.let(::File)
+        "file" -> File(uri)
         else -> null
     }
 }
