@@ -11,30 +11,13 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import dev.studyflow.core.designsystem.adaptive.WindowWidthClass
 import dev.studyflow.core.designsystem.adaptive.rememberWindowWidthClass
 import dev.studyflow.core.designsystem.layout.StudyFlowScaffold
-
-/**
- * One top-level destination of [StudyFlowNavigationSuite].
- *
- * The selected destination is drawn with [selectedIcon] and the rest with [icon], so selection is
- * carried by the icon itself as well as by the indicator and the colour — three signals, none of
- * which is colour alone.
- *
- * @param key whatever the caller navigates by; compared with `==` to decide what is selected.
- */
-@Immutable
-public data class StudyFlowNavigationItem<out T>(
-    val key: T,
-    val label: String,
-    val icon: ImageVector,
-    val selectedIcon: ImageVector,
-)
 
 /**
  * The app's top-level navigation surface (issue #167).
@@ -62,6 +45,8 @@ public fun <T> StudyFlowNavigationSuite(
         "A navigation bar holds at most $MAX_DESTINATIONS destinations, not ${items.size}"
     }
 
+    val movableContent = remember(content) { movableContentOf(content) }
+
     if (widthClass == WindowWidthClass.Compact) {
         StudyFlowScaffold(
             modifier = modifier,
@@ -78,7 +63,7 @@ public fun <T> StudyFlowNavigationSuite(
                 }
             },
         ) { padding ->
-            Box(modifier = Modifier.fillMaxSize().padding(padding)) { content() }
+            Box(modifier = Modifier.fillMaxSize().padding(padding)) { movableContent() }
         }
     } else {
         StudyFlowScaffold(modifier = modifier) { padding ->
@@ -93,7 +78,7 @@ public fun <T> StudyFlowNavigationSuite(
                         )
                     }
                 }
-                Box(modifier = Modifier.fillMaxSize()) { content() }
+                Box(modifier = Modifier.fillMaxSize()) { movableContent() }
             }
         }
     }
