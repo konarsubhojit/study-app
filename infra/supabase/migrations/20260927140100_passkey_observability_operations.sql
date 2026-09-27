@@ -8,5 +8,6 @@ alter table public.backend_observability_events
   check (operation in (
     'initUpload', 'completeUpload', 'getDownloadUrl', 'delete', 'reapOrphans',
     'beginSignIn', 'signIn', 'refreshTokens', 'listSubjects', 'listTasks',
-    'deleteAccount', 'beginPasskeyRegistration', 'completePasskeyRegistration', 'unknown'
+    'deleteAccount', 'pullSessionChanges', 'pushSessionChanges',
+    'beginPasskeyRegistration', 'completePasskeyRegistration', 'unknown'
   ));

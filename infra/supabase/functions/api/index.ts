@@ -39,6 +39,8 @@ type Route = {
         | "refreshTokens"
         | "listSubjects"
         | "listTasks"
+        | "pullSessionChanges"
+        | "pushSessionChanges"
         | "deleteAccount"
         | "beginPasskeyRegistration"
         | "completePasskeyRegistration";
@@ -84,6 +86,7 @@ type TaskRow = {
     due_at: unknown;
     time_zone: unknown;
 };
+type SyncPullRow = { change_seq: unknown; session: unknown };
 
 class ApiError extends Error {
     constructor(
@@ -132,7 +135,7 @@ const s3 = new S3Client({
 });
 let googleKeys: GoogleJwk[] | undefined;
 
-const json = (status: number, body: Json, headers: HeadersInit = {}): Response =>
+const json = (status: number, body: Json | Json[], headers: HeadersInit = {}): Response =>
     new Response(JSON.stringify(body), {
         status,
         headers: {
@@ -374,6 +377,226 @@ async function listTasks(request: Request, owner?: string): Promise<Response> {
         }),
     });
     return json(200, rows.map(taskDto).filter((task): task is Json => task !== undefined));
+}
+
+// ADR 0012 session sync. Conflict resolution lives in the `sync_push_study_sessions` RPC, where it
+// runs under a row lock; this layer only authenticates, validates the wire shape and pages.
+const SYNC_DEFAULT_LIMIT = 50;
+const SYNC_MAX_LIMIT = 200;
+const SYNC_MAX_CHANGES = 200;
+const SYNC_MAX_EVENTS = 5000;
+const SYNC_MAX_ID_LENGTH = 128;
+const SYNC_MAX_NOTE_LENGTH = 10_000;
+const SYNC_MAX_MILLIS = 999_999_999_999;
+const SYNC_CURSOR_PREFIX = "v1:";
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
+const SESSION_EVENT_TYPES = new Set([
+    "STARTED",
+    "PAUSED",
+    "RESUMED",
+    "BREAK_STARTED",
+    "FOCUS_RESUMED",
+    "ACTIVITY_CONFIRMED",
+    "STOPPED",
+]);
+
+// The cursor is a position in the caller's own commit-ordered change sequence. It is opaque so the
+// encoding can change without an app release, and it cannot reach another user's rows because the
+// pull is always filtered by the JWT's owner, never by anything the cursor says.
+export function encodeSyncCursor(changeSeq: number): string {
+    return btoa(SYNC_CURSOR_PREFIX + changeSeq).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function decodeSyncCursor(cursor: string): number {
+    const invalid = () => new ApiError(400, "invalid_cursor", "The sync cursor is not recognised; restart from no cursor.");
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(cursor)) throw invalid();
+    let decoded: string;
+    try {
+        decoded = atob(cursor.replace(/-/g, "+").replace(/_/g, "/"));
+    } catch {
+        throw invalid();
+    }
+    const match = /^v1:(0|[1-9][0-9]{0,15})$/.exec(decoded);
+    const changeSeq = match ? Number(match[1]) : NaN;
+    if (!Number.isSafeInteger(changeSeq)) throw invalid();
+    return changeSeq;
+}
+
+function syncLimit(value: string | null): number {
+    if (value === null) return SYNC_DEFAULT_LIMIT;
+    const limit = /^[0-9]{1,6}$/.test(value) ? Number(value) : NaN;
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+        throw new ApiError(400, "invalid_request", "limit must be a positive integer.");
+    }
+    return Math.min(limit, SYNC_MAX_LIMIT);
+}
+
+// Rebuilds an event from an allow-list in both directions, so the device-local anchors
+// (`uptimeMillis`, `bootId`) are never persisted or returned (ADR 0017).
+function portableEvent(event: Json): Json {
+    return {
+        id: event.id,
+        sessionId: event.sessionId,
+        type: event.type,
+        sequence: event.sequence,
+        wallClock: event.wallClock,
+    };
+}
+
+function syncSessionDto(value: unknown): Json {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new Error("Database response had an invalid session");
+    }
+    const session = value as Json;
+    const events = Array.isArray(session.events) ? session.events as Json[] : [];
+    return { ...session, events: events.map(portableEvent) };
+}
+
+async function pullSessionChanges(request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    const params = new URL(request.url).searchParams;
+    const cursor = params.get("cursor");
+    const after = cursor === null || cursor === "" ? 0 : decodeSyncCursor(cursor);
+    const limit = syncLimit(params.get("limit"));
+    const rows = await databaseJson<SyncPullRow[]>("rpc/sync_pull_study_sessions", {
+        method: "POST",
+        body: JSON.stringify({ p_user_id: owner, p_after: after, p_limit: limit + 1 }),
+    });
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    let nextCursor: string | null = cursor || null;
+    if (last) {
+        if (!Number.isSafeInteger(last.change_seq)) throw new Error("Database response had invalid change_seq");
+        nextCursor = encodeSyncCursor(last.change_seq as number);
+    }
+    // An unchanged pull echoes the request's cursor verbatim: that, not an ETag, is how the client
+    // recognises "nothing changed" and skips writing (SyncEngine, ADR 0012).
+    return json(200, {
+        changes: page.map((row) => syncSessionDto(row.session)),
+        nextCursor,
+        hasMore: rows.length > limit,
+    });
+}
+
+function invalidChange(message: string): ApiError {
+    return new ApiError(400, "invalid_request", message);
+}
+
+function boundedString(value: unknown, field: string, maxLength = SYNC_MAX_ID_LENGTH): string {
+    if (typeof value !== "string" || value.trim().length === 0 || value.length > maxLength) {
+        throw invalidChange(`${field} must be a non-empty string of at most ${maxLength} characters.`);
+    }
+    return value;
+}
+
+function instant(value: unknown, field: string): string {
+    if (typeof value !== "string" || !ISO_INSTANT_PATTERN.test(value) || Number.isNaN(Date.parse(value))) {
+        throw invalidChange(`${field} must be an ISO-8601 instant.`);
+    }
+    return value;
+}
+
+function millis(value: unknown, field: string): number {
+    const amount = value ?? 0;
+    if (!Number.isSafeInteger(amount) || (amount as number) < 0 || (amount as number) > SYNC_MAX_MILLIS) {
+        throw invalidChange(`${field} must be a non-negative integer.`);
+    }
+    return amount as number;
+}
+
+function optionalString(value: unknown, field: string, maxLength = SYNC_MAX_ID_LENGTH): string | null {
+    if (value === undefined || value === null) return null;
+    if (typeof value !== "string" || value.length > maxLength) {
+        throw invalidChange(`${field} must be a string of at most ${maxLength} characters.`);
+    }
+    return value;
+}
+
+function optionalBoolean(value: unknown, field: string): boolean {
+    if (value === undefined || value === null) return false;
+    if (typeof value !== "boolean") throw invalidChange(`${field} must be a boolean.`);
+    return value;
+}
+
+function syncEvent(value: unknown, sessionId: string): Json {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidChange("Each event must be an object.");
+    const event = value as Json;
+    if (typeof event.sessionId !== "string" || event.sessionId.toLowerCase() !== sessionId.toLowerCase()) {
+        throw invalidChange("An event's sessionId must match its session.");
+    }
+    if (typeof event.type !== "string" || !SESSION_EVENT_TYPES.has(event.type)) {
+        throw invalidChange("An event has an unknown type.");
+    }
+    if (!Number.isSafeInteger(event.sequence) || (event.sequence as number) < 0) {
+        throw invalidChange("An event's sequence must be a non-negative integer.");
+    }
+    return portableEvent({
+        id: boundedString(event.id, "event id"),
+        sessionId,
+        type: event.type,
+        sequence: event.sequence,
+        wallClock: instant(event.wallClock, "event wallClock"),
+    });
+}
+
+function syncChange(value: unknown): Json {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidChange("Each change must be an object.");
+    const change = value as Json;
+    if (typeof change.id !== "string" || !UUID_PATTERN.test(change.id)) {
+        throw invalidChange("A session id must be a UUID.");
+    }
+    const id = change.id.toLowerCase();
+    if (change.status !== "STOPPED") {
+        if (typeof change.status !== "string" || change.status.length === 0) {
+            throw invalidChange("A session status is required.");
+        }
+        throw new ApiError(409, "active_session_not_syncable", "Only stopped sessions sync.", { sessionId: id });
+    }
+    const startedAt = instant(change.startedAt, "startedAt");
+    const endedAt = instant(change.endedAt, "endedAt");
+    if (Date.parse(endedAt) < Date.parse(startedAt)) throw invalidChange("endedAt must not precede startedAt.");
+    const events = change.events ?? [];
+    if (!Array.isArray(events) || events.length > SYNC_MAX_EVENTS) {
+        throw invalidChange(`events must be an array of at most ${SYNC_MAX_EVENTS} entries.`);
+    }
+    return {
+        id,
+        deviceId: boundedString(change.deviceId, "deviceId"),
+        updatedAt: instant(change.updatedAt, "updatedAt"),
+        startedAt,
+        endedAt,
+        status: "STOPPED",
+        subjectId: optionalString(change.subjectId, "subjectId"),
+        taskId: optionalString(change.taskId, "taskId"),
+        note: optionalString(change.note, "note", SYNC_MAX_NOTE_LENGTH),
+        deleted: optionalBoolean(change.deleted, "deleted"),
+        manualOverride: optionalBoolean(change.manualOverride, "manualOverride"),
+        countedMillis: millis(change.countedMillis, "countedMillis"),
+        unverifiedMillis: millis(change.unverifiedMillis, "unverifiedMillis"),
+        events: events.map((event) => syncEvent(event, id)),
+    };
+}
+
+// Validation completes for the whole batch before anything is written, so a malformed entry never
+// leaves half a batch applied. A stale entry is not malformed: the RPC reports it in rejectedIds.
+async function pushSessionChanges(request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    const value = await body(request);
+    boundedString(value.deviceId, "deviceId");
+    if (!Array.isArray(value.changes) || value.changes.length > SYNC_MAX_CHANGES) {
+        throw invalidChange(`changes must be an array of at most ${SYNC_MAX_CHANGES} sessions.`);
+    }
+    const changes = value.changes.map(syncChange);
+    if (changes.length === 0) return json(200, { acceptedIds: [], rejectedIds: [] });
+    const outcome = await databaseJson<{ acceptedIds?: unknown; rejectedIds?: unknown }>("rpc/sync_push_study_sessions", {
+        method: "POST",
+        body: JSON.stringify({ p_user_id: owner, p_changes: changes }),
+    });
+    if (!Array.isArray(outcome?.acceptedIds) || !Array.isArray(outcome?.rejectedIds)) {
+        throw new Error("Database response had an invalid push outcome");
+    }
+    return json(200, { acceptedIds: outcome.acceptedIds, rejectedIds: outcome.rejectedIds });
 }
 
 async function body(request: Request): Promise<Json> {
@@ -808,6 +1031,20 @@ const routes: Route[] = [
     { method: "POST", path: "/v1/auth/refresh", operation: "refreshTokens", auth: "none", handler: refreshTokens },
     { method: "GET", path: "/v1/subjects", operation: "listSubjects", auth: "jwt", handler: listSubjects },
     { method: "GET", path: "/v1/tasks", operation: "listTasks", auth: "jwt", handler: listTasks },
+    {
+        method: "GET",
+        path: "/v1/sync/sessions",
+        operation: "pullSessionChanges",
+        auth: "jwt",
+        handler: pullSessionChanges,
+    },
+    {
+        method: "POST",
+        path: "/v1/sync/sessions",
+        operation: "pushSessionChanges",
+        auth: "jwt",
+        handler: pushSessionChanges,
+    },
     { method: "DELETE", path: "/v1/account", operation: "deleteAccount", auth: "jwt", handler: deleteAccount },
     {
         method: "POST",

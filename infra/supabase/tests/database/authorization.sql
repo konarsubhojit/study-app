@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(79);
+select plan(87);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -41,6 +41,9 @@ insert into public.study_sessions
   values
     ('a2222222-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111',
      'a1111111-1111-1111-1111-111111111111', now() - interval '1 hour', now(), 3600, 'device-a');
+
+insert into public.study_session_events (id, session_id, type, sequence, wall_clock) values
+  ('alice-event-1', 'a2222222-1111-1111-1111-111111111111', 'STARTED', 0, now() - interval '1 hour');
 
 insert into public.study_tasks (id, user_id, subject_id, title, device_id) values
   ('a3333333-1111-1111-1111-111111111111', '11111111-1111-1111-1111-111111111111',
@@ -78,6 +81,7 @@ set local request.jwt.claims = '{"sub": "11111111-1111-1111-1111-111111111111", 
 
 select is((select count(*) from public.subjects)::int, 1, 'alice sees her own subject');
 select is((select count(*) from public.study_sessions)::int, 1, 'alice sees her own session');
+select is((select count(*) from public.study_session_events)::int, 1, 'alice sees her own session event');
 select is((select count(*) from public.study_tasks)::int, 1, 'alice sees her own task');
 select is((select count(*) from public.reminders)::int, 1, 'alice sees her own reminder');
 select is((select count(*) from public.material_folders)::int, 1, 'alice sees her own folder');
@@ -87,6 +91,15 @@ select is((select count(*) from public.sync_cursors)::int, 1, 'alice sees her ow
 select lives_ok(
   $$ update public.subjects set archived = true where id = 'a1111111-1111-1111-1111-111111111111' $$,
   'alice can update her own subject'
+);
+select lives_ok(
+  $$ update public.study_sessions set note = 'revised' where id = 'a2222222-1111-1111-1111-111111111111' $$,
+  'alice can update her own session, which advances her sync clock'
+);
+select lives_ok(
+  $$ insert into public.study_session_events (id, session_id, type, sequence, wall_clock)
+       values ('alice-event-2', 'a2222222-1111-1111-1111-111111111111', 'STOPPED', 1, now()) $$,
+  'alice can append an event to her own session'
 );
 
 -- ---------------------------------------------------------------------------------------------
@@ -99,6 +112,7 @@ set local request.jwt.claims = '{"sub": "22222222-2222-2222-2222-222222222222", 
 
 select is((select count(*) from public.subjects)::int, 0, 'bob cannot see alice''s subject');
 select is((select count(*) from public.study_sessions)::int, 0, 'bob cannot see alice''s session');
+select is((select count(*) from public.study_session_events)::int, 0, 'bob cannot see alice''s session events');
 select is((select count(*) from public.study_tasks)::int, 0, 'bob cannot see alice''s task');
 select ok(
   not has_function_privilege('authenticated', 'public.list_study_tasks(uuid,uuid)', 'execute'),
@@ -182,6 +196,25 @@ select is_empty(
        where user_id = '11111111-1111-1111-1111-111111111111' and device_id = 'device-a'
        returning 1 $$,
   'bob''s delete of alice''s sync cursor affects no rows'
+);
+
+-- Events are append-only: there is no update or delete policy even for their owner, so bob's
+-- attempts match nothing, and an insert into alice's session is refused outright.
+select is_empty(
+  $$ update public.study_session_events set wall_clock = now()
+       where id = 'alice-event-1' returning 1 $$,
+  'bob''s update of alice''s session event affects no rows'
+);
+select is_empty(
+  $$ delete from public.study_session_events where id = 'alice-event-1' returning 1 $$,
+  'bob''s delete of alice''s session event affects no rows'
+);
+select throws_ok(
+  $$ insert into public.study_session_events (id, session_id, type, sequence, wall_clock)
+       values ('bob-event', 'a2222222-1111-1111-1111-111111111111', 'STOPPED', 1, now()) $$,
+  '42501',
+  null,
+  'bob cannot append an event to alice''s session'
 );
 
 -- bob cannot insert a row claiming to be alice's, even though he supplies alice's user_id.
@@ -468,6 +501,8 @@ select is((select count(*) from public.subjects where user_id = '11111111-1111-1
   'deleting an Auth user cascades to subjects');
 select is((select count(*) from public.materials where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
   'deleting an Auth user cascades to materials');
+select is((select count(*) from public.study_session_events where session_id = 'a2222222-1111-1111-1111-111111111111')::int, 0,
+  'deleting an Auth user cascades through sessions to their events');
 select is((select count(*) from public.storage_uploads where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
   'deleting an Auth user cascades to upload records');
 select is((select count(*) from public.passkey_credentials where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
