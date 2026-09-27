@@ -50,6 +50,8 @@ jobs:
           GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
           API_MINIMUM_CLIENT_VERSION: ${{ secrets.API_MINIMUM_CLIENT_VERSION }}
           API_BACKUP_RETENTION_DAYS: ${{ secrets.API_BACKUP_RETENTION_DAYS }}
+          PASSKEY_RP_ID: ${{ secrets.PASSKEY_RP_ID }}
+          PASSKEY_ANDROID_ORIGIN: ${{ secrets.PASSKEY_ANDROID_ORIGIN }}
         run: |
           test -n "$SUPABASE_ACCESS_TOKEN"
           case "$FUNCTION_NAME" in
@@ -68,6 +70,8 @@ jobs:
               test -n "$GOOGLE_SERVER_CLIENT_ID"
               test -n "$API_MINIMUM_CLIENT_VERSION"
               test -n "$API_BACKUP_RETENTION_DAYS"
+              test -n "$PASSKEY_RP_ID"
+              test -n "$PASSKEY_ANDROID_ORIGIN"
               ;;
             all)
               test -n "$STORAGE_S3_ENDPOINT"
@@ -78,6 +82,8 @@ jobs:
               test -n "$GOOGLE_SERVER_CLIENT_ID"
               test -n "$API_MINIMUM_CLIENT_VERSION"
               test -n "$API_BACKUP_RETENTION_DAYS"
+              test -n "$PASSKEY_RP_ID"
+              test -n "$PASSKEY_ANDROID_ORIGIN"
               ;;
             *)
               echo "Unsupported function: $FUNCTION_NAME" >&2

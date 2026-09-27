@@ -42,6 +42,10 @@ require_api_secrets() {
     : "${STORAGE_S3_BUCKET:?STORAGE_S3_BUCKET must be set (from a managed secret store)}"
     : "${STORAGE_S3_ACCESS_KEY_ID:?STORAGE_S3_ACCESS_KEY_ID must be set (from a managed secret store)}"
     : "${STORAGE_S3_SECRET_ACCESS_KEY:?STORAGE_S3_SECRET_ACCESS_KEY must be set (from a managed secret store)}"
+    # The api function refuses to boot without these, so every route - not just passkey sign-in -
+    # would answer 500 WORKER_ERROR. Failing here names the cause before anything is deployed.
+    : "${PASSKEY_RP_ID:?PASSKEY_RP_ID must be set (from a managed secret store)}"
+    : "${PASSKEY_ANDROID_ORIGIN:?PASSKEY_ANDROID_ORIGIN must be set (from a managed secret store)}"
 
     api_secrets=(
         "GOOGLE_SERVER_CLIENT_ID=$GOOGLE_SERVER_CLIENT_ID"
@@ -51,6 +55,8 @@ require_api_secrets() {
         "STORAGE_S3_BUCKET=$STORAGE_S3_BUCKET"
         "STORAGE_S3_ACCESS_KEY_ID=$STORAGE_S3_ACCESS_KEY_ID"
         "STORAGE_S3_SECRET_ACCESS_KEY=$STORAGE_S3_SECRET_ACCESS_KEY"
+        "PASSKEY_RP_ID=$PASSKEY_RP_ID"
+        "PASSKEY_ANDROID_ORIGIN=$PASSKEY_ANDROID_ORIGIN"
     )
     [[ -z "${STORAGE_S3_REGION:-}" ]] || api_secrets+=("STORAGE_S3_REGION=$STORAGE_S3_REGION")
 }
