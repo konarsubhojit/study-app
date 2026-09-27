@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
+import android.util.Log
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import android.widget.Toast
@@ -72,7 +73,7 @@ import androidx.media3.datasource.cache.SimpleCache
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
-import coil3.compose.AsyncImage
+import coil3.compose.SubcomposeAsyncImage
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.coroutines.StandardDispatcherProvider
 import dev.studyflow.core.designsystem.theme.spacing
@@ -354,10 +355,19 @@ private fun ImagePreview(
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
     ) {
-        AsyncImage(
+        SubcomposeAsyncImage(
             model = source.previewModel(),
             contentDescription = "${material.displayName} preview",
             contentScale = ContentScale.Fit,
+            error = { state ->
+                LaunchedEffect(state.result.throwable) {
+                    Log.w(IMAGE_PREVIEW_TAG, "Image preview failed", state.result.throwable)
+                }
+                EmptyState(
+                    message = "This image could not be opened.",
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
             modifier =
                 Modifier
                     .fillMaxSize()
@@ -485,7 +495,7 @@ private fun PdfPreview(
         }
 
         else -> {
-            val document = rememberPdfDocument(source.uri)
+            val document = rememberPdfDocument(source.uri.toLocalFileOrNull())
             if (document == null) {
                 EmptyState(message = "This PDF could not be opened.", modifier = modifier.fillMaxSize())
             } else {
@@ -563,11 +573,12 @@ private fun PdfPreviewContent(
 }
 
 @Composable
-private fun rememberPdfDocument(path: String): PdfDocument? {
+private fun rememberPdfDocument(file: File?): PdfDocument? {
     val document =
-        remember(path) {
+        remember(file) {
+            if (file == null) return@remember null
             runCatching {
-                val descriptor = ParcelFileDescriptor.open(File(path), ParcelFileDescriptor.MODE_READ_ONLY)
+                val descriptor = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
                 PdfDocument(renderer = PdfRenderer(descriptor), descriptor = descriptor)
             }.getOrNull()
         }
@@ -781,7 +792,7 @@ private fun OpenExternallyPreview(
             onClick = {
                 noViewerAvailable =
                     source !is MaterialPreviewSource.Local ||
-                    !context.openLocalFile(File(source.uri), material.mimeType)
+                    source.uri.toLocalFileOrNull()?.let { context.openLocalFile(it, material.mimeType) } != true
             },
             enabled = source is MaterialPreviewSource.Local,
         ) {
@@ -814,7 +825,11 @@ private fun TextPreview(
     val previewState by produceState<TextPreviewState>(initialValue = TextPreviewState.Loading, source.uri) {
         value =
             withContext(dispatcherProvider.io) {
-                readTextPreview(File(source.uri))?.let(TextPreviewState::Loaded) ?: TextPreviewState.Failed
+                source.uri
+                    .toLocalFileOrNull()
+                    ?.let(::readTextPreview)
+                    ?.let(TextPreviewState::Loaded)
+                    ?: TextPreviewState.Failed
             }
     }
 
@@ -944,17 +959,23 @@ private fun Context.start(intent: Intent): Boolean =
         false
     }
 
-private fun MaterialPreviewSource.previewModel(): Any =
+internal fun MaterialPreviewSource.previewModel(): Any =
     when (this) {
-        is MaterialPreviewSource.Local -> File(uri)
+        is MaterialPreviewSource.Local -> toPreviewUri()
         is MaterialPreviewSource.Remote -> uri
     }
 
 private fun MaterialPreviewSource.playerUri(): Uri =
     when (this) {
-        is MaterialPreviewSource.Local -> Uri.fromFile(File(uri))
+        is MaterialPreviewSource.Local -> toPreviewUri()
         is MaterialPreviewSource.Remote -> uri.toUri()
     }
+
+private fun MaterialPreviewSource.Local.toPreviewUri(): Uri {
+    val parsed = uri.toUri()
+    if (parsed.scheme == "file") return parsed
+    return uri.toLocalFileOrNull()?.let(Uri::fromFile) ?: parsed
+}
 
 private fun shareLocalMaterial(
     context: Context,
@@ -962,12 +983,13 @@ private fun shareLocalMaterial(
     source: MaterialPreviewSource?,
 ) {
     if (source !is MaterialPreviewSource.Local) return
+    val sourceFile = source.uri.toLocalFileOrNull() ?: return
     val intent =
         Intent(Intent.ACTION_SEND)
             .setType(material.mimeType)
             .putExtra(
                 Intent.EXTRA_STREAM,
-                FileProvider.getUriForFile(context, "${context.packageName}.files", File(source.uri)),
+                FileProvider.getUriForFile(context, "${context.packageName}.files", sourceFile),
             ).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     context.startActivity(Intent.createChooser(intent, material.displayName))
 }
@@ -977,6 +999,7 @@ private const val IMAGE_ZOOM_MIN_SCALE = 1f
 private const val IMAGE_ZOOM_MAX_SCALE = 5f
 private val PLAYBACK_SPEEDS = listOf(0.75f, 1f, 1.25f, 1.5f, 2f)
 private const val ALL_MIME_TYPES = "*/*"
+private const val IMAGE_PREVIEW_TAG = "ImagePreview"
 
 /** ~300 KB of characters — generous for notes or code, far short of loading a huge log whole. */
 private const val TEXT_PREVIEW_MAX_BYTES = 300_000

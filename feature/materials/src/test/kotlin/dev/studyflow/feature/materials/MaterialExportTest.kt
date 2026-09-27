@@ -47,7 +47,7 @@ class MaterialExportTest {
                 exportLocalMaterialToDownloads(
                     context = RuntimeEnvironment.getApplication(),
                     material = material,
-                    source = MaterialPreviewSource.Local(source.absolutePath),
+                    source = MaterialPreviewSource.Local(source.toURI().toString()),
                     insertDownload = { values ->
                         insertedValues = ContentValues(values)
                         uri
