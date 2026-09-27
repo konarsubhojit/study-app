@@ -1,4 +1,4 @@
-# 7. One design system: tokens, dynamic colour with a brand fallback, edge-to-edge, adaptive panes
+# 15. One design system: tokens, dynamic colour with a brand fallback, edge-to-edge, adaptive panes
 
 - Status: accepted
 - Date: 2026-09-16

@@ -2,7 +2,7 @@
 
 Everything visual lives in `:core:designsystem`. A feature applies the theme, reads tokens, and
 writes no colour, dimension, font size or animation of its own. The decision and its trade-offs are
-in [ADR 0007](adr/0007-design-system.md).
+in [ADR 0015](adr/0015-design-system.md).
 
 ## Theming
 

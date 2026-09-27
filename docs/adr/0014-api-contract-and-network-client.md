@@ -1,4 +1,4 @@
-# 7. API contract and network client
+# 14. API contract and network client
 
 - Status: accepted
 - Date: 2026-09-16

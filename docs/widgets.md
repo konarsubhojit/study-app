@@ -58,7 +58,7 @@ and the host's own light/dark widget theme. Below that the platform has no such 
 app palette from `:core:designsystem` (`StudyFlowColorSchemes`) stands in. Corners come from
 `android.R.dimen.system_app_widget_background_radius` where it exists, so a widget is shaped like
 every other widget on the launcher. No colour, size or corner is invented locally
-([ADR 0007](adr/0007-design-system.md)).
+([ADR 0015](adr/0015-design-system.md)).
 
 ## Reuse rather than reimplementation
 

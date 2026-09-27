@@ -1,9 +1,9 @@
 # Infrastructure
 
 Backend platform: [Supabase](https://supabase.com) (Postgres + Auth + Storage + Row Level
-Security). See [ADR 0007](../docs/adr/0007-backend-platform.md) for why, the cost model and the
-exit path, and [ADR 0005](../docs/adr/0005-object-storage.md) for the client upload contract this
-backend serves.
+Security). See [ADR 0007 — backend platform](../docs/adr/0007-backend-platform.md) for why, the
+cost model and the exit path, and [ADR 0005](../docs/adr/0005-object-storage.md) for the client
+upload contract this backend serves.
 
 Everything under [`supabase/`](supabase) is infrastructure-as-code: the schema, RLS policies and
 authorisation tests are SQL files checked into this repository, applied the same way to every
@@ -126,14 +126,15 @@ prod credential, connection string or project ref. `<project-ref>` identifies wh
 to link and push to, and is not a secret by itself, but is still passed as an argument rather than
 hard-coded so the script can never be run against the wrong project by accident.
 
-If Supabase were ever discontinued or became too expensive (see ADR 0007's cost model), the same
+If Supabase were ever discontinued or became too expensive (see the cost model in
+[ADR 0007 — backend platform](../docs/adr/0007-backend-platform.md)), the same
 migrations apply as-is to any Postgres instance; only `deploy-prod.sh`'s use of `supabase db push`
 against a linked *Supabase* project would need to change to a plain `psql` invocation against the
 new host.
 
 ## Data model and authorisation
 
-See [ADR 0007](../docs/adr/0007-backend-platform.md#data-model) for the table-by-table description.
+See [ADR 0007 — backend platform](../docs/adr/0007-backend-platform.md#data-model) for the table-by-table description.
 Every user-owned table has an RLS policy tying every row to its owner
 (`auth.uid() = user_id`); [`supabase/tests/database/authorization.sql`](supabase/tests/database/authorization.sql)
 proves cross-user reads and writes affect zero rows for every table, run against the real
