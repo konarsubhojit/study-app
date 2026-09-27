@@ -107,6 +107,7 @@ private suspend fun InputStream.copyToChecked(target: OutputStream) {
     }
 }
 
+/** Returns the file represented by a `file:` URI or legacy absolute path, never a non-file URI. */
 internal fun String.toLocalFileOrNull(): File? {
     val uri = runCatching(::URI).getOrNull() ?: return File(this)
     return when (uri.scheme) {

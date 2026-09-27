@@ -961,15 +961,17 @@ private fun Context.start(intent: Intent): Boolean =
 
 internal fun MaterialPreviewSource.previewModel(): Any =
     when (this) {
-        is MaterialPreviewSource.Local -> uri.toLocalFileOrNull()?.let(Uri::fromFile) ?: uri.toUri()
+        is MaterialPreviewSource.Local -> toContentUri()
         is MaterialPreviewSource.Remote -> uri
     }
 
 private fun MaterialPreviewSource.playerUri(): Uri =
     when (this) {
-        is MaterialPreviewSource.Local -> uri.toLocalFileOrNull()?.let(Uri::fromFile) ?: uri.toUri()
+        is MaterialPreviewSource.Local -> toContentUri()
         is MaterialPreviewSource.Remote -> uri.toUri()
     }
+
+private fun MaterialPreviewSource.Local.toContentUri(): Uri = uri.toLocalFileOrNull()?.let(Uri::fromFile) ?: uri.toUri()
 
 private fun shareLocalMaterial(
     context: Context,

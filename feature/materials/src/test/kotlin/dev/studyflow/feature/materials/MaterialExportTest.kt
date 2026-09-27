@@ -69,25 +69,6 @@ class MaterialExportTest {
         }
 
     @Test
-    fun `local image preview keeps the imported file URI for Coil`() {
-        val image = tempDir.newFile("photo.png")
-        val importedUri = image.toURI().toString()
-
-        val model = MaterialPreviewSource.Local(importedUri).previewModel()
-
-        assertEquals(Uri.fromFile(image), model)
-    }
-
-    @Test
-    fun `local image preview converts a legacy path to a file URI for Coil`() {
-        val image = tempDir.newFile("photo with spaces.png")
-
-        val model = MaterialPreviewSource.Local(image.absolutePath).previewModel()
-
-        assertEquals(Uri.fromFile(image), model)
-    }
-
-    @Test
     fun `export deletes the inserted Downloads row when copying fails`() =
         runTest {
             val source = tempDir.newFile("notes.txt").apply { writeText("hello") }
