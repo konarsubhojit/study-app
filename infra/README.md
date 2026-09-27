@@ -151,8 +151,12 @@ migrations rather than a hand-written approximation of them.
 
 `supabase/functions/api` serves the versioned StudyFlow API contract under the single Supabase
 Edge Function described by ADR 0017. The gateway leaves the `/functions/v1/api` prefix in the
-request path, so the function strips that prefix and routes on the remaining full path; it does not
-route by the final path segment. Authentication policy is declared per route inside the function.
+request path, so `routedPath()` strips that prefix and the router matches the remaining path in
+full. It deliberately does not dispatch on the final path segment the way the `storage` function
+does: that approach cannot tell `/v1/sessions` from `/v1/sync/sessions`, since both end in
+`sessions`. ADR 0017 requires full-path matching for exactly that reason, and
+[`index_test.ts`](supabase/functions/api/index_test.ts) holds the router to it.
+Authentication policy is declared per route inside the function.
 The first three routes are unauthenticated by contract, but future authenticated routes must opt in
 to Supabase JWT verification in that route table rather than relying on the gateway.
 

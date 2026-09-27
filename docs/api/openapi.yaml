@@ -540,6 +540,18 @@ components:
         dueAt:
           type: string
           format: date-time
+          description: >-
+            The task's wall-clock due time resolved against dueAtTimeZone. Read this together with
+            dueAtTimeZone: the stored due time floats with its zone ("09:00 Europe/London" stays
+            09:00 across a daylight-saving transition), so this instant alone is only valid for the
+            offset in effect when it was read. Any future write path must send the zone as well, or
+            a task edited across a DST boundary shifts by an hour.
+        dueAtTimeZone:
+          type: string
+          description: >-
+            IANA zone the due time is expressed in, retained so the wall-clock meaning of dueAt
+            survives daylight-saving changes and travel. Null exactly when dueAt is null.
+          examples: ['Europe/London']
 
     StudySession:
       type: object

@@ -66,7 +66,7 @@ Deno.test("subjects map signed ARGB colours and explicitly scope service-role re
     });
 });
 
-Deno.test("tasks derive completion, preserve DST-resolved due instants, filter by subject, and omit orphaned tasks", async () => {
+Deno.test("tasks derive completion, carry the DST-resolved due instant with its zone, filter by subject, and omit orphaned tasks", async () => {
     await withFetch((input, init) => {
         const url = String(input);
         if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: "11111111-1111-1111-1111-111111111111" });
@@ -76,9 +76,16 @@ Deno.test("tasks derive completion, preserve DST-resolved due instants, filter b
                 throw new Error("task list was not constrained to the verified owner and requested subject");
             }
             return jsonResponse(200, [
-                { id: "t1", subject_id: "s1", title: "Spring deadline", completed_at: "2026-03-08T12:00:00Z", due_at: "2026-03-08T13:00:00+00:00" },
-                { id: "t2", subject_id: "s1", title: "Incomplete", completed_at: null, due_at: null },
-                { id: "t3", subject_id: null, title: "Deleted subject", completed_at: null, due_at: null },
+                {
+                    id: "t1",
+                    subject_id: "s1",
+                    title: "Spring deadline",
+                    completed_at: "2026-03-08T12:00:00Z",
+                    due_at: "2026-03-08T13:00:00+00:00",
+                    time_zone: "America/New_York",
+                },
+                { id: "t2", subject_id: "s1", title: "Incomplete", completed_at: null, due_at: null, time_zone: "UTC" },
+                { id: "t3", subject_id: null, title: "Deleted subject", completed_at: null, due_at: null, time_zone: "UTC" },
             ]);
         }
         if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
@@ -89,8 +96,15 @@ Deno.test("tasks derive completion, preserve DST-resolved due instants, filter b
         }));
         const body = await response.json();
         if (response.status !== 200 || JSON.stringify(body) !== JSON.stringify([
-            { id: "t1", subjectId: "s1", title: "Spring deadline", completed: true, dueAt: "2026-03-08T13:00:00.000Z" },
-            { id: "t2", subjectId: "s1", title: "Incomplete", completed: false, dueAt: null },
+            {
+                id: "t1",
+                subjectId: "s1",
+                title: "Spring deadline",
+                completed: true,
+                dueAt: "2026-03-08T13:00:00.000Z",
+                dueAtTimeZone: "America/New_York",
+            },
+            { id: "t2", subjectId: "s1", title: "Incomplete", completed: false, dueAt: null, dueAtTimeZone: null },
         ])) throw new Error("tasks were not translated correctly");
     });
 });

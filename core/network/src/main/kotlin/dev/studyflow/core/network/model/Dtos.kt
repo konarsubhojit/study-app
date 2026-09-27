@@ -77,7 +77,15 @@ public data class SubjectDto(
     val colorHex: String? = null,
 )
 
-/** An element of `GET /v1/tasks`. */
+/**
+ * An element of `GET /v1/tasks`.
+ *
+ * @property dueAtIso the due time resolved to an instant, valid only for the offset [dueAtZoneId]
+ *   was in when the server read it. Due times float with their zone — "09:00 Europe/London" stays
+ *   09:00 across a daylight-saving transition — so the pair must travel together, exactly as
+ *   `study_tasks` stores a naive wall-clock time beside its zone.
+ * @property dueAtZoneId IANA zone [dueAtIso] was resolved in, null exactly when [dueAtIso] is.
+ */
 @Serializable
 public data class TaskDto(
     val id: String,
@@ -85,6 +93,7 @@ public data class TaskDto(
     val title: String,
     val completed: Boolean = false,
     @SerialName("dueAt") val dueAtIso: String? = null,
+    @SerialName("dueAtTimeZone") val dueAtZoneId: String? = null,
 )
 
 /** Body and response of `POST /v1/sessions`. */

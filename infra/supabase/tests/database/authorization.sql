@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(67);
+select plan(68);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -262,6 +262,15 @@ select is(
   ),
   '2026-03-08 13:00:00+00'::timestamptz,
   'task list projection resolves a spring DST wall-clock due time in its stored zone'
+);
+select is(
+  (
+    select time_zone
+    from public.list_study_tasks('11111111-1111-1111-1111-111111111111')
+    where id = 'a3333333-1111-1111-1111-111111111111'
+  ),
+  'America/New_York',
+  'task list projection keeps the zone label so the wall-clock due time can be recovered'
 );
 select is(
   (select count(*) from public.list_study_tasks('22222222-2222-2222-2222-222222222222'))::int,

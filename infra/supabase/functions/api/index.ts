@@ -42,7 +42,14 @@ type GoogleClaims = {
 };
 type GoogleJwk = Json & { kid?: string; kty?: string; alg?: string; use?: string; n?: string; e?: string };
 type SubjectRow = { id: unknown; name: unknown; color_argb: unknown };
-type TaskRow = { id: unknown; subject_id: unknown; title: unknown; completed_at: unknown; due_at: unknown };
+type TaskRow = {
+    id: unknown;
+    subject_id: unknown;
+    title: unknown;
+    completed_at: unknown;
+    due_at: unknown;
+    time_zone: unknown;
+};
 
 class ApiError extends Error {
     constructor(
@@ -285,6 +292,11 @@ function subjectDto(row: SubjectRow): Json {
     };
 }
 
+// `dueAt` is the stored wall-clock time resolved against the task's zone, and `dueAtTimeZone` is
+// that zone. Both are sent: the instant is what clients sort and display by, and the zone label is
+// what lets them recover "09:00 Europe/London" rather than an offset frozen on the day they read
+// it. Dropping the zone here would silently turn a floating due time into a fixed instant the
+// moment a write path echoed it back.
 function taskDto(row: TaskRow): Json | undefined {
     if (typeof row.subject_id !== "string") return undefined;
     const dueAt = row.due_at === null ? null : new Date(stringField(row.due_at, "due_at")).toISOString();
@@ -295,6 +307,7 @@ function taskDto(row: TaskRow): Json | undefined {
         title: stringField(row.title, "task title"),
         completed: row.completed_at !== null,
         dueAt,
+        dueAtTimeZone: dueAt === null ? null : stringField(row.time_zone, "task time_zone"),
     };
 }
 
