@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(56);
+select plan(57);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -225,6 +225,10 @@ select ok(
 select ok(
   not has_table_privilege('authenticated', 'public.backend_observability_events', 'insert'),
   'clients cannot forge backend observability events'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.auth_signin_challenges', 'select'),
+  'clients cannot inspect pending sign-in challenges'
 );
 select ok(
   not has_table_privilege('authenticated', 'public.backend_alert_policies', 'select'),
