@@ -4,10 +4,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.tooling.preview.Preview
 import com.android.tools.screenshot.PreviewTest
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
-import dev.studyflow.core.domain.stats.SubjectTotal
 import dev.studyflow.core.domain.stats.StatsRange
-import dev.studyflow.core.testing.data.testSubject
+import dev.studyflow.core.domain.stats.SubjectTotal
 import dev.studyflow.core.model.Subject
+import dev.studyflow.core.testing.data.testSubject
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
