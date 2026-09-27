@@ -11,6 +11,15 @@ also scopes `rememberSaveable` screen state to each back-stack entry. Verify bot
 enabling **Developer options > Don't keep activities**, entering a note on a destination, leaving
 the app, and returning to it.
 
+## Top-level destinations
+
+The navigation surface carries five destinations — Home, Timer, Materials, Tasks and Insights —
+and `AppRoute.topLevelRoute` maps every other destination onto the one that stays selected while it
+is open, or to `null` when nothing in the bar should look selected. History and the weekly recap
+are readings of the same sessions Insights aggregates, so they select Insights and are opened from
+the Insights screen; settings, and the data & privacy screen reached from it, are opened from the
+home app bar. Both remain addressable by the deep links below, which are unchanged.
+
 ## Deep links
 
 External entry points must use `StudyFlowDeepLinks.uriFor` rather than constructing URI strings.

@@ -57,6 +57,23 @@ StudyFlowListDetail(
 and `ListDetailStrategy` turns that plus the selection into one pane or two. Both are pure functions
 — assert against them in unit tests rather than inflating a window.
 
+## Top-level navigation
+
+`StudyFlowNavigationSuite` is the only top-level navigation surface. It takes the same width class
+and draws a `NavigationBar` on a compact window and a `NavigationRail` on anything wider, so the
+app never shows a phone bar on a tablet:
+
+```kotlin
+StudyFlowNavigationSuite(items = navigationItems(), selected = current, onSelect = navigate) {
+    AppNavDisplay(backStack)
+}
+```
+
+Each destination supplies an outlined icon and its filled counterpart, and the labels are kept to
+one line. The suite accepts at most five destinations, which is the Material 3 limit: a sixth
+destination belongs behind an app-bar action or under a destination it is a reading of, not in the
+bar.
+
 ## Motion
 
 Use the tokens in `StudyFlowMotion`; do not invent a duration or a curve.
