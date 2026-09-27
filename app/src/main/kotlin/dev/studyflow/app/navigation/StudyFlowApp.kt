@@ -1,6 +1,7 @@
 package dev.studyflow.app.navigation
 
 import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
@@ -89,72 +90,7 @@ private fun AppNavDisplay(
             backStack = backStack,
             onBack = { backStack.removeLastOrNull() },
             entryDecorators = listOf(rememberSaveableStateHolderNavEntryDecorator()),
-            entryProvider =
-                entryProvider {
-                    entry<HomeRoute> {
-                        HomeScreenRoute(
-                            onOpenTimer = { backStack.add(TimerRoute(openRunningTimer = true)) },
-                            onOpenTask = { taskId -> backStack.add(TasksRoute(taskId)) },
-                            onOpenMaterial = { materialId -> backStack.add(MaterialsRoute(materialId)) },
-                            onOpenHistory = { backStack.add(HistoryRoute) },
-                            onOpenSettings = { backStack.add(SettingsRoute) },
-                        )
-                    }
-                    entry<TimerRoute> { route ->
-                        TimerScreenRoute(taskId = route.taskId, subjectId = route.subjectId)
-                    }
-                    entry<MaterialsRoute> { route ->
-                        val animatedVisibilityScope = LocalNavAnimatedContentScope.current
-                        val sharedElementScope =
-                            remember(this@SharedTransitionLayout, animatedVisibilityScope) {
-                                StudyFlowSharedElementScope(
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                )
-                            }
-                        MaterialsEntry(
-                            route = route,
-                            backStack = backStack,
-                            sharedElementScope = sharedElementScope,
-                        )
-                    }
-                    entry<TasksRoute> { route ->
-                        val animatedVisibilityScope = LocalNavAnimatedContentScope.current
-                        val sharedElementScope =
-                            remember(this@SharedTransitionLayout, animatedVisibilityScope) {
-                                StudyFlowSharedElementScope(
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                )
-                            }
-                        TasksEntry(
-                            route = route,
-                            backStack = backStack,
-                            sharedElementScope = sharedElementScope,
-                        )
-                    }
-                    entry<SettingsRoute> {
-                        NotificationSettingsRoute(
-                            onOpenDataPrivacy = { backStack.add(DataPrivacyRoute) },
-                            account = { AccountRoute() },
-                        )
-                    }
-                    entry<DataPrivacyRoute> {
-                        DataPrivacyScreenRoute()
-                    }
-                    entry<HistoryRoute> {
-                        HistoryScreenRoute()
-                    }
-                    entry<InsightsRoute> {
-                        InsightsScreenRoute(
-                            onOpenWeeklySummary = { backStack.add(WeeklySummaryRoute) },
-                            onOpenHistory = { backStack.add(HistoryRoute) },
-                        )
-                    }
-                    entry<WeeklySummaryRoute> {
-                        WeeklySummaryScreenRoute()
-                    }
-                },
+            entryProvider = appEntryProvider(backStack = backStack, sharedTransitionScope = this),
             modifier = modifier,
             transitionSpec = {
                 StudyFlowMotion.enter togetherWith StudyFlowMotion.exit
@@ -167,6 +103,70 @@ private fun AppNavDisplay(
             },
             sharedTransitionScope = this,
         )
+    }
+}
+
+@Composable
+private fun rememberSharedElementScope(sharedTransitionScope: SharedTransitionScope): StudyFlowSharedElementScope {
+    val animatedVisibilityScope = LocalNavAnimatedContentScope.current
+    return remember(sharedTransitionScope, animatedVisibilityScope) {
+        StudyFlowSharedElementScope(
+            sharedTransitionScope = sharedTransitionScope,
+            animatedVisibilityScope = animatedVisibilityScope,
+        )
+    }
+}
+
+private fun appEntryProvider(
+    backStack: NavBackStack<NavKey>,
+    sharedTransitionScope: SharedTransitionScope,
+) = entryProvider<NavKey> {
+    entry<HomeRoute> {
+        HomeScreenRoute(
+            onOpenTimer = { backStack.add(TimerRoute(openRunningTimer = true)) },
+            onOpenTask = { taskId -> backStack.add(TasksRoute(taskId)) },
+            onOpenMaterial = { materialId -> backStack.add(MaterialsRoute(materialId)) },
+            onOpenHistory = { backStack.add(HistoryRoute) },
+            onOpenSettings = { backStack.add(SettingsRoute) },
+        )
+    }
+    entry<TimerRoute> { route ->
+        TimerScreenRoute(taskId = route.taskId, subjectId = route.subjectId)
+    }
+    entry<MaterialsRoute> { route ->
+        MaterialsEntry(
+            route = route,
+            backStack = backStack,
+            sharedElementScope = rememberSharedElementScope(sharedTransitionScope),
+        )
+    }
+    entry<TasksRoute> { route ->
+        TasksEntry(
+            route = route,
+            backStack = backStack,
+            sharedElementScope = rememberSharedElementScope(sharedTransitionScope),
+        )
+    }
+    entry<SettingsRoute> {
+        NotificationSettingsRoute(
+            onOpenDataPrivacy = { backStack.add(DataPrivacyRoute) },
+            account = { AccountRoute() },
+        )
+    }
+    entry<DataPrivacyRoute> {
+        DataPrivacyScreenRoute()
+    }
+    entry<HistoryRoute> {
+        HistoryScreenRoute()
+    }
+    entry<InsightsRoute> {
+        InsightsScreenRoute(
+            onOpenWeeklySummary = { backStack.add(WeeklySummaryRoute) },
+            onOpenHistory = { backStack.add(HistoryRoute) },
+        )
+    }
+    entry<WeeklySummaryRoute> {
+        WeeklySummaryScreenRoute()
     }
 }
 
