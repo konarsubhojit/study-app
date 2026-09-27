@@ -825,7 +825,10 @@ private fun TextPreview(
     val previewState by produceState<TextPreviewState>(initialValue = TextPreviewState.Loading, source.uri) {
         value =
             withContext(dispatcherProvider.io) {
-                source.uri.toLocalFileOrNull()?.let(::readTextPreview)?.let(TextPreviewState::Loaded)
+                source.uri
+                    .toLocalFileOrNull()
+                    ?.let(::readTextPreview)
+                    ?.let(TextPreviewState::Loaded)
                     ?: TextPreviewState.Failed
             }
     }
