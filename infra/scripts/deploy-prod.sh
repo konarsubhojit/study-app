@@ -15,4 +15,4 @@ project_ref="${1:?usage: deploy-prod.sh <project-ref>}"
 : "${SUPABASE_DB_PASSWORD:?SUPABASE_DB_PASSWORD must be set (from a managed secret store)}"
 
 supabase link --project-ref "$project_ref"
-supabase db push --yes
+supabase db push --yes --debug
