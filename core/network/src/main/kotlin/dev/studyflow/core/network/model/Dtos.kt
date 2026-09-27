@@ -69,6 +69,31 @@ public data class AuthTokensDto(
     val expiresInSeconds: Long,
 )
 
+/**
+ * Response body of `POST /v1/auth/passkey/registration/challenge` (issue #158).
+ *
+ * The account is the one the request's bearer token names — a passkey is added to an account that
+ * already exists — so nothing here identifies the user to the client.
+ */
+@Serializable
+public data class PasskeyRegistrationChallengeDto(
+    val requestJson: String,
+    @SerialName("expiresAt") val expiresAtIso: String,
+)
+
+/** Request body of `POST /v1/auth/passkey/registration`. */
+@Serializable
+public data class PasskeyRegistrationRequestDto(
+    val registrationResponseJson: String,
+)
+
+/** Response body of `POST /v1/auth/passkey/registration`. */
+@Serializable
+public data class PasskeyRegistrationDto(
+    val credentialId: String,
+    @SerialName("createdAt") val createdAtIso: String,
+)
+
 /** An element of `GET /v1/subjects`. */
 @Serializable
 public data class SubjectDto(

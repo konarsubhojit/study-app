@@ -33,7 +33,11 @@ class SyncWireShapeTest {
 
         val delta = StudyFlowJson.decodeFromString<SyncDeltaDto>(serverDelta)
 
-        val event = delta.changes.single().events.single()
+        val event =
+            delta.changes
+                .single()
+                .events
+                .single()
         assertEquals("e1", event.id)
         assertNull(event.uptimeMillis, "the server never returns an uptime anchor")
         assertNull(event.bootId, "the server never returns a boot id")

@@ -5,18 +5,43 @@ import {
     ListObjectsV2Command,
     S3Client,
 } from "npm:@aws-sdk/client-s3@3.1135.0";
+// Signature, attestation and flag checking is delegated rather than hand-rolled: a subtly wrong
+// COSE decoder or a missed flag bit is an authentication bypass that no amount of local review
+// reliably catches. 13.3.2 is the first release carrying the fix for GHSA-6hxq-p678-4hr2, which
+// let a forged attestation chain terminate at an attacker-supplied self-signed root.
+import { verifyAuthenticationResponse, verifyRegistrationResponse } from "npm:@simplewebauthn/server@13.3.2";
+import type {
+    AuthenticationResponseJSON,
+    AuthenticatorTransportFuture,
+    RegistrationResponseJSON,
+} from "npm:@simplewebauthn/server@13.3.2";
 
 const TRACE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const ROUTE_PREFIX = ["functions", "v1", "api"];
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
+const RELYING_PARTY_NAME = "StudyFlow";
+// Android reports the calling app, not a web page, as the WebAuthn origin: the string is derived
+// from the APK signing certificate. Configuring anything web-shaped here would mean accepting an
+// assertion produced by a browser against our RP ID, which is not the client we ship.
+const ANDROID_ORIGIN_PREFIX = "android:apk-key-hash:";
+const ES256 = -7;
+const RS256 = -257;
 
 type Json = Record<string, unknown>;
 type AuthMode = "none" | "jwt";
 type Route = {
     method: "GET" | "POST" | "DELETE";
     path: string;
-    operation: "beginSignIn" | "signIn" | "refreshTokens" | "listSubjects" | "listTasks" | "deleteAccount";
+    operation:
+        | "beginSignIn"
+        | "signIn"
+        | "refreshTokens"
+        | "listSubjects"
+        | "listTasks"
+        | "deleteAccount"
+        | "beginPasskeyRegistration"
+        | "completePasskeyRegistration";
     auth: AuthMode;
     handler: (request: Request, owner?: string) => Promise<Response>;
 };
@@ -42,6 +67,15 @@ type GoogleClaims = {
 };
 type GoogleJwk = Json & { kid?: string; kty?: string; alg?: string; use?: string; n?: string; e?: string };
 type SubjectRow = { id: unknown; name: unknown; color_argb: unknown };
+type PasskeyCredentialRow = {
+    credential_id: string;
+    user_id: string;
+    public_key: string;
+    sign_count: number;
+    transports: string[] | null;
+};
+type ChallengeRow = { challenge_hash: string; user_id: string | null };
+type ClientData = { type?: unknown; challenge?: unknown; origin?: unknown };
 type TaskRow = {
     id: unknown;
     subject_id: unknown;
@@ -77,6 +111,16 @@ if (!Number.isSafeInteger(backupRetentionDays) || backupRetentionDays < 0) {
     throw new Error("API_BACKUP_RETENTION_DAYS must be a non-negative integer");
 }
 const storageBucket = env("STORAGE_S3_BUCKET");
+const passkeyRpId = env("PASSKEY_RP_ID");
+// A list, because a build signed with the upload key and one signed with the Play release key
+// produce different origins for the same app, and both must be accepted during a rollout.
+const passkeyOrigins = env("PASSKEY_ANDROID_ORIGIN").split(",").map((origin) => origin.trim()).filter(Boolean);
+if (passkeyOrigins.length === 0 || !passkeyOrigins.every((origin) => origin.startsWith(ANDROID_ORIGIN_PREFIX))) {
+    // Failing at boot rather than per request: a web-shaped origin configured here would be
+    // rejected on every passkey sign-in, which reads as "passkeys are broken" long before anyone
+    // suspects the secret. A refused deployment names the cause.
+    throw new Error(`PASSKEY_ANDROID_ORIGIN must be a comma-separated list of ${ANDROID_ORIGIN_PREFIX}... origins`);
+}
 const s3 = new S3Client({
     endpoint: env("STORAGE_S3_ENDPOINT"),
     region: Deno.env.get("STORAGE_S3_REGION") ?? "us-east-1",
@@ -360,14 +404,13 @@ async function sha256Hex(value: string): Promise<string> {
     return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function beginSignIn(_request: Request): Promise<Response> {
-    const challenge = base64Url(crypto.getRandomValues(new Uint8Array(32)));
-    const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS).toISOString();
-    const requestJson = JSON.stringify({
-        challenge,
-        timeout: CHALLENGE_TTL_MS,
-        userVerification: "preferred",
-    });
+async function storeChallenge(
+    challenge: string,
+    requestJson: string,
+    expiresAt: string,
+    purpose: "signin" | "registration",
+    owner?: string,
+): Promise<void> {
     await databaseJson("auth_signin_challenges", {
         method: "POST",
         headers: { prefer: "return=minimal" },
@@ -375,8 +418,41 @@ async function beginSignIn(_request: Request): Promise<Response> {
             challenge_hash: await sha256Hex(challenge),
             request_json: requestJson,
             expires_at: expiresAt,
+            purpose,
+            ...(owner ? { user_id: owner } : {}),
         }),
     });
+}
+
+// Claims a challenge, or reports that it was never issued, has expired, or has already been used.
+// The claim is one statement in the database rather than a read here and a write later: with two
+// statements, two concurrent replays of the same assertion both observe an unconsumed row and both
+// succeed. Returning the row the update matched is what makes "exactly once" a property of the
+// database rather than of this function's timing.
+async function consumeChallenge(
+    challenge: string,
+    purpose: "signin" | "registration",
+): Promise<ChallengeRow | undefined> {
+    const rows = await databaseJson<ChallengeRow[]>("rpc/consume_auth_challenge", {
+        method: "POST",
+        body: JSON.stringify({ p_challenge_hash: await sha256Hex(challenge), p_purpose: purpose }),
+    });
+    return rows[0];
+}
+
+async function beginSignIn(_request: Request): Promise<Response> {
+    const challenge = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS).toISOString();
+    // No `allowCredentials`: sign-in happens before we know who is signing in, so the authenticator
+    // picks from its own discoverable credentials. Listing candidates would require the caller to
+    // name an account first, which would make this endpoint an account-existence oracle.
+    const requestJson = JSON.stringify({
+        challenge,
+        rpId: passkeyRpId,
+        timeout: CHALLENGE_TTL_MS,
+        userVerification: "preferred",
+    });
+    await storeChallenge(challenge, requestJson, expiresAt, "signin");
     return json(200, { requestJson, expiresAt });
 }
 
@@ -482,11 +558,143 @@ async function verifyGoogleIdToken(idToken: string): Promise<GoogleClaims> {
     return claims;
 }
 
+function invalidCredentials(): ApiError {
+    // Every passkey failure answers identically on purpose: distinguishing "no such credential"
+    // from "bad signature" from "replayed challenge" tells an attacker which half of their guess
+    // was right, and turns the endpoint into an account-enumeration oracle.
+    return new ApiError(401, "invalid_credentials", "The supplied credentials could not be verified.");
+}
+
+function credentialResponse(value: Json): Json {
+    const response = value.response;
+    if (!response || typeof response !== "object" || Array.isArray(response)) throw invalidCredentials();
+    return response as Json;
+}
+
+function clientData(value: unknown): ClientData {
+    if (typeof value !== "string" || value.length === 0) throw invalidCredentials();
+    try {
+        return JSON.parse(new TextDecoder().decode(decodeBase64Url(value))) as ClientData;
+    } catch {
+        throw invalidCredentials();
+    }
+}
+
+function parseCredentialJson(value: unknown): Json {
+    if (typeof value !== "string" || value.length === 0) throw invalidCredentials();
+    try {
+        const parsed = JSON.parse(value);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error();
+        return parsed as Json;
+    } catch {
+        throw invalidCredentials();
+    }
+}
+
+async function passkeyCredential(credentialId: string): Promise<PasskeyCredentialRow | undefined> {
+    const rows = await databaseJson<PasskeyCredentialRow[]>(
+        `passkey_credentials?credential_id=eq.${encodeURIComponent(credentialId)}` +
+            "&select=credential_id,user_id,public_key,sign_count,transports&limit=1",
+    );
+    return rows[0];
+}
+
+async function authFetch(path: string, init: RequestInit = {}): Promise<Response> {
+    const headers = new Headers(init.headers);
+    headers.set("apikey", serviceKey);
+    headers.set("authorization", "Bearer " + serviceKey);
+    if (init.body) headers.set("content-type", "application/json");
+    return await fetch(`${supabaseUrl}/auth/v1/${path}`, { ...init, headers });
+}
+
+/**
+ * Issues a Supabase session for an account this function has already authenticated itself.
+ *
+ * GoTrue has no admin "create a session for this user" route, so the only supported path is to
+ * generate a magic link for the account and redeem its hashed token immediately. The link is
+ * created and consumed inside this function and is never sent anywhere, so no user-reachable
+ * credential is produced by it. It lives in one helper because that is the single place in the
+ * codebase where a session is minted without the user presenting an identity-provider proof.
+ */
+async function mintSessionForUser(owner: string): Promise<Json> {
+    const account = await authFetch(`admin/users/${encodeURIComponent(owner)}`);
+    if (!account.ok) throw new Error(`Auth lookup failed (${account.status})`);
+    const email = (await account.json()).email;
+    if (typeof email !== "string" || email.length === 0) throw new Error("Auth user has no address to mint a session");
+    const link = await authFetch("admin/generate_link", {
+        method: "POST",
+        body: JSON.stringify({ type: "magiclink", email }),
+    });
+    if (!link.ok) throw new Error(`Auth link generation failed (${link.status})`);
+    const hashedToken = (await link.json()).hashed_token;
+    if (typeof hashedToken !== "string" || hashedToken.length === 0) {
+        throw new Error("Auth link response was missing hashed_token");
+    }
+    const session = await authFetch("verify", {
+        method: "POST",
+        body: JSON.stringify({ type: "magiclink", token_hash: hashedToken }),
+    });
+    if (!session.ok) throw new Error(`Auth session minting failed (${session.status})`);
+    return translateTokens(await session.json() as GotrueTokens);
+}
+
+async function verifyPasskeyAssertion(assertion: unknown): Promise<Response> {
+    const response = parseCredentialJson(assertion);
+    const data = clientData(credentialResponse(response).clientDataJSON);
+    const challenge = typeof data.challenge === "string" ? data.challenge : "";
+    // Claimed before anything else is checked, so a request that fails later still burns the
+    // nonce: a challenge that survived a failed attempt could be retried until one lands.
+    if (challenge.length === 0 || !await consumeChallenge(challenge, "signin")) throw invalidCredentials();
+
+    const credentialId = typeof response.id === "string" ? response.id : "";
+    const credential = credentialId.length === 0 ? undefined : await passkeyCredential(credentialId);
+    // The account is the one the *stored* credential belongs to. The user handle in the response is
+    // a client-supplied claim about identity, so it is only ever checked against that owner, never
+    // used to choose it — trusting it would let anyone sign in as anyone by editing one field.
+    if (!credential) throw invalidCredentials();
+    const userHandle = credentialResponse(response).userHandle;
+    if (typeof userHandle === "string" && userHandle.length > 0) {
+        const claimed = new TextDecoder().decode(decodeBase64Url(userHandle));
+        if (claimed !== credential.user_id) throw invalidCredentials();
+    }
+
+    let verification;
+    try {
+        verification = await verifyAuthenticationResponse({
+            response: response as unknown as AuthenticationResponseJSON,
+            expectedChallenge: challenge,
+            expectedOrigin: passkeyOrigins,
+            expectedRPID: passkeyRpId,
+            // User presence is always enforced by the library; user verification is not required
+            // because the sign-in options ask for it only as `preferred`, and demanding here what
+            // was not demanded there would reject conforming authenticators rather than attackers.
+            requireUserVerification: false,
+            credential: {
+                id: credential.credential_id,
+                publicKey: decodeBase64Url(credential.public_key),
+                counter: Number(credential.sign_count),
+                transports: (credential.transports ?? []) as AuthenticatorTransportFuture[],
+            },
+        });
+    } catch {
+        // The library reports a wrong origin, a wrong RP ID hash, a cleared user-presence flag, a
+        // rewound signature counter and a bad signature by throwing; all of them are one answer.
+        throw invalidCredentials();
+    }
+    if (!verification.verified) throw invalidCredentials();
+
+    const newCounter = verification.authenticationInfo.newCounter;
+    await databaseJson(`passkey_credentials?credential_id=eq.${encodeURIComponent(credential.credential_id)}`, {
+        method: "PATCH",
+        headers: { prefer: "return=minimal" },
+        body: JSON.stringify({ sign_count: newCounter, last_used_at: new Date().toISOString() }),
+    });
+    return json(200, await mintSessionForUser(credential.user_id));
+}
+
 async function signIn(request: Request): Promise<Response> {
     const value = await body(request);
-    if (value.type === "passkey") {
-        throw new ApiError(501, "not_implemented", "Passkey sign-in verification is not implemented yet.");
-    }
+    if (value.type === "passkey") return await verifyPasskeyAssertion(value.assertion);
     if (value.type !== "google" || typeof value.idToken !== "string" || value.idToken.length === 0) {
         throw new ApiError(400, "invalid_request", "A supported sign-in credential is required.");
     }
@@ -498,6 +706,102 @@ async function signIn(request: Request): Promise<Response> {
     }));
 }
 
+/**
+ * Creation options for adding a passkey to the account that is already signed in.
+ *
+ * Registration is authenticated by design: Google sign-in is the account-creation path, and a
+ * passkey is an authenticator attached to an existing account. An unauthenticated registration
+ * endpoint would let a stranger bind their own authenticator to an account they merely named.
+ */
+async function beginPasskeyRegistration(_request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    const account = await authFetch(`admin/users/${encodeURIComponent(owner)}`);
+    if (!account.ok) throw new Error(`Auth lookup failed (${account.status})`);
+    const email = (await account.json()).email;
+    const existing = await databaseJson<{ credential_id: string; transports: string[] | null }[]>(
+        `passkey_credentials?user_id=eq.${encodeURIComponent(owner)}&select=credential_id,transports`,
+    );
+    const challenge = base64Url(crypto.getRandomValues(new Uint8Array(32)));
+    const expiresAt = new Date(Date.now() + CHALLENGE_TTL_MS).toISOString();
+    const requestJson = JSON.stringify({
+        challenge,
+        rp: { id: passkeyRpId, name: RELYING_PARTY_NAME },
+        // The user handle is the account id, so an assertion that carries one can be checked
+        // against the credential's owner instead of being taken at face value. It is deliberately
+        // not the address: a handle is stored on the authenticator and survives an address change.
+        user: {
+            id: base64Url(new TextEncoder().encode(owner)),
+            name: typeof email === "string" && email.length > 0 ? email : owner,
+            displayName: typeof email === "string" && email.length > 0 ? email : owner,
+        },
+        pubKeyCredParams: [
+            { type: "public-key", alg: ES256 },
+            { type: "public-key", alg: RS256 },
+        ],
+        timeout: CHALLENGE_TTL_MS,
+        attestation: "none",
+        // Offering an authenticator that already holds a credential for this account the chance to
+        // decline, so the user gets "you already have a passkey here" rather than a silent second
+        // credential that makes the picker ambiguous forever.
+        excludeCredentials: existing.map((row) => ({
+            type: "public-key",
+            id: row.credential_id,
+            ...(row.transports?.length ? { transports: row.transports } : {}),
+        })),
+        authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+    });
+    await storeChallenge(challenge, requestJson, expiresAt, "registration", owner);
+    return json(200, { requestJson, expiresAt });
+}
+
+async function completePasskeyRegistration(request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    const value = await body(request);
+    if (typeof value.registrationResponseJson !== "string" || value.registrationResponseJson.length === 0) {
+        throw new ApiError(400, "invalid_request", "registrationResponseJson is required.");
+    }
+    const response = parseCredentialJson(value.registrationResponseJson);
+    const data = clientData(credentialResponse(response).clientDataJSON);
+    const challenge = typeof data.challenge === "string" ? data.challenge : "";
+    const claimed = challenge.length === 0 ? undefined : await consumeChallenge(challenge, "registration");
+    // A registration challenge belongs to the account it was issued to. Without this check, one
+    // user could hand their challenge to another, who would then attach their own authenticator
+    // to the first user's account.
+    if (!claimed || claimed.user_id !== owner) throw invalidCredentials();
+
+    let verification;
+    try {
+        verification = await verifyRegistrationResponse({
+            response: response as unknown as RegistrationResponseJSON,
+            expectedChallenge: challenge,
+            expectedOrigin: passkeyOrigins,
+            expectedRPID: passkeyRpId,
+            requireUserVerification: false,
+        });
+    } catch {
+        throw invalidCredentials();
+    }
+    const registration = verification.registrationInfo;
+    if (!verification.verified || !registration) throw invalidCredentials();
+
+    const created = await database("passkey_credentials", {
+        method: "POST",
+        headers: { prefer: "return=minimal" },
+        body: JSON.stringify({
+            credential_id: registration.credential.id,
+            user_id: owner,
+            public_key: base64Url(registration.credential.publicKey),
+            sign_count: registration.credential.counter,
+            transports: registration.credential.transports ?? [],
+        }),
+    });
+    if (created.status === 409) {
+        throw new ApiError(409, "credential_already_registered", "This passkey is already registered.");
+    }
+    if (!created.ok) throw new Error(`Database request failed (${created.status})`);
+    return json(201, { credentialId: registration.credential.id, createdAt: new Date().toISOString() });
+}
+
 const routes: Route[] = [
     { method: "POST", path: "/v1/auth/signin/challenge", operation: "beginSignIn", auth: "none", handler: beginSignIn },
     { method: "POST", path: "/v1/auth/signin", operation: "signIn", auth: "none", handler: signIn },
@@ -505,6 +809,20 @@ const routes: Route[] = [
     { method: "GET", path: "/v1/subjects", operation: "listSubjects", auth: "jwt", handler: listSubjects },
     { method: "GET", path: "/v1/tasks", operation: "listTasks", auth: "jwt", handler: listTasks },
     { method: "DELETE", path: "/v1/account", operation: "deleteAccount", auth: "jwt", handler: deleteAccount },
+    {
+        method: "POST",
+        path: "/v1/auth/passkey/registration/challenge",
+        operation: "beginPasskeyRegistration",
+        auth: "jwt",
+        handler: beginPasskeyRegistration,
+    },
+    {
+        method: "POST",
+        path: "/v1/auth/passkey/registration",
+        operation: "completePasskeyRegistration",
+        auth: "jwt",
+        handler: completePasskeyRegistration,
+    },
 ];
 
 export function resolveRoute(method: string, path: string): Route | undefined {

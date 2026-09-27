@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(68);
+select plan(79);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -63,6 +63,9 @@ insert into public.materials
 
 insert into public.sync_cursors (user_id, device_id, entity_type, cursor) values
   ('11111111-1111-1111-1111-111111111111', 'device-a', 'subject', now());
+
+insert into public.passkey_credentials (credential_id, user_id, public_key, sign_count) values
+  ('alice-credential', '11111111-1111-1111-1111-111111111111', 'cHVibGljLWtleQ', 0);
 
 reset role;
 
@@ -234,6 +237,26 @@ select ok(
   not has_table_privilege('authenticated', 'public.auth_signin_challenges', 'select'),
   'clients cannot inspect pending sign-in challenges'
 );
+-- A passkey's public key and signature counter are inputs to an authentication decision. A client
+-- that can read them learns what to forge; a client that can write them owns every account. Even
+-- the owning user therefore gets no policy at all, which is why these are privilege checks rather
+-- than the per-row filtering the user-owned tables above rely on.
+select ok(
+  not has_table_privilege('authenticated', 'public.passkey_credentials', 'select'),
+  'clients cannot read stored passkey credentials, not even their own'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.passkey_credentials', 'insert'),
+  'clients cannot register a passkey credential behind the API'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.passkey_credentials', 'update'),
+  'clients cannot rewrite a passkey public key or rewind its signature counter'
+);
+select ok(
+  not has_function_privilege('authenticated', 'public.consume_auth_challenge(text, text)', 'execute'),
+  'clients cannot claim an authentication challenge themselves'
+);
 select ok(
   not has_table_privilege('authenticated', 'public.backend_alert_policies', 'select'),
   'clients cannot inspect alert routing policy'
@@ -382,6 +405,50 @@ select is(
 );
 reset role;
 
+-- Challenge claiming is the replay defence for both passkey flows, so it is pinned here rather
+-- than only in the Edge Function's tests: the single-use, single-purpose and expiry rules are
+-- properties of this statement, and an Edge Function test can only ever assert that it called it.
+set local role service_role;
+insert into public.auth_signin_challenges (challenge_hash, request_json, expires_at, purpose) values
+  (repeat('a', 64), '{}', now() + interval '5 minutes', 'signin'),
+  (repeat('b', 64), '{}', now() - interval '1 minute', 'signin');
+insert into public.auth_signin_challenges (challenge_hash, request_json, expires_at, purpose, user_id) values
+  (repeat('c', 64), '{}', now() + interval '5 minutes', 'registration',
+   '11111111-1111-1111-1111-111111111111');
+select is(
+  (select count(*) from public.consume_auth_challenge(repeat('a', 64), 'signin'))::int,
+  1,
+  'a pending sign-in challenge is claimed once'
+);
+select is(
+  (select count(*) from public.consume_auth_challenge(repeat('a', 64), 'signin'))::int,
+  0,
+  'the same challenge cannot be claimed twice'
+);
+select is(
+  (select count(*) from public.consume_auth_challenge(repeat('b', 64), 'signin'))::int,
+  0,
+  'an expired challenge is never claimable'
+);
+select is(
+  (select count(*) from public.consume_auth_challenge(repeat('c', 64), 'signin'))::int,
+  0,
+  'a registration challenge cannot be redeemed at the sign-in endpoint'
+);
+select is(
+  (select user_id from public.consume_auth_challenge(repeat('c', 64), 'registration')),
+  '11111111-1111-1111-1111-111111111111'::uuid,
+  'a registration challenge reports the account it was issued to'
+);
+select throws_ok(
+  $$insert into public.auth_signin_challenges (challenge_hash, request_json, expires_at, purpose)
+    values (repeat('d', 64), '{}', now() + interval '5 minutes', 'registration')$$,
+  '23514',
+  null,
+  'a registration challenge cannot be stored without the account it was issued to'
+);
+reset role;
+
 -- Account deletion is available only through the authenticated API route, never through SQL
 -- grants to a client. Its Auth deletion cascades across the entire user-owned schema.
 set local role authenticated;
@@ -403,6 +470,8 @@ select is((select count(*) from public.materials where user_id = '11111111-1111-
   'deleting an Auth user cascades to materials');
 select is((select count(*) from public.storage_uploads where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
   'deleting an Auth user cascades to upload records');
+select is((select count(*) from public.passkey_credentials where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
+  'deleting an Auth user cascades to their passkey credentials');
 select ok(exists(select 1 from auth.users where id = '22222222-2222-2222-2222-222222222222'),
   'deleting alice leaves bob intact');
 

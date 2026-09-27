@@ -23,7 +23,16 @@ info:
       `426 Upgrade Required` if such a client keeps calling.
 servers:
   - url: https://api.studyflow.dev
-    description: Production
+    description: Production, once a custom domain is adopted (ADR 0017 does not recommend one)
+  - url: https://{projectRef}.supabase.co/functions/v1/api
+    description: >-
+      The deployed api Edge Function. The Supabase gateway leaves the /functions/v1/api prefix in
+      the path and the function strips it internally, so operation paths below are appended to this
+      base URL unchanged.
+    variables:
+      projectRef:
+        default: your-project-ref
+        description: Supabase project ref; deployment configuration, not a secret.
   - url: http://10.0.2.2:8080
     description: Local mock backend, reachable from an emulator without a code change
 
@@ -107,6 +116,70 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /v1/auth/passkey/registration/challenge:
+    post:
+      operationId: beginPasskeyRegistration
+      summary: Issue WebAuthn creation options for adding a passkey to the signed-in account
+      description: |
+        Authenticated by design. Google sign-in is the account-creation path; a passkey is an
+        additional authenticator attached to an account that already exists, so the account is
+        identified by the bearer token rather than named in the request. An unauthenticated
+        variant would let a stranger bind their own authenticator to an account they merely named.
+
+        The returned options are single-use and expire; `POST /v1/auth/passkey/registration` must
+        be called with the credential the platform produces from them before `expiresAt`.
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      responses:
+        '200':
+          description: Creation options and the time they expire
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyRegistrationChallenge'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/auth/passkey/registration:
+    post:
+      operationId: completePasskeyRegistration
+      summary: Attach a newly created passkey to the signed-in account
+      description: |
+        Verifies the credential against the challenge issued to *this* account, the relying party
+        and the app's APK-signing origin, then stores it. Answers `401 invalid_credentials` when
+        the challenge was never issued, has expired, has already been used, was issued to another
+        account, or the credential does not verify; `409 credential_already_registered` when the
+        authenticator already holds a credential for this account.
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasskeyRegistrationRequest'
+      responses:
+        '201':
+          description: The passkey is registered
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PasskeyRegistration'
+        '401':
+          $ref: '#/components/responses/Error'
+        '409':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
   /v1/subjects:
     get:
       operationId: listSubjects
@@ -158,7 +231,16 @@ paths:
   /v1/sessions:
     post:
       operationId: uploadSession
-      summary: Upload a finished study session
+      summary: Upload a finished study session (deprecated)
+      deprecated: true
+      description: >-
+        Deprecated in favour of POST /v1/sync/sessions, which replicates finished sessions through
+        the offline-first change queue of ADR 0012. ADR 0017 records why both cannot coexist: one
+        table would have two write paths with different conflict semantics. No server has ever
+        implemented this operation — the api Edge Function deliberately leaves it unrouted and its
+        router test asserts that — so nothing breaks by retiring it. Per the deprecation policy
+        above it answers with a Deprecation header while it remains listed, and 410 Gone carrying
+        endpoint_removed once it is withdrawn.
       parameters:
         - $ref: '#/components/parameters/ClientVersion'
       requestBody:
@@ -478,6 +560,41 @@ components:
         mapping:
           passkey: '#/components/schemas/PasskeySignInCredential'
           google: '#/components/schemas/GoogleSignInCredential'
+
+    PasskeyRegistrationChallenge:
+      type: object
+      required: [requestJson, expiresAt]
+      properties:
+        requestJson:
+          type: string
+          description: |
+            Complete WebAuthn creation-options JSON for `CreatePublicKeyCredentialRequest`. The
+            `user.id` it carries is the signed-in account, so an assertion that later echoes a user
+            handle can be checked against the credential's owner.
+        expiresAt:
+          type: string
+          format: date-time
+
+    PasskeyRegistrationRequest:
+      type: object
+      required: [registrationResponseJson]
+      properties:
+        registrationResponseJson:
+          type: string
+          description: >-
+            The `registrationResponseJson` produced by Android's CreatePublicKeyCredentialRequest,
+            verbatim.
+
+    PasskeyRegistration:
+      type: object
+      required: [credentialId, createdAt]
+      properties:
+        credentialId:
+          type: string
+          description: Base64url credential id the server stored, so a client can name it later.
+        createdAt:
+          type: string
+          format: date-time
 
     PasskeySignInCredential:
       type: object

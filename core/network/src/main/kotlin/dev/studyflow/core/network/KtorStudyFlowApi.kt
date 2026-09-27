@@ -5,6 +5,9 @@ import dev.studyflow.core.network.error.ApiErrorMapper
 import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.model.AuthTokensDto
+import dev.studyflow.core.network.model.PasskeyRegistrationChallengeDto
+import dev.studyflow.core.network.model.PasskeyRegistrationDto
+import dev.studyflow.core.network.model.PasskeyRegistrationRequestDto
 import dev.studyflow.core.network.model.SignInChallengeDto
 import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
@@ -44,6 +47,14 @@ public class KtorStudyFlowApi(
     override suspend fun signIn(credential: SignInCredentialDto): ApiResult<AuthTokensDto> =
         execute(ApiEndpoint.SignIn) {
             setBody(credential)
+        }
+
+    override suspend fun beginPasskeyRegistration(): ApiResult<PasskeyRegistrationChallengeDto> =
+        execute(ApiEndpoint.BeginPasskeyRegistration)
+
+    override suspend fun registerPasskey(request: PasskeyRegistrationRequestDto): ApiResult<PasskeyRegistrationDto> =
+        execute(ApiEndpoint.RegisterPasskey) {
+            setBody(request)
         }
 
     override suspend fun subjects(): ApiResult<List<SubjectDto>> = execute(ApiEndpoint.ListSubjects)

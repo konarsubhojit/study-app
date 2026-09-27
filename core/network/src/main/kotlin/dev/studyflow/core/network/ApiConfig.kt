@@ -20,8 +20,24 @@ public enum class ApiEndpoint(
     BeginSignIn("post", "/$API_VERSION/auth/signin/challenge"),
     SignIn("post", "/$API_VERSION/auth/signin"),
     RefreshTokens("post", "/$API_VERSION/auth/refresh"),
+
+    /**
+     * Asks for WebAuthn creation options to add a passkey to the account already signed in
+     * (issue #158). Authenticated: Google sign-in creates the account, a passkey is attached to it.
+     */
+    BeginPasskeyRegistration("post", "/$API_VERSION/auth/passkey/registration/challenge"),
+
+    /** Hands back the credential the platform created for [BeginPasskeyRegistration]'s options. */
+    RegisterPasskey("post", "/$API_VERSION/auth/passkey/registration"),
     ListSubjects("get", "/$API_VERSION/subjects"),
     ListTasks("get", "/$API_VERSION/tasks"),
+
+    /**
+     * Deprecated, and called by nothing: ADR 0012 replaced opportunistic session upload with the
+     * change queue, so finished sessions replicate through [PushSessionChanges] instead. No server
+     * implements this path — the `api` Edge Function leaves it unrouted on purpose — and the value
+     * is kept only until the operation is withdrawn from the contract.
+     */
     UploadSession("post", "/$API_VERSION/sessions"),
 
     /** Sends a batch of local session changes; see `SyncEngine` in `:core:domain`. */
