@@ -1,3 +1,11 @@
+import {
+    AbortMultipartUploadCommand,
+    DeleteObjectCommand,
+    ListMultipartUploadsCommand,
+    ListObjectsV2Command,
+    S3Client,
+} from "npm:@aws-sdk/client-s3@3.1135.0";
+
 const TRACE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const ROUTE_PREFIX = ["functions", "v1", "api"];
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
@@ -504,10 +512,3 @@ export async function handleRequest(request: Request): Promise<Response> {
 }
 
 if (import.meta.main) Deno.serve(handleRequest);
-import {
-    AbortMultipartUploadCommand,
-    DeleteObjectCommand,
-    ListMultipartUploadsCommand,
-    ListObjectsV2Command,
-    S3Client,
-} from "npm:@aws-sdk/client-s3@3.1135.0";

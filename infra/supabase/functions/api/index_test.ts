@@ -224,6 +224,24 @@ Deno.test("observability logs do not contain credentials or tokens", () => {
     if (line.includes("token") || line.includes("credential-proof")) throw new Error("unsafe value logged");
 });
 
+Deno.test("account deletion telemetry contains only the established fields", () => {
+    const line = observabilityLogLine({
+        requestId: "trace-delete",
+        operation: "deleteAccount",
+        status: 200,
+        durationMs: 6,
+        egressBytes: 0,
+    });
+    const event = JSON.parse(line);
+    const expected = ["duration_ms", "egress_bytes", "error_code", "event", "operation", "request_id", "status"];
+    if (JSON.stringify(Object.keys(event).sort()) !== JSON.stringify(expected)) {
+        throw new Error("unexpected telemetry fields");
+    }
+    if (line.includes("11111111-1111-1111-1111-111111111111") || line.includes("alice@example.com")) {
+        throw new Error("user identity was logged");
+    }
+});
+
 function jsonResponse(status: number, body: unknown): Response {
     return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
