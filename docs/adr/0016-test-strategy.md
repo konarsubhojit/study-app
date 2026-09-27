@@ -1,4 +1,4 @@
-# 7. Tests are a pyramid with shared fakes, and coverage is a signal
+# 16. Tests are a pyramid with shared fakes, and coverage is a signal
 
 - Status: accepted
 - Date: 2026-09-16

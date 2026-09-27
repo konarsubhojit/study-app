@@ -230,7 +230,7 @@ specification does not describe.
 
 Responses ignore unknown fields on purpose, so a server may add a field at any time; do not
 "tighten" the JSON configuration. Map every new failure to a `UserFacingMessage` — an HTTP status
-code must never reach the UI. See [ADR 0007](docs/adr/0007-api-contract-and-network-client.md).
+code must never reach the UI. See [ADR 0014](docs/adr/0014-api-contract-and-network-client.md).
 
 Run against a local mock backend without changing any code:
 

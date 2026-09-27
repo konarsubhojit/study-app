@@ -109,7 +109,7 @@ To point a production-flavour debug build at a backend running on the host inste
 ./gradlew installProductionDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080
 ```
 
-→ [ADR 0007](docs/adr/0007-api-contract-and-network-client.md) ·
+→ [ADR 0014](docs/adr/0014-api-contract-and-network-client.md) ·
 [`KtorStudyFlowApi`](core/network/src/main/kotlin/dev/studyflow/core/network/KtorStudyFlowApi.kt) ·
 [`ApiErrorMapper`](core/network/src/main/kotlin/dev/studyflow/core/network/error/ApiErrorMapper.kt) ·
 [`RetryPolicy`](core/network/src/main/kotlin/dev/studyflow/core/network/retry/RetryPolicy.kt)
@@ -195,7 +195,7 @@ rather than by device type, and motion tokens shaped for predictive back. Theme 
 scale and the phone/tablet pane layouts are held in place by Compose preview screenshot tests that
 run on the JVM as part of `check`.
 
-→ [Design system guide](docs/design-system.md) · [ADR 0007](docs/adr/0007-design-system.md)
+→ [Design system guide](docs/design-system.md) · [ADR 0015](docs/adr/0015-design-system.md)
 
 ## Building
 
@@ -215,7 +215,7 @@ The slow suite is deliberately separate: `./gradlew pixel6Api34DebugAndroidTest`
 tests on a Gradle Managed Device and `./gradlew test -Pstudyflow.quarantine=true` runs the
 quarantined flaky tests. Both run nightly, never on a pull request. The test pyramid, the shared
 fakes in `:core:testing`, the quarantine policy and the coverage policy are described in
-[`CONTRIBUTING.md`](CONTRIBUTING.md) and [ADR 0007](docs/adr/0007-test-strategy.md).
+[`CONTRIBUTING.md`](CONTRIBUTING.md) and [ADR 0016](docs/adr/0016-test-strategy.md).
 
 `./gradlew check` is the single quality entry point: Spotless/ktlint formatting, detekt with the
 project ruleset (`config/detekt/detekt.yml`) and the Compose rules, Android Lint with
@@ -313,13 +313,13 @@ Tracked as a hierarchy of GitHub issues, one master issue and nine epics.
 - [0004 — Reminders use a scheduling decision matrix](docs/adr/0004-reminder-scheduling.md)
 - [0005 — Object storage: presigned URLs, content addressing, untrusted archives](docs/adr/0005-object-storage.md)
 - [0006 — Bootstrap scope: pure-Kotlin core first](docs/adr/0006-bootstrap-scope.md)
-- [0007 — One design system: tokens, dynamic colour, edge-to-edge, adaptive panes](docs/adr/0007-design-system.md)
-- [0007 — API contract and typed network client](docs/adr/0007-api-contract-and-network-client.md)
 - [0007 — Backend platform: Supabase, environments and the row-owns-itself data model](docs/adr/0007-backend-platform.md)
-- [0007 — Tests are a pyramid with shared fakes, and coverage is a signal](docs/adr/0007-test-strategy.md)
 - [0008 — Room is the local source of truth with explicit migrations](docs/adr/0008-local-room-database.md)
 - [0009 — Notifications: documented channels and a deferred permission](docs/adr/0009-notifications.md)
 - [0010 — Storage provider: Supabase Storage behind a provider-agnostic `ObjectStore`](docs/adr/0010-storage-provider.md)
 - [0011 — Alarm-style reminders: full-screen UI, playback service, snooze cap](docs/adr/0011-alarm-style-reminders.md)
 - [0012 — Offline-first sync: transactional queue, resumable delta, last-writer-wins](docs/adr/0012-offline-first-sync.md)
 - [0013 — Data lifecycle: user-owned archive, idempotent merge, server-first deletion](docs/adr/0013-data-lifecycle.md)
+- [0014 — API contract and typed network client](docs/adr/0014-api-contract-and-network-client.md)
+- [0015 — One design system: tokens, dynamic colour, edge-to-edge, adaptive panes](docs/adr/0015-design-system.md)
+- [0016 — Tests are a pyramid with shared fakes, and coverage is a signal](docs/adr/0016-test-strategy.md)
