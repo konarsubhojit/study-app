@@ -21,7 +21,7 @@ infra/
     dev-down.sh              # stop it
     test.sh                   # run the authorisation test suite locally
     deploy-prod.sh           # push migrations to the linked prod project
-    deploy-storage-function.sh # set secrets and deploy the storage Edge Function
+    deploy-storage-function.sh # set secrets and deploy Edge Functions
 ```
 
 ## Prerequisites
@@ -30,6 +30,8 @@ infra/
   Realtime, Studio) runs as containers.
 - [Supabase CLI](https://supabase.com/docs/guides/local-development/cli/getting-started) — install
   with `npm install -g supabase`, or any method on that page.
+- [Deno](https://deno.com/) — runs the local Edge Function unit tests wired into
+  `infra/scripts/test.sh`.
 
 No Supabase account or cloud credential is needed for local development.
 
@@ -40,7 +42,7 @@ Recreate the entire dev environment from scratch at any time:
 ```sh
 cd infra
 ./scripts/dev-up.sh      # supabase start; applies every migration to a fresh Postgres
-./scripts/test.sh        # supabase test db --local; runs the pgTAP authorisation suite
+./scripts/test.sh        # runs Edge Function unit tests, then pgTAP authorisation tests
 ./scripts/dev-down.sh    # supabase stop; tears the stack down again
 ```
 
@@ -70,7 +72,7 @@ Add the following repository Actions secrets for each operation.
 | `SUPABASE_ACCESS_TOKEN` | Authenticates the CLI to the Supabase account | Supabase dashboard → Account → Access Tokens |
 | `SUPABASE_DB_PASSWORD` | The target project's database password | Supabase dashboard → Project → Settings → Database |
 
-#### Storage function deploy
+#### Edge Function deploy
 
 | Setting | Required? | Purpose | Where it comes from |
 | --- | --- | --- | --- |
@@ -85,6 +87,8 @@ Add the following repository Actions secrets for each operation.
 | `STORAGE_S3_REGION` | Optional | Storage region; defaults to `us-east-1` | Storage provider dashboard, when the provider requires a different region |
 | `STORAGE_SCAN_HOOK_URL` | Optional | Malware scanner webhook | Malware scanner provider |
 | `STORAGE_SCAN_HOOK_TOKEN` | Optional | Authenticates malware scanner requests | Malware scanner provider |
+| `GOOGLE_SERVER_CLIENT_ID` | Required for `api` | Google OAuth server client ID accepted as the ID-token audience | Google Cloud Console OAuth client used by the Android Credential Manager flow |
+| `API_MINIMUM_CLIENT_VERSION` | Required for `api` | Value sent in every `X-Minimum-Client-Version` response header | The oldest app version the backend currently supports, for example `1.0.0` |
 
 Except for the two platform-provided `SUPABASE_*` settings, add each setting that applies as a
 repository Actions secret with the same name.
@@ -140,18 +144,45 @@ Every user-owned table has an RLS policy tying every row to its owner
 proves cross-user reads and writes affect zero rows for every table, run against the real
 migrations rather than a hand-written approximation of them.
 
-## Presigned storage service
+## Edge Functions
+
+### API service
+
+`supabase/functions/api` serves the versioned StudyFlow API contract under the single Supabase
+Edge Function described by ADR 0017. The gateway leaves the `/functions/v1/api` prefix in the
+request path, so the function strips that prefix and routes on the remaining full path; it does not
+route by the final path segment. Authentication policy is declared per route inside the function.
+The first three routes are unauthenticated by contract, but future authenticated routes must opt in
+to Supabase JWT verification in that route table rather than relying on the gateway.
+
+Every response includes `X-Minimum-Client-Version`, sourced from the `API_MINIMUM_CLIENT_VERSION`
+function secret. Google sign-in verifies the ID token against the configured
+`GOOGLE_SERVER_CLIENT_ID` audience and then asks Supabase Auth to mint the token pair. Passkey
+sign-in intentionally returns `not_implemented` until full WebAuthn assertion verification can be
+implemented safely. Neither credentials nor tokens are logged; request telemetry uses only
+`request_id`, `operation`, `status`, `duration_ms`, `error_code`, and `egress_bytes`.
+
+Deploy it with the **Deploy Edge Function** workflow by choosing `api`, or locally with:
+
+```sh
+export SUPABASE_ACCESS_TOKEN=...
+export GOOGLE_SERVER_CLIENT_ID=...
+export API_MINIMUM_CLIENT_VERSION=1.0.0
+./infra/scripts/deploy-storage-function.sh <project-ref> api
+```
+
+### Presigned storage service
 
 `supabase/functions/storage` is the only component that receives S3-compatible storage
-credentials. Its primary deployment path is the manually-run **Deploy storage function** GitHub
-Actions workflow: select it in the **Actions** tab, choose **Run workflow**, enter the project ref,
+credentials. Its primary deployment path is the manually-run **Deploy Edge Function** GitHub
+Actions workflow with `storage` selected: select it in the **Actions** tab, choose **Run workflow**, enter the project ref,
 and tap **Run workflow**. Like the database deploy, it works from a mobile browser without a local
 machine, Docker, or Supabase CLI.
 
 The required deployment order is:
 
 1. Run **Deploy backend** to apply the database migrations.
-2. Run **Deploy storage function**.
+2. Run **Deploy Edge Function** with `storage` selected.
 3. Set `STORAGE_REAPER_URL` and `STORAGE_REAPER_TOKEN` as described above.
 4. The hourly `reap-storage-orphans.yml` workflow starts succeeding.
 
@@ -165,7 +196,7 @@ An optional malware scanner can be enabled with `STORAGE_SCAN_HOOK_URL` and
 rejected objects are deleted before their metadata becomes downloadable.
 
 For a local deployment, export the same settings and run
-`./infra/scripts/deploy-storage-function.sh <project-ref>`. The pinned Supabase CLI version in both
+`./infra/scripts/deploy-storage-function.sh <project-ref> storage`. The pinned Supabase CLI version in both
 deploy workflows must remain compatible with the feature set in `supabase/config.toml`. Older CLI
 versions fail before deployment with `has invalid keys` errors for settings including `local_smtp`,
 `storage.s3_protocol`, `storage.analytics`, `storage.vector`, `db.health_timeout`,
