@@ -5,8 +5,10 @@ import dev.studyflow.core.network.auth.AuthTokens
 import dev.studyflow.core.network.auth.InMemoryTokenStore
 import dev.studyflow.core.network.error.ApiError
 import dev.studyflow.core.network.error.UserFacingMessage
+import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.version.ClientVersion
+import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpStatusCode
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -19,6 +21,31 @@ import java.util.concurrent.atomic.AtomicInteger
 
 @DisplayName("KtorStudyFlowApi against a mock server")
 class KtorStudyFlowApiTest {
+    @Test
+    fun `a sign-in exchange sends a discriminated proof without bearer authentication`() =
+        runTest {
+            var authorization: String? = null
+            var body = ""
+            val api =
+                MockBackend.api { request ->
+                    authorization = request.headers["Authorization"]
+                    body = request.body.toByteArray().decodeToString()
+                    json("""{"accessToken":"access","refreshToken":"refresh","expiresInSeconds":3600}""")
+                }
+
+            val result = api.signIn(SignInCredentialDto.Passkey("assertion-secret"))
+
+            assertEquals("access", result.valueOrNull()?.accessToken)
+            assertEquals("""{"type":"passkey","assertion":"assertion-secret"}""", body)
+            assertEquals(null, authorization)
+        }
+
+    @Test
+    fun `sign-in proofs are redacted in diagnostic strings`() {
+        assertEquals("Passkey(redacted)", SignInCredentialDto.Passkey("assertion-secret").toString())
+        assertEquals("Google(redacted)", SignInCredentialDto.Google("token-secret").toString())
+    }
+
     @Test
     fun `a documented response decodes into typed models`() =
         runTest {
@@ -126,6 +153,21 @@ class KtorStudyFlowApiTest {
                 MockBackend.api {
                     attempts.incrementAndGet()
                     json("""{"code":"upstream_unavailable","message":"boom"}""", HttpStatusCode.ServiceUnavailable)
+                }
+
+    @Test
+    fun `a sign-in exchange is never replayed`() =
+                runTest {
+                    val attempts = AtomicInteger()
+                    val api =
+                        MockBackend.api {
+                            attempts.incrementAndGet()
+                            json("""{"code":"upstream_unavailable","message":"boom"}""", HttpStatusCode.ServiceUnavailable)
+                        }
+
+                    api.signIn(SignInCredentialDto.Google("token-secret"))
+
+                    assertEquals(1, attempts.get())
                 }
 
             api.uploadSession(

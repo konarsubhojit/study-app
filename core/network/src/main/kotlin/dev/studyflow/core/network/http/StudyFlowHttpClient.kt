@@ -78,10 +78,12 @@ public fun studyFlowHttpClient(
                     }
                 }
 
-                // The refresh call must stay anonymous, or a stale access token would be attached to
-                // the very request meant to replace it.
+                // Authentication exchanges must stay anonymous, or a stale access token would be
+                // attached to the request meant to establish or replace a session.
                 sendWithoutRequest { request ->
-                    !request.url.hasPathOf(ApiEndpoint.RefreshTokens)
+                    ApiEndpoint.entries.none { endpoint ->
+                        endpoint in ANONYMOUS_ENDPOINTS && request.url.hasPathOf(endpoint)
+                    }
                 }
             }
         }
@@ -127,6 +129,9 @@ private val IDEMPOTENT_METHODS: Set<HttpMethod> =
     ApiEndpoint.entries
         .filter(ApiEndpoint::isIdempotent)
         .mapTo(mutableSetOf()) { HttpMethod.parse(it.method.uppercase()) }
+
+private val ANONYMOUS_ENDPOINTS: Set<ApiEndpoint> =
+    setOf(ApiEndpoint.BeginSignIn, ApiEndpoint.SignIn, ApiEndpoint.RefreshTokens)
 
 /** Path comparison that ignores the base URL, so the same rules hold for any environment. */
 private fun URLBuilder.hasPathOf(endpoint: ApiEndpoint): Boolean =

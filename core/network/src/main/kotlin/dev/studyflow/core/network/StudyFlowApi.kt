@@ -1,6 +1,9 @@
 package dev.studyflow.core.network
 
 import dev.studyflow.core.network.model.AccountDeletionReceiptDto
+import dev.studyflow.core.network.model.AuthTokensDto
+import dev.studyflow.core.network.model.SignInChallengeDto
+import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.SyncDeltaDto
@@ -16,6 +19,12 @@ import dev.studyflow.core.network.model.TaskDto
  * sees an [io.ktor.client.HttpClient].
  */
 public interface StudyFlowApi {
+    /** `POST /v1/auth/signin/challenge` — creates the short-lived WebAuthn challenge. */
+    public suspend fun beginSignIn(): ApiResult<SignInChallengeDto>
+
+    /** `POST /v1/auth/signin` — exchanges a server-verifiable credential for a token pair. */
+    public suspend fun signIn(credential: SignInCredentialDto): ApiResult<AuthTokensDto>
+
     /** `GET /v1/subjects` — every subject the signed-in user owns. */
     public suspend fun subjects(): ApiResult<List<SubjectDto>>
 

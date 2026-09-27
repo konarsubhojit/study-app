@@ -4,6 +4,9 @@ import dev.studyflow.core.network.error.ApiError
 import dev.studyflow.core.network.error.ApiErrorMapper
 import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.ApiErrorDto
+import dev.studyflow.core.network.model.AuthTokensDto
+import dev.studyflow.core.network.model.SignInChallengeDto
+import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.SyncDeltaDto
@@ -36,6 +39,13 @@ public class KtorStudyFlowApi(
     private val client: HttpClient,
     private val config: ApiConfig,
 ) : StudyFlowApi {
+    override suspend fun beginSignIn(): ApiResult<SignInChallengeDto> = execute(ApiEndpoint.BeginSignIn)
+
+    override suspend fun signIn(credential: SignInCredentialDto): ApiResult<AuthTokensDto> =
+        execute(ApiEndpoint.SignIn) {
+            setBody(credential)
+        }
+
     override suspend fun subjects(): ApiResult<List<SubjectDto>> = execute(ApiEndpoint.ListSubjects)
 
     override suspend fun tasks(subjectId: String?): ApiResult<List<TaskDto>> =

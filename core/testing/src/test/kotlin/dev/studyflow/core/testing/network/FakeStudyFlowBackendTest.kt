@@ -1,6 +1,7 @@
 package dev.studyflow.core.testing.network
 
 import dev.studyflow.core.network.error.ApiError
+import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.TaskDto
@@ -14,6 +15,26 @@ import org.junit.jupiter.api.Test
 
 @DisplayName("FakeStudyFlowBackend")
 class FakeStudyFlowBackendTest {
+    @Test
+    fun `sign-in endpoints exercise the real client and retain the received credential`() =
+        runTest {
+            val backend = FakeStudyFlowBackend()
+
+            val challenge = backend.api().beginSignIn().valueOrNull()
+            val tokens = backend.api().signIn(SignInCredentialDto.Passkey("assertion-secret")).valueOrNull()
+
+            assertEquals("""{"challenge":"test-challenge"}""", challenge?.requestJson)
+            assertEquals("test-access", tokens?.accessToken)
+            assertEquals(
+                listOf(SignInCredentialDto.Passkey("assertion-secret")),
+                backend.receivedSignInCredentials,
+            )
+            assertEquals(
+                listOf("/v1/auth/signin/challenge", "/v1/auth/signin"),
+                backend.requestedPaths,
+            )
+        }
+
     @Test
     fun `a feature test reads seeded data through the real client`() =
         runTest {
