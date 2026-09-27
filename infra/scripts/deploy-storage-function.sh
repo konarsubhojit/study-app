@@ -37,11 +37,22 @@ require_storage_secrets() {
 require_api_secrets() {
     : "${GOOGLE_SERVER_CLIENT_ID:?GOOGLE_SERVER_CLIENT_ID must be set (from a managed secret store)}"
     : "${API_MINIMUM_CLIENT_VERSION:?API_MINIMUM_CLIENT_VERSION must be set (from a managed secret store)}"
+    : "${API_BACKUP_RETENTION_DAYS:?API_BACKUP_RETENTION_DAYS must match provider backup expiry policy}"
+    : "${STORAGE_S3_ENDPOINT:?STORAGE_S3_ENDPOINT must be set (from a managed secret store)}"
+    : "${STORAGE_S3_BUCKET:?STORAGE_S3_BUCKET must be set (from a managed secret store)}"
+    : "${STORAGE_S3_ACCESS_KEY_ID:?STORAGE_S3_ACCESS_KEY_ID must be set (from a managed secret store)}"
+    : "${STORAGE_S3_SECRET_ACCESS_KEY:?STORAGE_S3_SECRET_ACCESS_KEY must be set (from a managed secret store)}"
 
     api_secrets=(
         "GOOGLE_SERVER_CLIENT_ID=$GOOGLE_SERVER_CLIENT_ID"
         "API_MINIMUM_CLIENT_VERSION=$API_MINIMUM_CLIENT_VERSION"
+        "API_BACKUP_RETENTION_DAYS=$API_BACKUP_RETENTION_DAYS"
+        "STORAGE_S3_ENDPOINT=$STORAGE_S3_ENDPOINT"
+        "STORAGE_S3_BUCKET=$STORAGE_S3_BUCKET"
+        "STORAGE_S3_ACCESS_KEY_ID=$STORAGE_S3_ACCESS_KEY_ID"
+        "STORAGE_S3_SECRET_ACCESS_KEY=$STORAGE_S3_SECRET_ACCESS_KEY"
     )
+    [[ -z "${STORAGE_S3_REGION:-}" ]] || api_secrets+=("STORAGE_S3_REGION=$STORAGE_S3_REGION")
 }
 
 case "$function_name" in

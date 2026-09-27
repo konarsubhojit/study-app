@@ -350,11 +350,11 @@ paths:
       description: |
         The server half of the data-lifecycle flow (issue #78). Deletes the account, every row
         owned by it and every object stored for it, then answers with the retention window after
-        which the last copy — backups included — is gone.
+        which the last copy — backups included — is gone. Live account and object deletion
+        completes before the response; the retention window reflects provider backup expiry.
 
-        Idempotent: a repeated request for an account that is already scheduled for deletion
-        answers with the same receipt rather than an error, because the client retries whenever it
-        could not confirm that the first request arrived.
+        Idempotent: a repeat with the same now-revoked bearer token answers 404 once Auth confirms
+        the account is gone; the client treats that response as success.
 
         The client clears its local data only after this call succeeds, so a failure here must
         leave the account usable.
@@ -370,6 +370,11 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/AccountDeletionReceipt'
+        '404':
+          description: The account was already deleted; treated as success by the client
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
         default:
           $ref: '#/components/responses/Error'
 
