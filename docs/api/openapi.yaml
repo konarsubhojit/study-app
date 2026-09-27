@@ -732,8 +732,12 @@ components:
 
     SyncSessionEvent:
       type: object
-      required: [id, sessionId, type, sequence, wallClock, uptimeMillis, bootId]
-      description: One append-only log entry. Merged by union on id; never overwritten.
+      required: [id, sessionId, type, sequence, wallClock]
+      description: >-
+        One append-only log entry. Merged by union on id; never overwritten. The device-local
+        anchors uptimeMillis and bootId are writeOnly: per ADR 0017 the server accepts them on
+        upload, stores neither, and never returns them, because another device's monotonic clock
+        and boot identifier cannot be interpreted. Clients must not require them when decoding.
       properties:
         id:
           type: string
@@ -751,8 +755,10 @@ components:
         uptimeMillis:
           type: integer
           format: int64
+          writeOnly: true
         bootId:
           type: string
+          writeOnly: true
 
     SyncPushRequest:
       type: object

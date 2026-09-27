@@ -160,7 +160,7 @@ public class FakeStudyFlowBackend(
                         )
                     respondJson(StudyFlowJson.encodeToString(response))
                 } else {
-                    respondJson(StudyFlowJson.encodeToString(syncDelta))
+                    respondJson(StudyFlowJson.encodeToString(syncDelta.withoutDeviceAnchors()))
                 }
             }
 
@@ -199,3 +199,20 @@ public class FakeStudyFlowBackend(
         const val BASE_URL = "https://mock.studyflow.test"
     }
 }
+
+/**
+ * Strips the device-local anchors the real server discards (ADR 0017).
+ *
+ * A fake that echoes `uptimeMillis` and `bootId` back is more permissive than production, so every
+ * test passes while the deployed server's response would fail to decode. Applying the server's own
+ * rule here is what makes these tests evidence about the real wire.
+ */
+private fun SyncDeltaDto.withoutDeviceAnchors(): SyncDeltaDto =
+    copy(
+        changes =
+            changes.map { change ->
+                change.copy(
+                    events = change.events.map { it.copy(uptimeMillis = null, bootId = null) },
+                )
+            },
+    )

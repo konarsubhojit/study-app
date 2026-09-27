@@ -96,21 +96,38 @@ public class ApiSyncTransport(
                     deleted = deleted,
                     manualOverride = manualOverride,
                 )
-            SyncSessionRecord(session = session, events = events.map { it.asEvent(session.id) })
+            SyncSessionRecord(
+                session = session,
+                events = events.map { it.asEvent(sessionId = session.id, deviceId = session.deviceId) },
+            )
         }.onFailure { error ->
             logger.warning(TAG, "Dropping unreadable inbound session $id: ${error.message}")
         }.getOrNull()
 
-    private fun SyncSessionEventDto.asEvent(sessionId: String): SessionEvent =
+    /**
+     * Rebuilds a local event from a replicated one.
+     *
+     * The server discards [SyncSessionEventDto.uptimeMillis] and [SyncSessionEventDto.bootId], so
+     * an inbound event usually arrives without them and an anchor has to be synthesised. It is
+     * deliberately made unique per event: a shared placeholder boot id would let
+     * [TimeAnchor.uptimeDurationTo] report a confident zero between two events from another
+     * handset, silently presenting an invented monotonic measurement as a real one. Being
+     * incomparable is the honest answer, and it is what makes the replicated log fall back to the
+     * wall clock it does carry.
+     */
+    private fun SyncSessionEventDto.asEvent(
+        sessionId: String,
+        deviceId: String,
+    ): SessionEvent =
         SessionEvent(
             id = id,
             sessionId = sessionId,
             type = SessionEventType.valueOf(type),
             anchor =
                 TimeAnchor(
-                    uptime = uptimeMillis.milliseconds,
+                    uptime = (uptimeMillis ?: 0L).milliseconds,
                     wallClock = Instant.parse(wallClockIso),
-                    bootId = BootId(bootId),
+                    bootId = BootId(bootId ?: "$REPLICATED_BOOT_PREFIX$deviceId:$id"),
                 ),
             sequence = sequence,
         )
@@ -171,5 +188,8 @@ public class ApiSyncTransport(
 
     private companion object {
         const val TAG = "ApiSyncTransport"
+
+        /** Marks a boot id this device invented for a replicated event rather than observed. */
+        const val REPLICATED_BOOT_PREFIX = "replicated:"
     }
 }

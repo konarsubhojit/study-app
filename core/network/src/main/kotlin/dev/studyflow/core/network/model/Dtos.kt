@@ -136,7 +136,16 @@ public data class SyncSessionDto(
     val events: List<SyncSessionEventDto> = emptyList(),
 )
 
-/** One entry of a session's append-only log. */
+/**
+ * One entry of a session's append-only log.
+ *
+ * [uptimeMillis] and [bootId] are write-only: ADR 0017 has the server accept them on upload and
+ * then discard them, because a monotonic-clock reading and a boot identifier from another handset
+ * are uninterpretable facts, not replicated data. They are therefore absent from every response,
+ * and must stay optional here — a required field would make a delta carrying events fail to
+ * decode, surfacing as the non-retryable [dev.studyflow.core.network.ApiError.Malformed] and
+ * stalling sync permanently rather than visibly.
+ */
 @Serializable
 public data class SyncSessionEventDto(
     val id: String,
@@ -144,8 +153,8 @@ public data class SyncSessionEventDto(
     val type: String,
     val sequence: Long,
     @SerialName("wallClock") val wallClockIso: String,
-    val uptimeMillis: Long,
-    val bootId: String,
+    val uptimeMillis: Long? = null,
+    val bootId: String? = null,
 )
 
 /** Request body of `POST /v1/sync/sessions`. */
