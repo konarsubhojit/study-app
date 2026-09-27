@@ -1,0 +1,19 @@
+<!--
+    Themed (Android 13+) variant of `ic_launcher_foreground` (issue #169). Monochrome layers are
+    tinted by the system to a single colour taken from the user's wallpaper, so only the shape's
+    alpha matters — the fill colour used here is arbitrary. The path data is identical to the
+    foreground mark so the themed icon reads the same bookmark-and-clock silhouette.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FF000000"
+        android:fillType="evenOdd"
+        android:pathData="M36,23L72,23L72,80L54,66L36,80Z M61,40A7,7 0 1,0 47,40A7,7 0 1,0 61,40Z" />
+    <path
+        android:fillColor="#FF000000"
+        android:pathData="M53.2,40L53.2,32L54.8,32L54.8,40Z M54,39.2L60,39.2L60,40.8L54,40.8Z" />
+</vector>
