@@ -86,7 +86,12 @@ jobs:
           echo "STUDYFLOW_RELEASE_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
 
       - name: Build release artifacts
+        env:
+          # A public identifier that ships in the APK by design. It is read from the same secret the
+          # api function validates ID-token audiences against, so the two cannot drift apart.
+          STUDYFLOW_GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
         run: |
+          : "${STUDYFLOW_GOOGLE_SERVER_CLIENT_ID:?GOOGLE_SERVER_CLIENT_ID is required; a release without it cannot sign in}"
           ./gradlew \
             :app:assembleProductionRelease \
             :app:bundleProductionRelease \

@@ -228,6 +228,10 @@ jobs:
 
       - name: Build production release APK
         if: steps.signing.outputs.available == 'true'
+        env:
+          # A public identifier that ships in the APK by design. It is read from the same secret the
+          # api function validates ID-token audiences against, so the two cannot drift apart.
+          STUDYFLOW_GOOGLE_SERVER_CLIENT_ID: ${{ secrets.GOOGLE_SERVER_CLIENT_ID }}
         run: ./gradlew :app:assembleProductionRelease --build-cache --configuration-cache --stacktrace
 
       - name: Verify APK signature

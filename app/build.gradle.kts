@@ -15,17 +15,20 @@ plugins {
 // `https://<project-ref>.supabase.co/functions/v1/api`. The gateway prefix stays in the path and
 // the function strips it internally, so the base URL ends at the function name and `ApiEndpoint`
 // paths are appended unchanged. The project ref is deployment configuration rather than a secret —
-// it appears in every request URL — so it is supplied the same way the release signing values and
-// version overrides are, never committed as a Kotlin constant:
+// it appears in every request URL — so the production project is the default, and another project
+// (a staging copy, say) is a build flag rather than an edit:
 //   ./gradlew assembleProductionRelease -Pstudyflow.supabaseProjectRef=<project-ref>
-val defaultApiBaseUrl = "https://api.studyflow.dev"
-val supabaseProjectRef: String? =
+// The default used to be `https://api.studyflow.dev`, a custom domain ADR 0017 declines to adopt:
+// an unconfigured build then pointed nowhere and failed every request as Offline.
+val productionSupabaseProjectRef = "vmipmkqslodwwbdrqlxm"
+val supabaseProjectRef: String =
     providers
         .gradleProperty("studyflow.supabaseProjectRef")
         .orElse(providers.environmentVariable("STUDYFLOW_SUPABASE_PROJECT_REF"))
         .orNull
         ?.takeIf(String::isNotBlank)
-        ?.also {
+        .let { it ?: productionSupabaseProjectRef }
+        .also {
             require(Regex("""[a-z0-9]{8,}""").matches(it)) {
                 "studyflow.supabaseProjectRef '$it' is not a Supabase project ref"
             }
@@ -33,9 +36,7 @@ val supabaseProjectRef: String? =
 val apiBaseUrl: String =
     providers
         .gradleProperty("studyflow.apiBaseUrl")
-        .getOrElse(
-            supabaseProjectRef?.let { "https://$it.supabase.co/functions/v1/api" } ?: defaultApiBaseUrl,
-        )
+        .getOrElse("https://$supabaseProjectRef.supabase.co/functions/v1/api")
 
 // The Google *Web application* OAuth client id, which is a public identifier and ships in the APK
 // by design: Credential Manager needs it to ask for an ID token, and the server needs the same

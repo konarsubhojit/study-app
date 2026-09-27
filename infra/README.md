@@ -177,9 +177,21 @@ minted happily by Google, audience validation rejects it here, and the user sees
 simply fails. If Google sign-in returns `401 invalid_credentials` for everyone while passkey
 sign-in works, compare these two values first.
 
-The app's base URL must point at this function — `https://<project-ref>.supabase.co/functions/v1/api`,
-built with `-Pstudyflow.supabaseProjectRef=<project-ref>`. The gateway prefix stays in the path and
-the function strips it, so no client endpoint path changes.
+The CI testing APK (`ci.yml`) and the tagged release (`release.yml`) read the app's value from the
+same `GOOGLE_SERVER_CLIENT_ID` repository secret the function is deployed with, so those builds
+cannot drift from the server. A tagged release fails fast if the secret is missing. A local build
+must pass the value itself. Without it the production flavour still builds, but `AuthModule` fails
+to provide `GoogleSignInConfig`, with a message naming the missing property.
+
+The app's base URL must point at this function — `https://<project-ref>.supabase.co/functions/v1/api`.
+`app/build.gradle.kts` defaults to the production project, so an unconfigured production-flavour
+build (debug included) resolves to
+`https://vmipmkqslodwwbdrqlxm.supabase.co/functions/v1/api`. To target another project, pass
+`-Pstudyflow.supabaseProjectRef=<project-ref>` (or set `STUDYFLOW_SUPABASE_PROJECT_REF`). To target a
+local mock server, pass `-Pstudyflow.apiBaseUrl=http://10.0.2.2:8080`. The project ref is not a
+secret: it appears in every request URL. The gateway prefix stays in the path and the function strips
+it, so no client endpoint path changes. The `mock` flavour gets no base URL at all and is served
+entirely by an in-process fake.
 
 Neither credentials nor tokens are logged; request telemetry uses only `request_id`, `operation`,
 `status`, `duration_ms`, `error_code`, and `egress_bytes`.
@@ -205,10 +217,12 @@ verifies.
 
 Misconfiguration presents in two distinct ways:
 
-* A value that is not an `android:apk-key-hash:` origin, or an empty list, **fails the function at
-  boot** with `PASSKEY_ANDROID_ORIGIN must be a comma-separated list of ...`, so every route
-  returns `503`. This is deliberate: a silently wrong origin would instead surface as universal
-  sign-in failure long after anyone suspected the secret.
+* A missing secret, a value that is not an `android:apk-key-hash:` origin, or an empty list, **fails
+  the function at boot** (`Missing required server setting: ...` or
+  `PASSKEY_ANDROID_ORIGIN must be a comma-separated list of ...`), so every route — Google sign-in
+  and plain reads included — returns `500` with body `{"code":"WORKER_ERROR"}`. This is deliberate:
+  a silently wrong origin would instead surface as universal sign-in failure long after anyone
+  suspected the secret. `deploy-storage-function.sh` refuses to deploy `api` without both secrets.
 * A syntactically valid but wrong `PASSKEY_RP_ID` or origin — the fingerprint of the other signing
   key, say — passes boot and then rejects **every** passkey assertion with
   `401 invalid_credentials`, while Google sign-in keeps working. A sudden all-passkey `401` rate
