@@ -108,10 +108,10 @@ private suspend fun InputStream.copyToChecked(target: OutputStream) {
 }
 
 internal fun String.toLocalFileOrNull(): File? {
-    val uri = runCatching(::URI).getOrNull() ?: return null
+    val uri = runCatching(::URI).getOrNull() ?: return File(this)
     return when (uri.scheme) {
         null -> File(this)
-        "file" -> File(uri)
+        "file" -> runCatching { File(uri) }.getOrNull()
         else -> null
     }
 }

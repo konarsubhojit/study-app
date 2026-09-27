@@ -75,7 +75,16 @@ class MaterialExportTest {
 
         val model = MaterialPreviewSource.Local(importedUri).previewModel()
 
-        assertEquals(importedUri, (model as Uri).toString())
+        assertEquals(Uri.fromFile(image), model)
+    }
+
+    @Test
+    fun `local image preview converts a legacy path to a file URI for Coil`() {
+        val image = tempDir.newFile("photo with spaces.png")
+
+        val model = MaterialPreviewSource.Local(image.absolutePath).previewModel()
+
+        assertEquals(Uri.fromFile(image), model)
     }
 
     @Test
