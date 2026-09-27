@@ -11,6 +11,9 @@ import dev.studyflow.core.network.auth.TokenStore
 import dev.studyflow.core.network.http.studyFlowHttpClient
 import dev.studyflow.core.network.model.AccountDeletionReceiptDto
 import dev.studyflow.core.network.model.ApiErrorDto
+import dev.studyflow.core.network.model.AuthTokensDto
+import dev.studyflow.core.network.model.SignInChallengeDto
+import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudyFlowJson
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
@@ -70,6 +73,20 @@ public class FakeStudyFlowBackend(
     /** What the next `GET /v1/sync/sessions` answers with. */
     public var syncDelta: SyncDeltaDto = SyncDeltaDto()
 
+    /** What `POST /v1/auth/signin/challenge` answers with. */
+    public var signInChallenge: SignInChallengeDto =
+        SignInChallengeDto(
+            requestJson = """{"challenge":"test-challenge"}""",
+            expiresAtIso = "2026-03-01T09:05:00Z",
+        )
+
+    /** Credentials received on `POST /v1/auth/signin`, in order. */
+    public val receivedSignInCredentials: MutableList<SignInCredentialDto> = mutableListOf()
+
+    /** What `POST /v1/auth/signin` answers with. */
+    public var signInTokens: AuthTokensDto =
+        AuthTokensDto(accessToken = "test-access", refreshToken = "test-refresh", expiresInSeconds = 3_600)
+
     /** How many account deletions the backend accepted; the endpoint is idempotent by contract. */
     public var acceptedAccountDeletions: Int = 0
         private set
@@ -109,6 +126,16 @@ public class FakeStudyFlowBackend(
         }
 
         return when (path) {
+            ApiEndpoint.BeginSignIn.path -> {
+                respondJson(StudyFlowJson.encodeToString(signInChallenge))
+            }
+
+            ApiEndpoint.SignIn.path -> {
+                val body = request.body.toByteArray().decodeToString()
+                receivedSignInCredentials += StudyFlowJson.decodeFromString<SignInCredentialDto>(body)
+                respondJson(StudyFlowJson.encodeToString(signInTokens))
+            }
+
             ApiEndpoint.ListSubjects.path -> {
                 respondJson(StudyFlowJson.encodeToString(subjects))
             }

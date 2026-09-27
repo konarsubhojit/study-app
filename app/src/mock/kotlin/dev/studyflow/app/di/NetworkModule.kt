@@ -9,6 +9,9 @@ import dev.studyflow.core.network.StudyFlowApi
 import dev.studyflow.core.network.auth.InMemoryTokenStore
 import dev.studyflow.core.network.auth.TokenStore
 import dev.studyflow.core.network.model.AccountDeletionReceiptDto
+import dev.studyflow.core.network.model.AuthTokensDto
+import dev.studyflow.core.network.model.SignInChallengeDto
+import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
 import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.SyncDeltaDto
@@ -41,6 +44,17 @@ internal class FakeStudyFlowBackend(
             TaskDto(id = "physics", subjectId = "science", title = "Review mechanics"),
         ),
 ) : StudyFlowApi {
+    override suspend fun beginSignIn(): ApiResult<SignInChallengeDto> =
+        ApiResult.Success(
+            SignInChallengeDto(
+                requestJson = """{"challenge":"mock-challenge"}""",
+                expiresAtIso = "2026-03-01T09:05:00Z",
+            ),
+        )
+
+    override suspend fun signIn(credential: SignInCredentialDto): ApiResult<AuthTokensDto> =
+        ApiResult.Success(AuthTokensDto("mock-access", "mock-refresh", expiresInSeconds = 3_600))
+
     override suspend fun subjects(): ApiResult<List<SubjectDto>> = ApiResult.Success(subjects)
 
     override suspend fun tasks(subjectId: String?): ApiResult<List<TaskDto>> =

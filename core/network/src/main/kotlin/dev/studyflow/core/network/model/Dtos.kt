@@ -1,7 +1,9 @@
 package dev.studyflow.core.network.model
 
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonClassDiscriminator
 
 // Wire models, hand-written against `docs/api/openapi.yaml` (issue #63).
 //
@@ -25,6 +27,39 @@ public data class ApiErrorDto(
 public data class RefreshRequestDto(
     val refreshToken: String,
 )
+
+/** Response body of `POST /v1/auth/signin/challenge`. */
+@Serializable
+public data class SignInChallengeDto(
+    val requestJson: String,
+    @SerialName("expiresAt") val expiresAtIso: String,
+)
+
+/**
+ * A server-verifiable sign-in proof for `POST /v1/auth/signin`.
+ *
+ * The proof must not be exposed by diagnostics or crash reports.
+ */
+@Serializable
+@OptIn(ExperimentalSerializationApi::class)
+@JsonClassDiscriminator("type")
+public sealed interface SignInCredentialDto {
+    @Serializable
+    @SerialName("passkey")
+    public data class Passkey(
+        val assertion: String,
+    ) : SignInCredentialDto {
+        override fun toString(): String = "Passkey(redacted)"
+    }
+
+    @Serializable
+    @SerialName("google")
+    public data class Google(
+        val idToken: String,
+    ) : SignInCredentialDto {
+        override fun toString(): String = "Google(redacted)"
+    }
+}
 
 /** Response body of `POST /v1/auth/refresh`. */
 @Serializable

@@ -17,6 +17,8 @@ public enum class ApiEndpoint(
     public val method: String,
     public val path: String,
 ) {
+    BeginSignIn("post", "/$API_VERSION/auth/signin/challenge"),
+    SignIn("post", "/$API_VERSION/auth/signin"),
     RefreshTokens("post", "/$API_VERSION/auth/refresh"),
     ListSubjects("get", "/$API_VERSION/subjects"),
     ListTasks("get", "/$API_VERSION/tasks"),

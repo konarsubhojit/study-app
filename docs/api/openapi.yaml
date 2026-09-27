@@ -31,6 +31,54 @@ security:
   - bearerAuth: []
 
 paths:
+  /v1/auth/signin/challenge:
+    post:
+      operationId: beginSignIn
+      summary: Issue a WebAuthn challenge for sign-in
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      responses:
+        '200':
+          description: A WebAuthn request and the time it expires
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignInChallenge'
+        default:
+          $ref: '#/components/responses/Error'
+
+  /v1/auth/signin:
+    post:
+      operationId: signIn
+      summary: Exchange a passkey assertion or Google ID token for a token pair
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignInCredential'
+      responses:
+        '200':
+          description: A new token pair
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokens'
+        '401':
+          $ref: '#/components/responses/Error'
+        default:
+          $ref: '#/components/responses/Error'
+
   /v1/auth/refresh:
     post:
       operationId: refreshTokens
@@ -404,6 +452,49 @@ components:
       properties:
         refreshToken:
           type: string
+
+    SignInChallenge:
+      type: object
+      required: [requestJson, expiresAt]
+      properties:
+        requestJson:
+          type: string
+          description: Complete WebAuthn request JSON for `GetPublicKeyCredentialOption`.
+        expiresAt:
+          type: string
+          format: date-time
+
+    SignInCredential:
+      oneOf:
+        - $ref: '#/components/schemas/PasskeySignInCredential'
+        - $ref: '#/components/schemas/GoogleSignInCredential'
+      discriminator:
+        propertyName: type
+        mapping:
+          passkey: '#/components/schemas/PasskeySignInCredential'
+          google: '#/components/schemas/GoogleSignInCredential'
+
+    PasskeySignInCredential:
+      type: object
+      required: [type, assertion]
+      properties:
+        type:
+          type: string
+          enum: [passkey]
+        assertion:
+          type: string
+          description: WebAuthn assertion JSON. Never log this value.
+
+    GoogleSignInCredential:
+      type: object
+      required: [type, idToken]
+      properties:
+        type:
+          type: string
+          enum: [google]
+        idToken:
+          type: string
+          description: Google ID token. Never log this value.
 
     AuthTokens:
       type: object
