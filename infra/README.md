@@ -184,14 +184,15 @@ must pass the value itself. Without it the production flavour still builds, but 
 to provide `GoogleSignInConfig`, with a message naming the missing property.
 
 The app's base URL must point at this function — `https://<project-ref>.supabase.co/functions/v1/api`.
-`app/build.gradle.kts` defaults to the production project, so an unconfigured production-flavour
-build (debug included) resolves to
-`https://vmipmkqslodwwbdrqlxm.supabase.co/functions/v1/api`. To target another project, pass
-`-Pstudyflow.supabaseProjectRef=<project-ref>` (or set `STUDYFLOW_SUPABASE_PROJECT_REF`). To target a
-local mock server, pass `-Pstudyflow.apiBaseUrl=http://10.0.2.2:8080`. The project ref is not a
-secret: it appears in every request URL. The gateway prefix stays in the path and the function strips
-it, so no client endpoint path changes. The `mock` flavour gets no base URL at all and is served
-entirely by an in-process fake.
+An unconfigured production-flavour build defaults to `https://api.studyflow.dev`, an **undeployed**
+custom domain; it cannot reach the API. This fallback keeps local debug builds possible without
+configuration, but is not a production endpoint. Pass `-Pstudyflow.supabaseProjectRef=<project-ref>`
+(or set `STUDYFLOW_SUPABASE_PROJECT_REF`) to target a deployed project. Both the CI testing APK and
+tagged release read that ref from the `SUPABASE_PROJECT_REF` repository variable and fail if it is
+missing; no project ref is committed. To target a local mock server, pass
+`-Pstudyflow.apiBaseUrl=http://10.0.2.2:8080`. The project ref is not a secret: it appears in every
+request URL. The gateway prefix stays in the path and the function strips it, so no client endpoint
+path changes. The `mock` flavour gets no base URL at all and is served entirely by an in-process fake.
 
 Neither credentials nor tokens are logged; request telemetry uses only `request_id`, `operation`,
 `status`, `duration_ms`, `error_code`, and `egress_bytes`.
