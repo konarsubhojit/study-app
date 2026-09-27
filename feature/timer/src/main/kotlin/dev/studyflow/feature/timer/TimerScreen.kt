@@ -225,8 +225,10 @@ private fun TimerPhaseHaptics(phase: TimerPhase) {
     LaunchedEffect(phase) {
         if (phase != previousPhase) {
             when (phase) {
-                TimerPhase.RUNNING -> hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
-                TimerPhase.IDLE -> hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+                TimerPhase.RUNNING,
+                TimerPhase.IDLE,
+                -> hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+
                 TimerPhase.PAUSED -> Unit
             }
             previousPhase = phase
