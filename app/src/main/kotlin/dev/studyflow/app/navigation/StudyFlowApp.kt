@@ -104,25 +104,33 @@ private fun AppNavDisplay(
                         TimerScreenRoute(taskId = route.taskId, subjectId = route.subjectId)
                     }
                     entry<MaterialsRoute> { route ->
+                        val animatedVisibilityScope = LocalNavAnimatedContentScope.current
+                        val sharedElementScope =
+                            remember(this@SharedTransitionLayout, animatedVisibilityScope) {
+                                StudyFlowSharedElementScope(
+                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                )
+                            }
                         MaterialsEntry(
                             route = route,
                             backStack = backStack,
-                            sharedElementScope =
-                                StudyFlowSharedElementScope(
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = LocalNavAnimatedContentScope.current,
-                                ),
+                            sharedElementScope = sharedElementScope,
                         )
                     }
                     entry<TasksRoute> { route ->
+                        val animatedVisibilityScope = LocalNavAnimatedContentScope.current
+                        val sharedElementScope =
+                            remember(this@SharedTransitionLayout, animatedVisibilityScope) {
+                                StudyFlowSharedElementScope(
+                                    sharedTransitionScope = this@SharedTransitionLayout,
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                )
+                            }
                         TasksEntry(
                             route = route,
                             backStack = backStack,
-                            sharedElementScope =
-                                StudyFlowSharedElementScope(
-                                    sharedTransitionScope = this@SharedTransitionLayout,
-                                    animatedVisibilityScope = LocalNavAnimatedContentScope.current,
-                                ),
+                            sharedElementScope = sharedElementScope,
                         )
                     }
                     entry<SettingsRoute> {

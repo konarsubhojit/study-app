@@ -52,6 +52,12 @@ public object StudyFlowMotion {
     public fun <T> spatial(): FiniteAnimationSpec<T> =
         spring(dampingRatio = SPATIAL_DAMPING_RATIO, stiffness = SPATIAL_STIFFNESS)
 
+    /** Compatibility overload; spatial motion no longer has a fixed duration. */
+    @Deprecated("Spatial motion uses shared spring parameters; omit durationMillis.")
+    public fun <T> spatial(
+        @Suppress("UNUSED_PARAMETER") durationMillis: Int,
+    ): FiniteAnimationSpec<T> = spatial()
+
     /** Spec for anything that only changes colour or alpha. */
     public fun <T> effects(durationMillis: Int = Durations.MEDIUM): FiniteAnimationSpec<T> =
         tween(durationMillis = durationMillis, easing = Easings.Standard)

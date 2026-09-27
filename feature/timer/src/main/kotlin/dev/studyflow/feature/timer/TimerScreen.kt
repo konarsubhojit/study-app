@@ -226,7 +226,10 @@ private fun TimerPhaseHaptics(phase: TimerPhase) {
         if (phase != previousPhase) {
             when (phase) {
                 TimerPhase.RUNNING -> hapticFeedback.performHapticFeedback(HapticFeedbackType.Confirm)
+
+                // A longer pulse distinguishes a completed session from the short start confirmation.
                 TimerPhase.IDLE -> hapticFeedback.performHapticFeedback(HapticFeedbackType.LongPress)
+
                 TimerPhase.PAUSED -> Unit
             }
             previousPhase = phase
