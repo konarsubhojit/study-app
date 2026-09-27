@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(64);
+select plan(67);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -97,6 +97,10 @@ set local request.jwt.claims = '{"sub": "22222222-2222-2222-2222-222222222222", 
 select is((select count(*) from public.subjects)::int, 0, 'bob cannot see alice''s subject');
 select is((select count(*) from public.study_sessions)::int, 0, 'bob cannot see alice''s session');
 select is((select count(*) from public.study_tasks)::int, 0, 'bob cannot see alice''s task');
+select ok(
+  not has_function_privilege('authenticated', 'public.list_study_tasks(uuid,uuid)', 'execute'),
+  'clients cannot invoke the service-role task list projection for another user'
+);
 select is((select count(*) from public.reminders)::int, 0, 'bob cannot see alice''s reminder');
 select is((select count(*) from public.material_folders)::int, 0, 'bob cannot see alice''s folder');
 select is((select count(*) from public.materials)::int, 0, 'bob cannot see alice''s material');
@@ -247,6 +251,23 @@ select ok(
 -- someone else's object prefix, even for a service-role write.
 reset role;
 set local role service_role;
+update public.study_tasks
+  set due_at = timestamp '2026-03-08 09:00:00', time_zone = 'America/New_York'
+  where id = 'a3333333-1111-1111-1111-111111111111';
+select is(
+  (
+    select due_at
+    from public.list_study_tasks('11111111-1111-1111-1111-111111111111')
+    where id = 'a3333333-1111-1111-1111-111111111111'
+  ),
+  '2026-03-08 13:00:00+00'::timestamptz,
+  'task list projection resolves a spring DST wall-clock due time in its stored zone'
+);
+select is(
+  (select count(*) from public.list_study_tasks('22222222-2222-2222-2222-222222222222'))::int,
+  0,
+  'task list projection filters by its explicit owner argument'
+);
 select throws_ok(
   $$ insert into public.materials
        (id, user_id, folder_id, display_name, mime_type, size_bytes, content_hash, storage_key, device_id)
