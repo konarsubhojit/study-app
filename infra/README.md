@@ -79,16 +79,17 @@ Add the following repository Actions secrets for each operation.
 | `SUPABASE_ACCESS_TOKEN` | Required | Authenticates the CLI to the Supabase account | Same repository Actions secret used by the database deploy |
 | `SUPABASE_URL` | Required, platform-provided | Project API URL used by the function | Supabase injects it automatically into hosted Edge Functions; do not add it as an Actions secret |
 | `SUPABASE_SERVICE_ROLE_KEY` | Required, platform-provided | Server-only key used by the function | Supabase injects it automatically into hosted Edge Functions; do not add it as an Actions secret |
-| `STORAGE_S3_ENDPOINT` | Required | S3-compatible API endpoint | Storage provider dashboard |
-| `STORAGE_S3_BUCKET` | Required | Storage bucket name | Storage provider dashboard |
-| `STORAGE_S3_ACCESS_KEY_ID` | Required | Storage API access key | Storage provider dashboard |
-| `STORAGE_S3_SECRET_ACCESS_KEY` | Required | Storage API secret key | Storage provider dashboard |
+| `STORAGE_S3_ENDPOINT` | Required for `storage` and `api` | S3-compatible API endpoint | Storage provider dashboard |
+| `STORAGE_S3_BUCKET` | Required for `storage` and `api` | Storage bucket name | Storage provider dashboard |
+| `STORAGE_S3_ACCESS_KEY_ID` | Required for `storage` and `api` | Storage API access key | Storage provider dashboard |
+| `STORAGE_S3_SECRET_ACCESS_KEY` | Required for `storage` and `api` | Storage API secret key | Storage provider dashboard |
 | `ORPHAN_REAPER_TOKEN` | Required | Authenticates hourly orphan-reaper requests | Generate it yourself, for example with `openssl rand -hex 32` |
 | `STORAGE_S3_REGION` | Optional | Storage region; defaults to `us-east-1` | Storage provider dashboard, when the provider requires a different region |
 | `STORAGE_SCAN_HOOK_URL` | Optional | Malware scanner webhook | Malware scanner provider |
 | `STORAGE_SCAN_HOOK_TOKEN` | Optional | Authenticates malware scanner requests | Malware scanner provider |
 | `GOOGLE_SERVER_CLIENT_ID` | Required for `api` | Google OAuth server client ID accepted as the ID-token audience | Google Cloud Console OAuth client used by the Android Credential Manager flow |
 | `API_MINIMUM_CLIENT_VERSION` | Required for `api` | Value sent in every `X-Minimum-Client-Version` response header | The oldest app version the backend currently supports, for example `1.0.0` |
+| `API_BACKUP_RETENTION_DAYS` | Required for `api` | Maximum number of days before pre-deletion provider backups expire; must match enforced provider backup policies (use `0` only if no historical backups exist) | Database and object-storage backup settings |
 
 Except for the two platform-provided `SUPABASE_*` settings, add each setting that applies as a
 repository Actions secret with the same name.
@@ -162,19 +163,39 @@ sign-in intentionally returns `not_implemented` until full WebAuthn assertion ve
 implemented safely. Neither credentials nor tokens are logged; request telemetry uses only
 `request_id`, `operation`, `status`, `duration_ms`, `error_code`, and `egress_bytes`.
 
+**Account deletion is immediate, not deferred.** `DELETE /v1/account` authenticates the caller,
+lists and removes all S3 objects and multipart uploads under their server-derived user prefix,
+then deletes the Auth user. The profile and all user-owned rows cascade. The live account and
+objects are removed before the `200` receipt; `retentionWindowDays` reports the separately
+configured **maximum provider backup lifetime**, not a grace period or a delayed deletion job.
+Operators must configure database and object-storage backup expiration at or before
+`API_BACKUP_RETENTION_DAYS` and audit those policies before deployment; historical provider
+snapshots cannot be individually erased by this endpoint. Set it to `0` only when there are no
+pre-deletion backups. S3 credentials are supplied to `api` as function secrets as well as `storage`
+because purging must complete before the cascading database delete loses its upload records.
+S3 prefix listing also covers objects whose upload records were already lost. A failed purge
+leaves the Auth user intact for retry. A repeat with the same revoked bearer token returns `404`
+only when a recorded deletion attempt is confirmed absent in Auth; other invalid tokens return
+`401`. The retry receipt table holds only a token digest and account id, never the token itself.
+
 Deploy it with the **Deploy Edge Function** workflow by choosing `api`, or locally with:
 
 ```sh
 export SUPABASE_ACCESS_TOKEN=...
 export GOOGLE_SERVER_CLIENT_ID=...
 export API_MINIMUM_CLIENT_VERSION=1.0.0
+export API_BACKUP_RETENTION_DAYS=30 # replace with the verified provider backup lifetime
+export STORAGE_S3_ENDPOINT=...
+export STORAGE_S3_BUCKET=...
+export STORAGE_S3_ACCESS_KEY_ID=...
+export STORAGE_S3_SECRET_ACCESS_KEY=...
 ./infra/scripts/deploy-storage-function.sh <project-ref> api
 ```
 
 ### Presigned storage service
 
-`supabase/functions/storage` is the only component that receives S3-compatible storage
-credentials. Its primary deployment path is the manually-run **Deploy Edge Function** GitHub
+`supabase/functions/storage` handles ordinary object transfers; `api` also receives S3 credentials
+for account deletion. Its primary deployment path is the manually-run **Deploy Edge Function** GitHub
 Actions workflow with `storage` selected: select it in the **Actions** tab, choose **Run workflow**, enter the project ref,
 and tap **Run workflow**. Like the database deploy, it works from a mobile browser without a local
 machine, Docker, or Supabase CLI.

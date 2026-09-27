@@ -1,3 +1,11 @@
+import {
+    AbortMultipartUploadCommand,
+    DeleteObjectCommand,
+    ListMultipartUploadsCommand,
+    ListObjectsV2Command,
+    S3Client,
+} from "npm:@aws-sdk/client-s3@3.1135.0";
+
 const TRACE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const ROUTE_PREFIX = ["functions", "v1", "api"];
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
@@ -6,11 +14,11 @@ const GOOGLE_JWKS_URL = "https://www.googleapis.com/oauth2/v3/certs";
 type Json = Record<string, unknown>;
 type AuthMode = "none" | "jwt";
 type Route = {
-    method: "POST";
+    method: "POST" | "DELETE";
     path: string;
-    operation: "beginSignIn" | "signIn" | "refreshTokens";
+    operation: "beginSignIn" | "signIn" | "refreshTokens" | "deleteAccount";
     auth: AuthMode;
-    handler: (request: Request) => Promise<Response>;
+    handler: (request: Request, owner?: string) => Promise<Response>;
 };
 type ObservabilityEvent = {
     requestId: string;
@@ -55,6 +63,20 @@ const supabaseUrl = env("SUPABASE_URL");
 const serviceKey = env("SUPABASE_SERVICE_ROLE_KEY");
 const googleServerClientId = env("GOOGLE_SERVER_CLIENT_ID");
 const minimumClientVersion = env("API_MINIMUM_CLIENT_VERSION");
+const backupRetentionDays = Number(env("API_BACKUP_RETENTION_DAYS"));
+if (!Number.isSafeInteger(backupRetentionDays) || backupRetentionDays < 0) {
+    throw new Error("API_BACKUP_RETENTION_DAYS must be a non-negative integer");
+}
+const storageBucket = env("STORAGE_S3_BUCKET");
+const s3 = new S3Client({
+    endpoint: env("STORAGE_S3_ENDPOINT"),
+    region: Deno.env.get("STORAGE_S3_REGION") ?? "us-east-1",
+    forcePathStyle: true,
+    credentials: {
+        accessKeyId: env("STORAGE_S3_ACCESS_KEY_ID"),
+        secretAccessKey: env("STORAGE_S3_SECRET_ACCESS_KEY"),
+    },
+});
 let googleKeys: GoogleJwk[] | undefined;
 
 const json = (status: number, body: Json, headers: HeadersInit = {}): Response =>
@@ -155,10 +177,92 @@ async function userId(request: Request): Promise<string> {
     const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
         headers: { apikey: serviceKey, authorization },
     });
-    if (!response.ok) throw new ApiError(401, "authentication_required", "Your session has expired.");
+    if (!response.ok) {
+        if (response.status === 401 || response.status === 404) {
+            throw new ApiError(401, "authentication_required", "Your session has expired.");
+        }
+        throw new Error(`Auth verification failed (${response.status})`);
+    }
     const user = await response.json();
     if (typeof user.id !== "string") throw new ApiError(401, "authentication_required", "Invalid session.");
     return user.id;
+}
+
+async function tokenHash(request: Request): Promise<string | undefined> {
+    const authorization = request.headers.get("authorization");
+    if (!authorization?.startsWith("Bearer ") || authorization.length <= 7) return undefined;
+    return await sha256Hex(authorization.slice(7));
+}
+
+async function deletedToken(request: Request): Promise<boolean> {
+    const hash = await tokenHash(request);
+    if (!hash) return false;
+    const rows = await databaseJson<{ user_id: string }[]>(
+        `account_deletion_receipts?token_hash=eq.${hash}&select=user_id&limit=1`,
+    );
+    if (rows.length === 0) return false;
+    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(rows[0].user_id)}`, {
+        headers: { apikey: serviceKey, authorization: "Bearer " + serviceKey },
+    });
+    if (response.status === 404) return true;
+    if (!response.ok) throw new Error(`Auth lookup failed (${response.status})`);
+    return false;
+}
+
+async function purgeObjects(owner: string): Promise<void> {
+    const prefix = `${owner}/`;
+    let keyMarker: string | undefined;
+    let uploadIdMarker: string | undefined;
+    do {
+        const page = await s3.send(new ListMultipartUploadsCommand({
+            Bucket: storageBucket,
+            Prefix: prefix,
+            KeyMarker: keyMarker,
+            UploadIdMarker: uploadIdMarker,
+        }));
+        for (const upload of page.Uploads ?? []) {
+            if (upload.Key && upload.UploadId) {
+                await s3.send(new AbortMultipartUploadCommand({
+                    Bucket: storageBucket,
+                    Key: upload.Key,
+                    UploadId: upload.UploadId,
+                }));
+            }
+        }
+        if (!page.IsTruncated) break;
+        if (!page.NextKeyMarker) throw new Error("Incomplete multipart listing");
+        keyMarker = page.NextKeyMarker;
+        uploadIdMarker = page.NextUploadIdMarker;
+    } while (true);
+
+    // Always list from the start: deleting objects invalidates continuation tokens on some providers.
+    do {
+        const page = await s3.send(new ListObjectsV2Command({ Bucket: storageBucket, Prefix: prefix }));
+        for (const object of page.Contents ?? []) {
+            if (object.Key) await s3.send(new DeleteObjectCommand({ Bucket: storageBucket, Key: object.Key }));
+        }
+        if (!page.IsTruncated) break;
+        if (!page.Contents?.length) throw new Error("Incomplete object listing");
+    } while (true);
+}
+
+async function deleteAccount(request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    await purgeObjects(owner);
+    const hash = await tokenHash(request);
+    if (!hash) throw new Error("Authenticated token missing");
+    await databaseJson("account_deletion_receipts?on_conflict=token_hash", {
+        method: "POST",
+        headers: { prefer: "resolution=ignore-duplicates,return=minimal" },
+        body: JSON.stringify({ token_hash: hash, user_id: owner }),
+    });
+    const response = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(owner)}`, {
+        method: "DELETE",
+        headers: { apikey: serviceKey, authorization: "Bearer " + serviceKey },
+    });
+    if (response.status === 404) return json(404, { code: "account_not_found", message: "Account already deleted." });
+    if (!response.ok) throw new Error(`Auth deletion failed (${response.status})`);
+    return json(200, { acceptedAt: new Date().toISOString(), retentionWindowDays: backupRetentionDays });
 }
 
 async function body(request: Request): Promise<Json> {
@@ -293,7 +397,7 @@ async function verifyGoogleIdToken(idToken: string): Promise<GoogleClaims> {
     );
     const data = new TextEncoder().encode(`${parts[0]}.${parts[1]}`);
     const signature = decodeBase64Url(parts[2]);
-    if (!(await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, signature, data))) {
+    if (!(await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, new Uint8Array(signature), data))) {
         throw new ApiError(401, "invalid_credentials", "The supplied credentials could not be verified.");
     }
     const now = Math.floor(Date.now() / 1000);
@@ -331,6 +435,7 @@ const routes: Route[] = [
     { method: "POST", path: "/v1/auth/signin/challenge", operation: "beginSignIn", auth: "none", handler: beginSignIn },
     { method: "POST", path: "/v1/auth/signin", operation: "signIn", auth: "none", handler: signIn },
     { method: "POST", path: "/v1/auth/refresh", operation: "refreshTokens", auth: "none", handler: refreshTokens },
+    { method: "DELETE", path: "/v1/account", operation: "deleteAccount", auth: "jwt", handler: deleteAccount },
 ];
 
 export function resolveRoute(method: string, path: string): Route | undefined {
@@ -346,17 +451,28 @@ async function dispatch(request: Request): Promise<Response> {
     const matchingPath = routes.some((route) => route.path === key.path);
     if (!matchingPath) throw new ApiError(404, "endpoint_not_found", "API endpoint not found.");
     const route = resolveRoute(key.method, key.path);
-    if (!route) throw new ApiError(405, "method_not_allowed", "Use POST.");
+    if (!route) throw new ApiError(405, "method_not_allowed", "Use the endpoint's configured method.");
+    let owner: string | undefined;
     switch (route.auth) {
         case "none":
             break;
         case "jwt":
-            await userId(request);
+            try {
+                owner = await userId(request);
+            } catch (error) {
+                if (
+                    key.path === "/v1/account" && error instanceof ApiError && error.status === 401 &&
+                    await deletedToken(request)
+                ) {
+                    return json(404, { code: "account_not_found", message: "Account already deleted." });
+                }
+                throw error;
+            }
             break;
         default:
             throw new ApiError(500, "auth_policy_missing", "Endpoint authentication policy is not configured.");
     }
-    return await route.handler(request);
+    return await route.handler(request, owner);
 }
 
 export async function handleRequest(request: Request): Promise<Response> {

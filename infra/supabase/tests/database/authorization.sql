@@ -12,7 +12,7 @@ create extension if not exists pgtap with schema extensions;
 -- NOTE: keep this in sync with the number of ok/is/lives_ok/is_empty/throws_ok assertions below —
 -- pgTAP's plan() count is a manual tripwire: too few and the suite silently under-reports, too
 -- many and it fails loudly, which is why any assertion added or removed must update this number.
-select plan(57);
+select plan(64);
 
 -- Two distinct users, never created via auth.users directly in tests: we insert straight into
 -- auth.users because there is no GoTrue running inside `supabase test db`, only Postgres.
@@ -351,6 +351,30 @@ select is(
   'storage lifecycle guardrails are registered'
 );
 reset role;
+
+-- Account deletion is available only through the authenticated API route, never through SQL
+-- grants to a client. Its Auth deletion cascades across the entire user-owned schema.
+set local role authenticated;
+select ok(
+  not has_table_privilege('authenticated', 'auth.users', 'delete'),
+  'bob cannot delete alice''s Auth account directly'
+);
+select ok(
+  not has_table_privilege('authenticated', 'public.account_deletion_receipts', 'insert'),
+  'bob cannot forge an account-deletion retry receipt'
+);
+reset role;
+delete from auth.users where id = '11111111-1111-1111-1111-111111111111';
+select is((select count(*) from public.profiles where id = '11111111-1111-1111-1111-111111111111')::int, 0,
+  'deleting an Auth user cascades to their profile');
+select is((select count(*) from public.subjects where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
+  'deleting an Auth user cascades to subjects');
+select is((select count(*) from public.materials where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
+  'deleting an Auth user cascades to materials');
+select is((select count(*) from public.storage_uploads where user_id = '11111111-1111-1111-1111-111111111111')::int, 0,
+  'deleting an Auth user cascades to upload records');
+select ok(exists(select 1 from auth.users where id = '22222222-2222-2222-2222-222222222222'),
+  'deleting alice leaves bob intact');
 
 select * from finish();
 rollback;
