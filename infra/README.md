@@ -116,9 +116,11 @@ is committed anywhere under `infra/`.
 ### Deploy with GitHub Actions
 
 From the GitHub mobile or desktop web UI, open the **Actions** tab, select **Deploy backend**, choose
-**Run workflow**, enter the project ref, and tap **Run workflow**. Any maintainer with write access
-can trigger this deploy. `supabase db push` is not reversible; if approval rules are wanted later,
-add them to the `production` environment.
+**Run workflow**, and tap **Run workflow**. It uses the `SUPABASE_PROJECT_REF` repository variable;
+the project ref input is an optional override. Backend and Edge Function deploys to the same project
+queue rather than interrupting one another. Any maintainer with write access can trigger this deploy.
+`supabase db push --yes` runs noninteractively and is not reversible; if approval rules are wanted
+later, add them to the `production` environment.
 
 ### Deploy locally
 
@@ -294,8 +296,9 @@ export STORAGE_S3_SECRET_ACCESS_KEY=...
 
 `supabase/functions/storage` handles ordinary object transfers; `api` also receives S3 credentials
 for account deletion. Its primary deployment path is the manually-run **Deploy Edge Function** GitHub
-Actions workflow with `storage` selected: select it in the **Actions** tab, choose **Run workflow**, enter the project ref,
-and tap **Run workflow**. Like the database deploy, it works from a mobile browser without a local
+Actions workflow with `storage` selected: select it in the **Actions** tab, choose **Run workflow**,
+and tap **Run workflow**. It uses the `SUPABASE_PROJECT_REF` repository variable unless the optional
+project ref input overrides it. Like the database deploy, it works from a mobile browser without a local
 machine, Docker, or Supabase CLI.
 
 The required deployment order is:

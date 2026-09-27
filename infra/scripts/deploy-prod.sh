@@ -14,5 +14,6 @@ project_ref="${1:?usage: deploy-prod.sh <project-ref>}"
 : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN must be set (from a managed secret store)}"
 : "${SUPABASE_DB_PASSWORD:?SUPABASE_DB_PASSWORD must be set (from a managed secret store)}"
 
+bash scripts/check-migration-versions.sh
 supabase link --project-ref "$project_ref"
 supabase db push --yes --debug

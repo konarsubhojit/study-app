@@ -63,6 +63,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      - name: Check migration versions
+        run: |
+          bash infra/scripts/check-migration-versions.sh
+          bash infra/scripts/test-migration-versions.sh
+
       - name: Set up JDK
         uses: actions/setup-java@v6
         with:
