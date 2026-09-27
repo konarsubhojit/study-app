@@ -21,6 +21,7 @@ import androidx.navigation3.ui.NavDisplay
 import dev.studyflow.core.designsystem.layout.StudyFlowScaffold
 import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.StudyFlowTheme
+import dev.studyflow.feature.auth.AccountRoute
 import dev.studyflow.feature.materials.MaterialDetailRoute
 import dev.studyflow.feature.settings.NotificationSettingsRoute
 import dev.studyflow.feature.tasks.TaskDetailRoute
@@ -102,7 +103,10 @@ private fun AppNavDisplay(
                         TasksEntry(route = route, backStack = backStack)
                     }
                     entry<SettingsRoute> {
-                        NotificationSettingsRoute(onOpenDataPrivacy = { backStack.add(DataPrivacyRoute) })
+                        NotificationSettingsRoute(
+                            onOpenDataPrivacy = { backStack.add(DataPrivacyRoute) },
+                            account = { AccountRoute() },
+                        )
                     }
                     entry<DataPrivacyRoute> {
                         DataPrivacyScreenRoute()

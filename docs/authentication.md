@@ -12,6 +12,13 @@ in with Google second. The app sends the resulting WebAuthn assertion or Google 
 the StudyFlow API, which verifies it and returns the access/refresh pair. Neither proof nor token
 may be logged.
 
+Sign-in is optional from the Account card in Settings; launching the app never requires an
+account. The client requests a challenge, offers passkey and Google together through Credential
+Manager, then exchanges the selected proof for a persisted session. If no matching passkey or
+account is available, it retries with the Google-only option so a new user can select a Google
+account. Cancellation leaves the app in local-only mode; rejection and network failure are shown
+separately. Sign-out removes the encrypted tokens but keeps local study content.
+
 `POST /v1/auth/signin` verifies a passkey assertion server-side: it claims the challenge in a
 single database statement (so a replay finds nothing left to claim), looks the credential id up in
 `passkey_credentials`, and checks the signature, the relying-party id hash, the app's

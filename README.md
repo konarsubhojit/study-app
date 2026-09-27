@@ -281,7 +281,8 @@ kept for 7 days on pull requests and 14 days otherwise.
 | `:core:storage` — provider-agnostic `ObjectStore` over presigned URLs | done |
 | Feature slices — timer, tasks and reminders, materials, history, notification settings | done |
 | Glance home-screen widgets and the Quick Settings tile | done |
-| `:feature:auth`, `:feature:insights` — cloud sign-in and the dashboard | not yet |
+| `:feature:auth` — opt-in Google/passkey sign-in and local-only account state | done |
+| `:feature:insights` — dashboard | done |
 
 The domain core remains Android-free, so building it first proved the riskiest logic before any UI
 existed to obscure it. Each platform concern reaches the Android edge through a seam — an interface
