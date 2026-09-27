@@ -72,9 +72,11 @@ graph TD
     core_ui --> core_designsystem
     core_ui --> core_domain
     feature_auth --> core_common
+    feature_auth --> core_designsystem
     feature_auth --> core_domain
     feature_auth --> core_model
     feature_auth --> core_network
+    feature_auth --> core_ui
     feature_history --> core_common
     feature_history --> core_designsystem
     feature_history --> core_domain

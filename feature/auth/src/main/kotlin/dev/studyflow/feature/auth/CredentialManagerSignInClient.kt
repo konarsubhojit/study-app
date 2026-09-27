@@ -16,8 +16,8 @@ import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
  */
 public class CredentialManagerSignInClient(
     private val credentialManager: CredentialManager,
-) {
-    public suspend fun getCredential(
+) : SignInCredentialProvider {
+    override suspend fun getCredential(
         activity: Activity,
         passkeyRequestJson: String,
         google: GoogleSignInConfig,
@@ -37,8 +37,22 @@ public class CredentialManagerSignInClient(
             )
         return try {
             credentialManager.getCredential(activity, request).credential.toSignInCredential()
-        } catch (noCredential: NoCredentialException) {
-            throw NoSignInCredentialAvailableException(noCredential)
+        } catch (_: NoCredentialException) {
+            try {
+                val googleRequest =
+                    GetCredentialRequest(
+                        listOf(
+                            GetGoogleIdOption
+                                .Builder()
+                                .setServerClientId(google.serverClientId)
+                                .setFilterByAuthorizedAccounts(false)
+                                .build(),
+                        ),
+                    )
+                credentialManager.getCredential(activity, googleRequest).credential.toSignInCredential()
+            } catch (stillNoCredential: NoCredentialException) {
+                throw NoSignInCredentialAvailableException(stillNoCredential)
+            }
         }
     }
 
@@ -46,6 +60,14 @@ public class CredentialManagerSignInClient(
         public fun create(activity: Activity): CredentialManagerSignInClient =
             CredentialManagerSignInClient(CredentialManager.create(activity))
     }
+}
+
+public fun interface SignInCredentialProvider {
+    public suspend fun getCredential(
+        activity: Activity,
+        passkeyRequestJson: String,
+        google: GoogleSignInConfig,
+    ): SignInCredential
 }
 
 /** Thrown when the system Credential Manager has no passkey or Google account to offer. */
@@ -61,7 +83,7 @@ public sealed interface SignInCredential {
         override fun toString(): String = "Passkey(redacted)"
     }
 
-    public class GoogleIdToken internal constructor(
+    public class GoogleIdToken(
         val idToken: String,
     ) : SignInCredential {
         override fun toString(): String = "GoogleIdToken(redacted)"

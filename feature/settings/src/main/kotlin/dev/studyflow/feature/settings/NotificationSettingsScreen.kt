@@ -66,6 +66,7 @@ import dev.studyflow.core.ui.state.LoadingState
 public fun NotificationSettingsRoute(
     modifier: Modifier = Modifier,
     onOpenDataPrivacy: () -> Unit = {},
+    account: @Composable () -> Unit = {},
     viewModel: NotificationSettingsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -117,6 +118,7 @@ public fun NotificationSettingsRoute(
         modifier = modifier,
         onOpenDataPrivacy = onOpenDataPrivacy,
         syncStatus = { SyncStatusRoute() },
+        account = account,
     )
 }
 
@@ -132,6 +134,7 @@ public fun NotificationSettingsScreen(
     modifier: Modifier = Modifier,
     onOpenDataPrivacy: () -> Unit = {},
     syncStatus: @Composable () -> Unit = {},
+    account: @Composable () -> Unit = {},
 ) {
     state.rationale?.let { key ->
         NotificationRationaleDialog(key = key, onEvent = onEvent)
@@ -149,6 +152,9 @@ public fun NotificationSettingsScreen(
                 .padding(MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
     ) {
+        item {
+            account()
+        }
         item {
             Text(text = "Notifications", style = MaterialTheme.typography.headlineSmall)
         }

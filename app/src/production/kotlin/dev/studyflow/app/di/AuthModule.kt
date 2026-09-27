@@ -1,11 +1,16 @@
 package dev.studyflow.app.di
 
+import android.content.Context
+import androidx.credentials.CredentialManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.app.BuildConfig
+import dev.studyflow.feature.auth.CredentialManagerSignInClient
 import dev.studyflow.feature.auth.GoogleSignInConfig
+import dev.studyflow.feature.auth.SignInCredentialProvider
 import javax.inject.Singleton
 
 /**
@@ -24,6 +29,11 @@ import javax.inject.Singleton
 @Module
 @InstallIn(SingletonComponent::class)
 object AuthModule {
+    @Provides
+    fun credentialProvider(
+        @ApplicationContext context: Context,
+    ): SignInCredentialProvider = CredentialManagerSignInClient(CredentialManager.create(context))
+
     @Provides
     @Singleton
     fun googleSignInConfig(): GoogleSignInConfig {

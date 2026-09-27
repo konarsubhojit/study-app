@@ -13,9 +13,13 @@ on:
           - api
           - all
       project_ref:
-        description: Supabase project reference
-        required: true
+        description: Override SUPABASE_PROJECT_REF repository variable
+        required: false
         type: string
+
+concurrency:
+  group: supabase-deploy-${{ inputs.project_ref || vars.SUPABASE_PROJECT_REF }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -36,7 +40,7 @@ jobs:
 
       - name: Deploy Edge Function
         env:
-          PROJECT_REF: ${{ inputs.project_ref }}
+          PROJECT_REF: ${{ inputs.project_ref || vars.SUPABASE_PROJECT_REF }}
           FUNCTION_NAME: ${{ inputs.function_name }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           STORAGE_S3_ENDPOINT: ${{ secrets.STORAGE_S3_ENDPOINT }}
@@ -53,6 +57,7 @@ jobs:
           PASSKEY_RP_ID: ${{ secrets.PASSKEY_RP_ID }}
           PASSKEY_ANDROID_ORIGIN: ${{ secrets.PASSKEY_ANDROID_ORIGIN }}
         run: |
+          : "${PROJECT_REF:?Set SUPABASE_PROJECT_REF repository variable or supply project_ref}"
           test -n "$SUPABASE_ACCESS_TOKEN"
           case "$FUNCTION_NAME" in
             storage)

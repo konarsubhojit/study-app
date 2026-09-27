@@ -116,9 +116,11 @@ is committed anywhere under `infra/`.
 ### Deploy with GitHub Actions
 
 From the GitHub mobile or desktop web UI, open the **Actions** tab, select **Deploy backend**, choose
-**Run workflow**, enter the project ref, and tap **Run workflow**. Any maintainer with write access
-can trigger this deploy. `supabase db push` is not reversible; if approval rules are wanted later,
-add them to the `production` environment.
+**Run workflow**, and tap **Run workflow**. It uses the `SUPABASE_PROJECT_REF` repository variable;
+the project ref input is an optional override. Backend and Edge Function deploys to the same project
+queue rather than interrupting one another. Any maintainer with write access can trigger this deploy.
+`supabase db push --yes` runs noninteractively and is not reversible; if approval rules are wanted
+later, add them to the `production` environment.
 
 ### Deploy locally
 
@@ -184,14 +186,15 @@ must pass the value itself. Without it the production flavour still builds, but 
 to provide `GoogleSignInConfig`, with a message naming the missing property.
 
 The app's base URL must point at this function — `https://<project-ref>.supabase.co/functions/v1/api`.
-`app/build.gradle.kts` defaults to the production project, so an unconfigured production-flavour
-build (debug included) resolves to
-`https://vmipmkqslodwwbdrqlxm.supabase.co/functions/v1/api`. To target another project, pass
-`-Pstudyflow.supabaseProjectRef=<project-ref>` (or set `STUDYFLOW_SUPABASE_PROJECT_REF`). To target a
-local mock server, pass `-Pstudyflow.apiBaseUrl=http://10.0.2.2:8080`. The project ref is not a
-secret: it appears in every request URL. The gateway prefix stays in the path and the function strips
-it, so no client endpoint path changes. The `mock` flavour gets no base URL at all and is served
-entirely by an in-process fake.
+An unconfigured production-flavour build defaults to `https://api.studyflow.dev`, an **undeployed**
+custom domain; it cannot reach the API. This fallback keeps local debug builds possible without
+configuration, but is not a production endpoint. Pass `-Pstudyflow.supabaseProjectRef=<project-ref>`
+(or set `STUDYFLOW_SUPABASE_PROJECT_REF`) to target a deployed project. Both the CI testing APK and
+tagged release read that ref from the `SUPABASE_PROJECT_REF` repository variable and fail if it is
+missing; no project ref is committed. To target a local mock server, pass
+`-Pstudyflow.apiBaseUrl=http://10.0.2.2:8080`. The project ref is not a secret: it appears in every
+request URL. The gateway prefix stays in the path and the function strips it, so no client endpoint
+path changes. The `mock` flavour gets no base URL at all and is served entirely by an in-process fake.
 
 Neither credentials nor tokens are logged; request telemetry uses only `request_id`, `operation`,
 `status`, `duration_ms`, `error_code`, and `egress_bytes`.
@@ -293,8 +296,9 @@ export STORAGE_S3_SECRET_ACCESS_KEY=...
 
 `supabase/functions/storage` handles ordinary object transfers; `api` also receives S3 credentials
 for account deletion. Its primary deployment path is the manually-run **Deploy Edge Function** GitHub
-Actions workflow with `storage` selected: select it in the **Actions** tab, choose **Run workflow**, enter the project ref,
-and tap **Run workflow**. Like the database deploy, it works from a mobile browser without a local
+Actions workflow with `storage` selected: select it in the **Actions** tab, choose **Run workflow**,
+and tap **Run workflow**. It uses the `SUPABASE_PROJECT_REF` repository variable unless the optional
+project ref input overrides it. Like the database deploy, it works from a mobile browser without a local
 machine, Docker, or Supabase CLI.
 
 The required deployment order is:

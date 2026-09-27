@@ -90,6 +90,9 @@ public class FakeStudyFlowBackend(
     public var signInTokens: AuthTokensDto =
         AuthTokensDto(accessToken = "test-access", refreshToken = "test-refresh", expiresInSeconds = 3_600)
 
+    /** When set, only the credential exchange fails; the challenge remains available. */
+    public var signInFailure: HttpStatusCode? = null
+
     /** What `POST /v1/auth/passkey/registration/challenge` answers with. */
     public var passkeyRegistrationChallenge: PasskeyRegistrationChallengeDto =
         PasskeyRegistrationChallengeDto(
@@ -203,7 +206,9 @@ public class FakeStudyFlowBackend(
             ApiEndpoint.SignIn.path -> {
                 val body = request.body.toByteArray().decodeToString()
                 receivedSignInCredentials += StudyFlowJson.decodeFromString<SignInCredentialDto>(body)
-                respondJson(StudyFlowJson.encodeToString(signInTokens))
+                signInFailure?.let { status ->
+                    respondJson("""{"code":"invalid_credentials","message":"rejected"}""", status)
+                } ?: respondJson(StudyFlowJson.encodeToString(signInTokens))
             }
 
             ApiEndpoint.BeginPasskeyRegistration.path -> {
