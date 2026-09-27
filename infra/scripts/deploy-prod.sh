@@ -15,4 +15,5 @@ project_ref="${1:?usage: deploy-prod.sh <project-ref>}"
 : "${SUPABASE_DB_PASSWORD:?SUPABASE_DB_PASSWORD must be set (from a managed secret store)}"
 
 supabase link --project-ref "$project_ref"
+supabase migration repair --status applied 20260927130000
 supabase db push --include-all
