@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
@@ -23,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.studyflow.core.designsystem.theme.spacing
+import dev.studyflow.core.model.Material
 import dev.studyflow.core.ui.components.StudyFlowTopAppBar
 
 @Composable
@@ -51,16 +53,7 @@ public fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        // Settings is an app-bar action rather than a bottom-bar destination (issue #167): it is
-        // visited rarely, and a five-destination bar is what keeps the labels on one line.
-        StudyFlowTopAppBar(
-            title = "Today",
-            actions = {
-                IconButton(onClick = actions.onOpenSettings) {
-                    Icon(imageVector = Icons.Outlined.Settings, contentDescription = "Settings")
-                }
-            },
-        )
+        HomeTopAppBar(onOpenSettings = actions.onOpenSettings)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(MaterialTheme.spacing.medium),
@@ -99,21 +92,46 @@ public fun HomeScreen(
                     SummaryCard(title = "Next due", detail = task.title, onClick = { actions.onOpenTask(task.id) })
                 }
             }
-            if (state.recentMaterials.isNotEmpty()) {
-                item { Text("Recent materials", style = MaterialTheme.typography.titleLarge) }
-                items(state.recentMaterials, key = { it.id }) { material ->
-                    SummaryCard(
-                        title = material.displayName,
-                        detail =
-                            material.kind.name
-                                .lowercase()
-                                .replaceFirstChar(Char::uppercase),
-                        onClick = { actions.onOpenMaterial(material.id) },
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-            }
+            recentMaterialsSection(state.recentMaterials, actions.onOpenMaterial)
         }
+    }
+}
+
+/**
+ * Settings is an app-bar action rather than a bottom-bar destination (issue #167): it is visited
+ * rarely, and a five-destination bar is what keeps the labels on one line.
+ */
+@Composable
+private fun HomeTopAppBar(onOpenSettings: () -> Unit) {
+    StudyFlowTopAppBar(
+        title = "Today",
+        actions = {
+            IconButton(onClick = onOpenSettings) {
+                Icon(imageVector = Icons.Outlined.Settings, contentDescription = "Settings")
+            }
+        },
+    )
+}
+
+/** Nothing is shown at all until there is a material to show, so the heading never stands alone. */
+private fun LazyListScope.recentMaterialsSection(
+    materials: List<Material>,
+    onOpenMaterial: (String) -> Unit,
+) {
+    if (materials.isEmpty()) {
+        return
+    }
+    item { Text("Recent materials", style = MaterialTheme.typography.titleLarge) }
+    items(materials, key = { it.id }) { material ->
+        SummaryCard(
+            title = material.displayName,
+            detail =
+                material.kind.name
+                    .lowercase()
+                    .replaceFirstChar(Char::uppercase),
+            onClick = { onOpenMaterial(material.id) },
+            modifier = Modifier.animateItem(),
+        )
     }
 }
 

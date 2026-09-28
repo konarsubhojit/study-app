@@ -103,23 +103,10 @@ public fun TaskDetailScreen(
     sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
-        StudyFlowTopAppBar(
-            title = state.task?.title ?: "Task",
-            titleModifier =
-                state.task?.let { task ->
-                    Modifier.studyFlowSharedElement(
-                        StudyFlowSharedElementKeys.taskTitle(task.id),
-                        sharedElementScope,
-                    )
-                } ?: Modifier,
-            navigationIcon = {
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier.semantics { contentDescription = "Back to tasks" },
-                ) {
-                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
-                }
-            },
+        TaskDetailTopAppBar(
+            task = state.task,
+            onBack = onBack,
+            sharedElementScope = sharedElementScope,
         )
 
         AnimatedContent(
@@ -168,6 +155,36 @@ public fun TaskDetailScreen(
             }
         }
     }
+}
+
+/**
+ * The title carries the shared element that continues the task's title from the list, so it is only
+ * a shared element once a task has loaded and there is a title to continue.
+ */
+@Composable
+private fun TaskDetailTopAppBar(
+    task: StudyTask?,
+    onBack: () -> Unit,
+    sharedElementScope: StudyFlowSharedElementScope?,
+) {
+    StudyFlowTopAppBar(
+        title = task?.title ?: "Task",
+        titleModifier =
+            task?.let {
+                Modifier.studyFlowSharedElement(
+                    StudyFlowSharedElementKeys.taskTitle(it.id),
+                    sharedElementScope,
+                )
+            } ?: Modifier,
+        navigationIcon = {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.semantics { contentDescription = "Back to tasks" },
+            ) {
+                Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+            }
+        },
+    )
 }
 
 @Composable
