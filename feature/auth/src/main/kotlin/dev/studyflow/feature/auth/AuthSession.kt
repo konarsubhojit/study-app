@@ -9,11 +9,18 @@ import kotlinx.coroutines.flow.StateFlow
 public class AuthSession(
     private val tokenStore: TokenStore,
     private val remoteCacheCleaner: RemoteCacheCleaner = RemoteCacheCleaner { },
+    private val signInListener: SignInListener = SignInListener { },
 ) {
     public val state: StateFlow<AuthState> = tokenStore.authState
 
+    /**
+     * Stores the new account's tokens, then tells [signInListener] — which in the app requests a
+     * sync, so a second device fills with the account's data without waiting for the next
+     * periodic run.
+     */
     public suspend fun completeSignIn(tokens: AuthTokens) {
         tokenStore.update(tokens)
+        signInListener.onSignedIn()
     }
 
     /**
@@ -29,4 +36,9 @@ public class AuthSession(
 /** Clears account-scoped replicas without touching the device's local-first study data. */
 public fun interface RemoteCacheCleaner {
     public suspend fun clear()
+}
+
+/** Runs once credentials for a newly signed-in account are stored. */
+public fun interface SignInListener {
+    public suspend fun onSignedIn()
 }

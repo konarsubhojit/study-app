@@ -53,6 +53,7 @@ import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
 import dev.studyflow.core.scheduling.ReminderIntegrityCoordinator
 import dev.studyflow.core.scheduling.ReminderPlatformScheduler
 import dev.studyflow.core.scheduling.ReminderSchedulingService
+import dev.studyflow.core.scheduling.RemoteChangesListener
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
 import dev.studyflow.core.scheduling.SharedPreferencesDownloadProgressStore
 import dev.studyflow.core.scheduling.SyncOnSessionCommandObserver
@@ -265,6 +266,11 @@ public object SchedulingModule {
     @Singleton
     public fun downloadTransport(dispatcherProvider: DispatcherProvider): DownloadTransport =
         UrlConnectionDownloadTransport(dispatcherProvider)
+
+    @Provides
+    @Singleton
+    public fun remoteChangesListener(integrity: ReminderIntegrityCoordinator): RemoteChangesListener =
+        RemoteChangesListener { integrity.checkNow() }
 
     @Provides
     @Singleton

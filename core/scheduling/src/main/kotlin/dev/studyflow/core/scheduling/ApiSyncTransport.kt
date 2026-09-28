@@ -2,6 +2,10 @@ package dev.studyflow.core.scheduling
 
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.time.DeviceIdProvider
+import dev.studyflow.core.domain.sync.SyncDocument
+import dev.studyflow.core.domain.sync.SyncDocumentCodec
+import dev.studyflow.core.domain.sync.SyncDocumentPage
+import dev.studyflow.core.domain.sync.SyncEntityType
 import dev.studyflow.core.domain.sync.SyncFailure
 import dev.studyflow.core.domain.sync.SyncPage
 import dev.studyflow.core.domain.sync.SyncPushAck
@@ -21,13 +25,18 @@ import dev.studyflow.core.network.error.ApiError
 import dev.studyflow.core.network.model.SyncDeltaDto
 import dev.studyflow.core.network.model.SyncPushRequestDto
 import dev.studyflow.core.network.model.SyncPushResponseDto
+import dev.studyflow.core.network.model.SyncRecordDeltaDto
+import dev.studyflow.core.network.model.SyncRecordDto
+import dev.studyflow.core.network.model.SyncRecordPushRequestDto
 import dev.studyflow.core.network.model.SyncSessionDto
 import dev.studyflow.core.network.model.SyncSessionEventDto
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Instant
 
 /**
- * The HTTP half of sync: `SyncSessionRecord` in, `/v1/sync/sessions` out (issue #55).
+ * The HTTP half of sync: `SyncSessionRecord` in, `/v1/sync/sessions` out (issue #55), and tasks
+ * and materials through the generic `/v1/sync/records` stream, their payloads encoded by
+ * [SyncDocumentCodec] so the wire format is the export format.
  *
  * Lives here rather than in `:core:network` because it speaks the domain's language on one side —
  * `:core:network` is deliberately a wire-format module with no knowledge of `:core:model`, and the
@@ -64,6 +73,67 @@ public class ApiSyncTransport(
             is ApiResult.Success -> SyncResult.Success(result.value.asPage())
             is ApiResult.Failure -> SyncResult.Failure(result.error.asSyncFailure())
         }
+
+    override suspend fun pushDocuments(documents: List<SyncDocument>): SyncResult<SyncPushAck> {
+        val request =
+            SyncRecordPushRequestDto(
+                deviceId = deviceIdProvider.current(),
+                changes = documents.map { it.asRecordDto() },
+            )
+        return when (val result = api.pushRecordChanges(request)) {
+            is ApiResult.Success -> SyncResult.Success(result.value.asAck())
+            is ApiResult.Failure -> SyncResult.Failure(result.error.asSyncFailure())
+        }
+    }
+
+    override suspend fun pullDocuments(
+        cursor: String?,
+        limit: Int,
+    ): SyncResult<SyncDocumentPage> =
+        when (val result = api.recordChanges(cursor, limit)) {
+            is ApiResult.Success -> SyncResult.Success(result.value.asDocumentPage())
+            is ApiResult.Failure -> SyncResult.Failure(result.error.asSyncFailure())
+        }
+
+    private fun SyncDocument.asRecordDto(): SyncRecordDto =
+        SyncRecordDto(
+            entityType = entityType.wireName(),
+            id = id,
+            deviceId = deviceId,
+            updatedAtIso = updatedAt.toString(),
+            deleted = deleted,
+            schemaVersion = SyncDocumentCodec.SCHEMA_VERSION,
+            payload = SyncDocumentCodec.encode(this),
+        )
+
+    private fun SyncRecordDeltaDto.asDocumentPage(): SyncDocumentPage =
+        SyncDocumentPage(
+            changes = changes.mapNotNull { it.asDocumentOrNull() },
+            nextCursor = nextCursor,
+            hasMore = hasMore,
+        )
+
+    private fun SyncRecordDto.asDocumentOrNull(): SyncDocument? =
+        runCatching {
+            val type =
+                requireNotNull(WIRE_TYPES.entries.firstOrNull { it.value == entityType }?.key) {
+                    "unknown entity type $entityType"
+                }
+            SyncDocumentCodec.decode(
+                entityType = type,
+                id = id,
+                deviceId = deviceId,
+                updatedAt = Instant.parse(updatedAtIso),
+                deleted = deleted,
+                schemaVersion = schemaVersion,
+                payload = payload,
+            )
+        }.onFailure { error ->
+            logger.warning(TAG, "Dropping unreadable inbound $entityType $id: ${error.message}")
+        }.getOrNull()
+
+    private fun SyncEntityType.wireName(): String =
+        requireNotNull(WIRE_TYPES[this]) { "$this is not carried by the record stream" }
 
     private fun SyncPushResponseDto.asAck(): SyncPushAck =
         SyncPushAck(acceptedIds = acceptedIds.toSet(), rejectedIds = rejectedIds.toSet())
@@ -191,5 +261,9 @@ public class ApiSyncTransport(
 
         /** Marks a boot id this device invented for a replicated event rather than observed. */
         const val REPLICATED_BOOT_PREFIX = "replicated:"
+
+        /** The record stream's `entityType` values; sessions travel on their own stream. */
+        val WIRE_TYPES: Map<SyncEntityType, String> =
+            mapOf(SyncEntityType.TASK to "task", SyncEntityType.MATERIAL to "material")
     }
 }

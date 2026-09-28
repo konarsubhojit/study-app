@@ -68,7 +68,7 @@ public object SyncDocumentCodec {
      * @throws ArchiveFormatException when the payload is malformed, invalid for its type, or written
      *   in a schema version newer than [SCHEMA_VERSION].
      */
-    @Suppress("LongParameterList")
+    @Suppress("LongParameterList", "ThrowsCount") // Every failure is reported as the same exception type.
     public fun decode(
         entityType: SyncEntityType,
         id: String,

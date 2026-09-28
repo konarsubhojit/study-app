@@ -23,6 +23,7 @@ import dev.studyflow.core.network.model.TaskDto
  * a feature test swaps in a fake without a socket in sight, and no layer above the data layer ever
  * sees an [io.ktor.client.HttpClient].
  */
+@Suppress("TooManyFunctions") // One function per documented operation.
 public interface StudyFlowApi {
     /** `POST /v1/auth/signin/challenge` — creates the short-lived WebAuthn challenge. */
     public suspend fun beginSignIn(): ApiResult<SignInChallengeDto>

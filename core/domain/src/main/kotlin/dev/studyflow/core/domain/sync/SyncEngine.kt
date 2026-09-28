@@ -66,6 +66,7 @@ public class SyncEngine(
             }
         }
 
+    @Suppress("ReturnCount") // Each stream's failure ends the drain before the batch is acknowledged.
     private suspend fun drainQueue(): DrainOutcome {
         var pushed = 0
         while (true) {
@@ -99,6 +100,7 @@ public class SyncEngine(
         }
     }
 
+    @Suppress("ReturnCount") // Either stream's failure ends the pass.
     private suspend fun readDelta(): PullOutcome {
         val sessions =
             readStream(

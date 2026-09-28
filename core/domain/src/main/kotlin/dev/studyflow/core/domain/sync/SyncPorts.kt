@@ -56,6 +56,7 @@ public interface SyncStatusRepository {
  * them, in one transaction. That is what makes the inbound delta resumable: a run killed halfway
  * either advanced the cursor with its page, or did neither and re-reads the same page next time.
  */
+@Suppress("TooManyFunctions") // One port per stream operation; splitting would separate each stream's halves.
 public interface SyncStore : SyncStatusRepository {
     /** The oldest [limit] queued changes, in insertion order. */
     public suspend fun pending(limit: Int): List<SyncQueueItem>

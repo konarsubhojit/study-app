@@ -2,6 +2,7 @@ package dev.studyflow.core.scheduling
 
 import dev.studyflow.core.domain.sync.SyncResult
 import dev.studyflow.core.domain.sync.SyncSessionRecord
+import dev.studyflow.core.domain.sync.SyncTaskRecord
 import dev.studyflow.core.model.BootId
 import dev.studyflow.core.model.SessionElapsed
 import dev.studyflow.core.model.SessionEvent
@@ -10,8 +11,10 @@ import dev.studyflow.core.model.SessionStatus
 import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.TimeAnchor
 import dev.studyflow.core.network.model.SyncDeltaDto
+import dev.studyflow.core.network.model.SyncRecordDeltaDto
 import dev.studyflow.core.network.model.SyncSessionDto
 import dev.studyflow.core.network.model.SyncSessionEventDto
+import dev.studyflow.core.testing.data.testStudyTask
 import dev.studyflow.core.testing.logging.RecordingAppLogger
 import dev.studyflow.core.testing.network.FakeStudyFlowBackend
 import io.ktor.http.HttpStatusCode
@@ -121,6 +124,33 @@ class ApiSyncTransportTest {
             assertEquals(listOf(SESSION_ID), page.changes.map { it.session.id })
             assertEquals("cursor-2", page.nextCursor)
             assertTrue(logger.messages.any { it.message.contains("broken") })
+        }
+
+    @Test
+    fun `a task travels the record stream and comes back as the same task`() =
+        runTest {
+            val task = testStudyTask(id = "task-1", title = "Revise", tags = setOf("exam"))
+
+            transport().pushDocuments(listOf(SyncTaskRecord(task, deviceId = "device-a")))
+
+            val pushed = backend.pushedRecordChanges.single()
+            assertEquals(DEVICE, pushed.deviceId)
+            val wire = pushed.changes.single()
+            assertEquals("task", wire.entityType)
+            assertEquals("device-a", wire.deviceId)
+
+            // What the server stores is what the next device reads; a record type this version
+            // does not know is skipped rather than failing the page.
+            backend.recordDelta =
+                SyncRecordDeltaDto(
+                    changes = listOf(wire.copy(entityType = "subject", id = "unknown"), wire),
+                    nextCursor = "r1:2",
+                )
+            val page = (transport().pullDocuments(cursor = null, limit = 50) as SyncResult.Success).value
+
+            assertEquals(listOf(SyncTaskRecord(task, deviceId = "device-a")), page.changes)
+            assertEquals("r1:2", page.nextCursor)
+            assertTrue(logger.messages.any { it.message.contains("unknown") })
         }
 
     @Test

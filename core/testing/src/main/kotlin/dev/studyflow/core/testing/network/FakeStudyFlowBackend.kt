@@ -165,34 +165,11 @@ public class FakeStudyFlowBackend(
             }
 
             ApiEndpoint.PullSessionChanges.path -> {
-                if (request.method == HttpMethod.Post) {
-                    val body = request.body.toByteArray().decodeToString()
-                    val push = StudyFlowJson.decodeFromString<SyncPushRequestDto>(body)
-                    pushedSyncChanges += push
-                    val sentIds = push.changes.map { it.id }
-                    val accepted = acceptedSyncIds?.let { allowed -> sentIds.filter(allowed::contains) } ?: sentIds
-                    val response =
-                        SyncPushResponseDto(
-                            acceptedIds = accepted,
-                            rejectedIds = sentIds - accepted.toSet(),
-                        )
-                    respondJson(StudyFlowJson.encodeToString(response))
-                } else {
-                    respondJson(StudyFlowJson.encodeToString(syncDelta.withoutDeviceAnchors()))
-                }
+                sessionSync(request)
             }
 
             ApiEndpoint.PullRecordChanges.path -> {
-                if (request.method == HttpMethod.Post) {
-                    val body = request.body.toByteArray().decodeToString()
-                    val push = StudyFlowJson.decodeFromString<SyncRecordPushRequestDto>(body)
-                    pushedRecordChanges += push
-                    respondJson(
-                        StudyFlowJson.encodeToString(SyncPushResponseDto(acceptedIds = push.changes.map { it.id })),
-                    )
-                } else {
-                    respondJson(StudyFlowJson.encodeToString(recordDelta))
-                }
+                recordSync(request)
             }
 
             ApiEndpoint.DeleteAccount.path -> {
@@ -213,6 +190,37 @@ public class FakeStudyFlowBackend(
             }
         }
     }
+
+    /** Push and pull share `/v1/sync/sessions`; the method tells them apart. */
+    private suspend fun MockRequestHandleScope.sessionSync(request: HttpRequestData): HttpResponseData =
+        if (request.method == HttpMethod.Post) {
+            val body = request.body.toByteArray().decodeToString()
+            val push = StudyFlowJson.decodeFromString<SyncPushRequestDto>(body)
+            pushedSyncChanges += push
+            val sentIds = push.changes.map { it.id }
+            val accepted = acceptedSyncIds?.let { allowed -> sentIds.filter(allowed::contains) } ?: sentIds
+            val response =
+                SyncPushResponseDto(
+                    acceptedIds = accepted,
+                    rejectedIds = sentIds - accepted.toSet(),
+                )
+            respondJson(StudyFlowJson.encodeToString(response))
+        } else {
+            respondJson(StudyFlowJson.encodeToString(syncDelta.withoutDeviceAnchors()))
+        }
+
+    /** Push and pull share `/v1/sync/records`; the method tells them apart. */
+    private suspend fun MockRequestHandleScope.recordSync(request: HttpRequestData): HttpResponseData =
+        if (request.method == HttpMethod.Post) {
+            val body = request.body.toByteArray().decodeToString()
+            val push = StudyFlowJson.decodeFromString<SyncRecordPushRequestDto>(body)
+            pushedRecordChanges += push
+            respondJson(
+                StudyFlowJson.encodeToString(SyncPushResponseDto(acceptedIds = push.changes.map { it.id })),
+            )
+        } else {
+            respondJson(StudyFlowJson.encodeToString(recordDelta))
+        }
 
     /** The credential exchanges, kept apart so [handle] stays a readable table of data endpoints. */
     private suspend fun MockRequestHandleScope.authResponse(
