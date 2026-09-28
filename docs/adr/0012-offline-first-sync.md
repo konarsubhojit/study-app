@@ -138,8 +138,10 @@ irreversible.
 - `deviceId` as a tie-break means a device with a lexicographically higher id systematically wins
   exact ties. That is an acceptable, documented bias: ties require identical millisecond
   timestamps, and determinism is worth more here than fairness.
-- Tasks, subjects and materials still do not sync. That is a known gap with a deliberate reason
-  (no protocol), not an omission — and the queue is shaped so that closing it is additive.
+- Tasks, subjects and materials did not sync under this decision — a known gap with a deliberate
+  reason (no protocol), not an omission. [ADR 0018](0018-task-material-sync.md) closes it for tasks
+  and materials with a generic record stream on the same queue, rule and cursor model; subjects
+  still do not sync.
 - The server side of the protocol is specified in `docs/api/openapi.yaml` but not implemented in
   this repository; `FakeStudyFlowBackend` is what the tests run against, and it implements the
   contract as written.
