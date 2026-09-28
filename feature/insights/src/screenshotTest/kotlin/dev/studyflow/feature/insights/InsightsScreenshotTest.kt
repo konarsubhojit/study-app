@@ -12,6 +12,7 @@ import dev.studyflow.core.domain.stats.SubjectTotal
 import dev.studyflow.core.model.Subject
 import dev.studyflow.core.testing.data.testSubject
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -142,4 +143,47 @@ private fun PopulatedInsightsDefaultFontScalePreview() {
 @Composable
 private fun PopulatedInsightsLargeFontScalePreview() {
     PopulatedInsightsPreview()
+}
+
+/**
+ * The trend chart at the data densities that used to break it (issue #168): one bucket, which
+ * rendered as a full-width, full-height slab, and a year of daily buckets, which rendered as bars
+ * too thin to read.
+ */
+@Composable
+private fun TrendPreview(buckets: List<BucketTotal>) {
+    StudyFlowTheme(dynamicColor = false, edgeToEdge = false) {
+        InsightsScreen(
+            state =
+                InsightsUiState(
+                    range = previewRange,
+                    subjectOptions = previewSubjects,
+                    bucketTotals = buckets,
+                ),
+            onEvent = {},
+            onOpenWeeklySummary = {},
+        )
+    }
+}
+
+@PreviewTest
+@Preview
+@Composable
+private fun TrendSingleBucketPreview() {
+    TrendPreview(listOf(BucketTotal(Instant.parse("2026-03-01T00:00:00Z"), 45.minutes, 1)))
+}
+
+@PreviewTest
+@Preview
+@Composable
+private fun TrendManyBucketsPreview() {
+    TrendPreview(
+        List(90) { day ->
+            BucketTotal(
+                bucketStart = Instant.parse("2026-01-01T00:00:00Z") + day.days,
+                totalCounted = ((day * 7) % 90).minutes,
+                sessionCount = 1,
+            )
+        },
+    )
 }

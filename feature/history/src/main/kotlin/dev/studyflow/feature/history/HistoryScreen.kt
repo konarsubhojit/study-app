@@ -170,6 +170,7 @@ private fun FilterRow(
                 selected = state.filter.subjectId == subject.id,
                 onClick = { onEvent(HistoryUiEvent.SubjectFilterChanged(subject.id)) },
                 label = { Text(subject.name) },
+                modifier = Modifier.animateItem(),
             )
         }
         if (state.filter.isNarrowed) {
@@ -203,7 +204,11 @@ private fun HistoryList(
             if (day != previousDay) {
                 previousDay = day
                 item(key = "header-$day") {
-                    DayHeader(day = day, sessions = daySessions(pagedSessions, index, day))
+                    DayHeader(
+                        day = day,
+                        sessions = daySessions(pagedSessions, index, day),
+                        modifier = Modifier.animateItem(),
+                    )
                 }
             }
             item(key = session.id) {
@@ -212,6 +217,7 @@ private fun HistoryList(
                     selected = session.id in state.selectedIds,
                     selecting = state.isSelecting,
                     onEvent = onEvent,
+                    modifier = Modifier.animateItem(),
                 )
             }
         }
@@ -235,12 +241,13 @@ private fun daySessions(
 private fun DayHeader(
     day: String,
     sessions: List<StudySession>,
+    modifier: Modifier = Modifier,
 ) {
     val totalsBySubject =
         sessions.groupBy { it.subjectId }.mapValues { (_, forSubject) ->
             forSubject.fold(Duration.ZERO) { acc, session -> acc + session.elapsed.counted }
         }
-    Column(modifier = Modifier.fillMaxWidth().padding(MaterialTheme.spacing.medium)) {
+    Column(modifier = modifier.fillMaxWidth().padding(MaterialTheme.spacing.medium)) {
         Text(text = day, style = MaterialTheme.typography.titleMedium)
         totalsBySubject.forEach { (subjectId, total) ->
             Text(
@@ -257,9 +264,11 @@ private fun SessionRow(
     selected: Boolean,
     selecting: Boolean,
     onEvent: (HistoryUiEvent) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     StudyFlowListItem(
         headline = session.subjectId ?: "No subject",
+        modifier = modifier,
         supportingText = session.note,
         overlineText = "${session.elapsed.counted.inWholeMinutes} min",
         trailingContent = {
@@ -472,6 +481,7 @@ private fun SubjectPicker(
                 selected = selectedSubjectId == subject.id,
                 onClick = { onSubjectChange(subject.id) },
                 label = { Text(subject.name) },
+                modifier = Modifier.animateItem(),
             )
         }
     }

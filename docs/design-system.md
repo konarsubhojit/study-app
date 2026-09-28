@@ -27,7 +27,7 @@ the only place the fallback rule is written down.
 | Type | `MaterialTheme.typography.bodyLarge` | `fontSize = 14.sp` |
 | Shape | `MaterialTheme.shapes.medium` | `RoundedCornerShape(12.dp)` |
 | Spacing | `MaterialTheme.spacing.medium` | `padding(16.dp)` |
-| Motion | `StudyFlowMotion.spatial()` | `tween(300)` |
+| Motion | `StudyFlowMotion.spatial()` | `spring(dampingRatio = 0.8f, stiffness = 380f)` |
 
 The spacing scale is `extraSmall` (4) · `small` (8) · `medium` (16) · `large` (24) ·
 `extraLarge` (32) · `huge` (48), all in dp and all on a 4.dp grid. Type sizes are declared in `sp`,
@@ -57,6 +57,23 @@ StudyFlowListDetail(
 and `ListDetailStrategy` turns that plus the selection into one pane or two. Both are pure functions
 — assert against them in unit tests rather than inflating a window.
 
+## Top-level navigation
+
+`StudyFlowNavigationSuite` is the only top-level navigation surface. It takes the same width class
+and draws a `NavigationBar` on a compact window and a `NavigationRail` on anything wider, so the
+app never shows a phone bar on a tablet:
+
+```kotlin
+StudyFlowNavigationSuite(items = navigationItems(), selected = current, onSelect = navigate) {
+    AppNavDisplay(backStack)
+}
+```
+
+Each destination supplies an outlined icon and its filled counterpart, and the labels are kept to
+one line. The suite accepts at most five destinations, which is the Material 3 limit: a sixth
+destination belongs behind an app-bar action or under a destination it is a reading of, not in the
+bar.
+
 ## Motion
 
 Use the tokens in `StudyFlowMotion`; do not invent a duration or a curve.
@@ -74,6 +91,10 @@ Transitions are fade-led with a small scale, and never travel the full width of 
 a predictive-back requirement rather than a taste: the system drives the transition from the user's
 gesture, so every frame between 0 and 1 has to look deliberate — including the frames of a gesture
 that is abandoned halfway and reversed.
+
+Spatial movement and resizing use the interruption-safe `spatial()` spring. Alpha and colour changes
+remain duration-based through `effects()`. Shared list-to-detail elements use
+`studyFlowSharedElement`; their keys come from `StudyFlowSharedElementKeys`.
 
 Motion is also an accessibility setting. Respect the platform's reduced-motion preference rather
 than animating unconditionally, and never make an animation the only signal that something changed.

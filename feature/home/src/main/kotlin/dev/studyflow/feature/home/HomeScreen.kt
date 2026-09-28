@@ -9,8 +9,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -19,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.studyflow.core.designsystem.theme.spacing
+import dev.studyflow.core.ui.components.StudyFlowTopAppBar
 
 @Composable
 public fun HomeRoute(
@@ -26,13 +31,14 @@ public fun HomeRoute(
     onOpenTask: (String) -> Unit,
     onOpenMaterial: (String) -> Unit,
     onOpenHistory: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: HomeViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     HomeScreen(
         state = state,
-        actions = HomeActions(onOpenTimer, onOpenTask, onOpenMaterial, onOpenHistory),
+        actions = HomeActions(onOpenTimer, onOpenTask, onOpenMaterial, onOpenHistory, onOpenSettings),
         modifier = modifier,
     )
 }
@@ -44,58 +50,68 @@ public fun HomeScreen(
     actions: HomeActions,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(MaterialTheme.spacing.medium),
-        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-    ) {
-        item {
-            Text("Today", style = MaterialTheme.typography.headlineMedium)
-        }
-        item {
-            Button(onClick = actions.onOpenTimer, modifier = Modifier.fillMaxWidth()) {
-                Text(if (state.activeSession == null) "Start a focus session" else "Resume focus session")
+    Column(modifier = modifier.fillMaxSize()) {
+        // Settings is an app-bar action rather than a bottom-bar destination (issue #167): it is
+        // visited rarely, and a five-destination bar is what keeps the labels on one line.
+        StudyFlowTopAppBar(
+            title = "Today",
+            actions = {
+                IconButton(onClick = actions.onOpenSettings) {
+                    Icon(imageVector = Icons.Outlined.Settings, contentDescription = "Settings")
+                }
+            },
+        )
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+        ) {
+            item {
+                Button(onClick = actions.onOpenTimer, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (state.activeSession == null) "Start a focus session" else "Resume focus session")
+                }
             }
-        }
-        item {
-            SummaryCard(
-                title = "Focus time",
-                detail = "${state.focusTime.inWholeMinutes} of ${state.focusGoal.inWholeMinutes} min",
-                onClick = actions.onOpenHistory,
-            )
-        }
-        item {
-            SummaryCard(
-                title = "Current streak",
-                detail = if (state.streakDays == 1) "1 day" else "${state.streakDays} days",
-                onClick = actions.onOpenHistory,
-            )
-        }
-        state.activeSession?.let { session ->
             item {
                 SummaryCard(
-                    title = activeSessionTitle(session.elapsed.hasUnverifiedTime),
-                    detail = session.note ?: "Tap to continue",
-                    onClick = actions.onOpenTimer,
+                    title = "Focus time",
+                    detail = "${state.focusTime.inWholeMinutes} of ${state.focusGoal.inWholeMinutes} min",
+                    onClick = actions.onOpenHistory,
                 )
             }
-        }
-        state.nextTask?.let { task ->
             item {
-                SummaryCard(title = "Next due", detail = task.title, onClick = { actions.onOpenTask(task.id) })
-            }
-        }
-        if (state.recentMaterials.isNotEmpty()) {
-            item { Text("Recent materials", style = MaterialTheme.typography.titleLarge) }
-            items(state.recentMaterials, key = { it.id }) { material ->
                 SummaryCard(
-                    title = material.displayName,
-                    detail =
-                        material.kind.name
-                            .lowercase()
-                            .replaceFirstChar(Char::uppercase),
-                    onClick = { actions.onOpenMaterial(material.id) },
+                    title = "Current streak",
+                    detail = if (state.streakDays == 1) "1 day" else "${state.streakDays} days",
+                    onClick = actions.onOpenHistory,
                 )
+            }
+            state.activeSession?.let { session ->
+                item {
+                    SummaryCard(
+                        title = activeSessionTitle(session.elapsed.hasUnverifiedTime),
+                        detail = session.note ?: "Tap to continue",
+                        onClick = actions.onOpenTimer,
+                    )
+                }
+            }
+            state.nextTask?.let { task ->
+                item {
+                    SummaryCard(title = "Next due", detail = task.title, onClick = { actions.onOpenTask(task.id) })
+                }
+            }
+            if (state.recentMaterials.isNotEmpty()) {
+                item { Text("Recent materials", style = MaterialTheme.typography.titleLarge) }
+                items(state.recentMaterials, key = { it.id }) { material ->
+                    SummaryCard(
+                        title = material.displayName,
+                        detail =
+                            material.kind.name
+                                .lowercase()
+                                .replaceFirstChar(Char::uppercase),
+                        onClick = { actions.onOpenMaterial(material.id) },
+                        modifier = Modifier.animateItem(),
+                    )
+                }
             }
         }
     }
@@ -109,8 +125,9 @@ private fun SummaryCard(
     title: String,
     detail: String,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Card(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)) {
+    Card(modifier = modifier.fillMaxWidth().clickable(onClick = onClick)) {
         Column(
             modifier = Modifier.padding(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),

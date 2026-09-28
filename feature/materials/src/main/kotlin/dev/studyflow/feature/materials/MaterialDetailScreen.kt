@@ -11,6 +11,10 @@ import android.util.Log
 import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.rememberTransformableState
@@ -29,8 +33,12 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -76,6 +84,10 @@ import androidx.media3.ui.PlayerView
 import coil3.compose.SubcomposeAsyncImage
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.coroutines.StandardDispatcherProvider
+import dev.studyflow.core.designsystem.motion.StudyFlowMotion
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementKeys
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementScope
+import dev.studyflow.core.designsystem.motion.studyFlowSharedElement
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.MaterialKind
@@ -102,6 +114,7 @@ public fun MaterialDetailRoute(
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
     onStartStudySession: (String?) -> Unit = {},
+    sharedElementScope: StudyFlowSharedElementScope? = null,
     viewModel: MaterialDetailViewModel = hiltViewModel(key = materialId),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -148,6 +161,7 @@ public fun MaterialDetailRoute(
             }
         },
         onStartStudySession = onStartStudySession,
+        sharedElementScope = sharedElementScope,
         modifier = modifier,
     )
 }
@@ -161,40 +175,57 @@ public fun MaterialDetailScreen(
     onShare: (Material, MaterialPreviewSource?) -> Unit = { _, _ -> },
     onExport: (Material, MaterialPreviewSource?) -> Unit = { _, _ -> },
     onStartStudySession: (String?) -> Unit = {},
+    sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         StudyFlowTopAppBar(
             title = state.material?.displayName ?: "Material",
+            titleModifier =
+                state.material?.let { material ->
+                    Modifier.studyFlowSharedElement(
+                        StudyFlowSharedElementKeys.materialTitle(material.id),
+                        sharedElementScope,
+                    )
+                } ?: Modifier,
             navigationIcon = {
-                TextButton(
+                IconButton(
                     onClick = onBack,
                     modifier = Modifier.semantics { contentDescription = "Back to materials" },
                 ) {
-                    Text(text = "Back")
+                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                 }
             },
         )
 
-        when {
-            state.loading -> {
-                LoadingState(modifier = Modifier.fillMaxSize())
-            }
+        AnimatedContent(
+            targetState = state.displayState,
+            transitionSpec = {
+                fadeIn(StudyFlowMotion.effects()) togetherWith fadeOut(StudyFlowMotion.effects())
+            },
+            label = "material detail state",
+        ) { displayState ->
+            when (displayState) {
+                DetailDisplayState.Loading -> {
+                    LoadingState(modifier = Modifier.fillMaxSize())
+                }
 
-            state.notFound -> {
-                EmptyState(
-                    message = "This material no longer exists. It may have been deleted on another device.",
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+                DetailDisplayState.NotFound -> {
+                    EmptyState(
+                        message = "This material no longer exists. It may have been deleted on another device.",
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
 
-            else -> {
-                MaterialDetailContent(
-                    state = state,
-                    onEvent = onEvent,
-                    onShare = onShare,
-                    onExport = onExport,
-                    onStartStudySession = onStartStudySession,
-                )
+                DetailDisplayState.Content -> {
+                    MaterialDetailContent(
+                        state = state,
+                        onEvent = onEvent,
+                        onShare = onShare,
+                        onExport = onExport,
+                        onStartStudySession = onStartStudySession,
+                        sharedElementScope = sharedElementScope,
+                    )
+                }
             }
         }
     }
@@ -207,6 +238,7 @@ private fun MaterialDetailContent(
     onShare: (Material, MaterialPreviewSource?) -> Unit,
     onExport: (Material, MaterialPreviewSource?) -> Unit,
     onStartStudySession: (String?) -> Unit,
+    sharedElementScope: StudyFlowSharedElementScope?,
 ) {
     val material = requireNotNull(state.material)
     Column(
@@ -216,7 +248,6 @@ private fun MaterialDetailContent(
                 .padding(MaterialTheme.spacing.medium),
         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
     ) {
-        Text(text = material.displayName, style = MaterialTheme.typography.headlineSmall)
         Text(
             text = "${material.mimeType} · ${formatSize(material.sizeBytes)}",
             style = MaterialTheme.typography.bodyMedium,
@@ -224,6 +255,7 @@ private fun MaterialDetailContent(
         material.pageCount?.let { pages ->
             Text(text = "$pages page${if (pages == 1) "" else "s"}", style = MaterialTheme.typography.bodyMedium)
         }
+
         material.duration?.let { duration -> DurationText(duration = duration) }
         material.notes?.let { notes -> Text(text = notes, style = MaterialTheme.typography.bodyMedium) }
         PreviewActions(
@@ -242,7 +274,13 @@ private fun MaterialDetailContent(
             },
             onExtractArchiveEntry = { path -> onEvent(MaterialDetailUiEvent.ExtractArchiveEntry(path)) },
             onCancelArchiveExtraction = { path -> onEvent(MaterialDetailUiEvent.CancelArchiveExtraction(path)) },
-            modifier = Modifier.weight(1f),
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .studyFlowSharedElement(
+                        StudyFlowSharedElementKeys.materialPreview(material.id),
+                        sharedElementScope,
+                    ),
         )
     }
 }
@@ -566,7 +604,7 @@ private fun PdfPreviewContent(
             modifier = Modifier.fillMaxSize(),
         ) {
             items((0 until document.pageCount).toList(), key = { it }) { pageIndex ->
-                PdfPage(document = document, pageIndex = pageIndex)
+                PdfPage(document = document, pageIndex = pageIndex, modifier = Modifier.animateItem())
             }
         }
     }
@@ -592,6 +630,7 @@ private fun rememberPdfDocument(file: File?): PdfDocument? {
 private fun PdfPage(
     document: PdfDocument,
     pageIndex: Int,
+    modifier: Modifier = Modifier,
     dispatcherProvider: DispatcherProvider = StandardDispatcherProvider,
 ) {
     val bitmap by produceState<Bitmap?>(initialValue = null, document, pageIndex) {
@@ -608,7 +647,7 @@ private fun PdfPage(
     }
     Box(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .background(MaterialTheme.colorScheme.surfaceVariant),
         contentAlignment = Alignment.Center,
@@ -683,6 +722,7 @@ private fun ArchivePreview(
                             entry = entry,
                             onExtract = { onExtract(entry.path) },
                             onCancel = { onCancel(entry.path) },
+                            modifier = Modifier.animateItem(),
                         )
                     }
                 }
@@ -696,8 +736,9 @@ private fun ArchiveEntryRow(
     entry: ArchiveEntryUiState,
     onExtract: () -> Unit,
     onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = MaterialTheme.spacing.medium)) {
+    Column(modifier = modifier.fillMaxWidth().padding(horizontal = MaterialTheme.spacing.medium)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
@@ -1003,3 +1044,13 @@ private const val IMAGE_PREVIEW_TAG = "ImagePreview"
 
 /** ~300 KB of characters — generous for notes or code, far short of loading a huge log whole. */
 private const val TEXT_PREVIEW_MAX_BYTES = 300_000
+
+private enum class DetailDisplayState { Loading, NotFound, Content }
+
+private val MaterialDetailUiState.displayState: DetailDisplayState
+    get() =
+        when {
+            loading -> DetailDisplayState.Loading
+            notFound -> DetailDisplayState.NotFound
+            else -> DetailDisplayState.Content
+        }

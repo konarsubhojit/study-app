@@ -6,4 +6,5 @@ public data class HomeActions(
     val onOpenTask: (String) -> Unit = {},
     val onOpenMaterial: (String) -> Unit = {},
     val onOpenHistory: () -> Unit = {},
+    val onOpenSettings: () -> Unit = {},
 )

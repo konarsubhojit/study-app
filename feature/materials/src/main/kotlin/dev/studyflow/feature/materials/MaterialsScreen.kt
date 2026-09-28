@@ -4,6 +4,10 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -39,12 +43,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.studyflow.core.designsystem.motion.StudyFlowMotion
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementKeys
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementScope
+import dev.studyflow.core.designsystem.motion.studyFlowSharedElement
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailPlaceholder
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.ui.components.DurationText
 import dev.studyflow.core.ui.state.EmptyState
+import dev.studyflow.core.ui.state.LoadingState
 import java.util.Locale
 
 /**
@@ -58,6 +67,7 @@ import java.util.Locale
 public fun MaterialsRoute(
     modifier: Modifier = Modifier,
     onOpenMaterial: (String) -> Unit = {},
+    sharedElementScope: StudyFlowSharedElementScope? = null,
     viewModel: MaterialsViewModel = hiltViewModel(),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -90,6 +100,7 @@ public fun MaterialsRoute(
             photoPickerLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo))
         },
         onPickDocuments = { documentPickerLauncher.launch(arrayOf(ALL_MIME_TYPES)) },
+        sharedElementScope = sharedElementScope,
         modifier = modifier,
     )
 }
@@ -102,6 +113,7 @@ public fun MaterialsScreen(
     onPickDocuments: () -> Unit,
     modifier: Modifier = Modifier,
     onLoadThumbnail: suspend (Material) -> ImageBitmap? = { null },
+    sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -121,15 +133,32 @@ public fun MaterialsScreen(
             )
         }
 
-        if (state.loaded && state.catalog.isEmpty()) {
-            EmptyState(message = "Add a photo, a document, or share a file here to start your library.")
-        } else {
-            MaterialsGrid(
-                catalog = state.catalog,
-                onLoadThumbnail = onLoadThumbnail,
-                onMaterialClick = { id -> onEvent(MaterialsUiEvent.ViewExisting(id)) },
-                onRetryUpload = { id -> onEvent(MaterialsUiEvent.RetryUpload(id)) },
-            )
+        AnimatedContent(
+            targetState = state.displayState,
+            transitionSpec = {
+                fadeIn(StudyFlowMotion.effects()) togetherWith fadeOut(StudyFlowMotion.effects())
+            },
+            label = "materials state",
+        ) { displayState ->
+            when (displayState) {
+                MaterialsDisplayState.Loading -> {
+                    LoadingState()
+                }
+
+                MaterialsDisplayState.Empty -> {
+                    EmptyState(message = "Add a photo, a document, or share a file here to start your library.")
+                }
+
+                MaterialsDisplayState.Content -> {
+                    MaterialsGrid(
+                        catalog = state.catalog,
+                        onLoadThumbnail = onLoadThumbnail,
+                        onMaterialClick = { id -> onEvent(MaterialsUiEvent.ViewExisting(id)) },
+                        onRetryUpload = { id -> onEvent(MaterialsUiEvent.RetryUpload(id)) },
+                        sharedElementScope = sharedElementScope,
+                    )
+                }
+            }
         }
     }
 }
@@ -224,6 +253,7 @@ private fun MaterialsGrid(
     onLoadThumbnail: suspend (Material) -> ImageBitmap?,
     onMaterialClick: (String) -> Unit,
     onRetryUpload: (String) -> Unit,
+    sharedElementScope: StudyFlowSharedElementScope?,
 ) {
     // A grid of real thumbnails is the feature (issue #42): cells are sized adaptively so a phone
     // shows three columns and a tablet shows six, without either of them downloading an original.
@@ -240,6 +270,8 @@ private fun MaterialsGrid(
                 onLoadThumbnail = onLoadThumbnail,
                 onClick = { onMaterialClick(material.id) },
                 onRetryUpload = { onRetryUpload(material.id) },
+                modifier = Modifier.animateItem(),
+                sharedElementScope = sharedElementScope,
             )
         }
     }
@@ -251,12 +283,22 @@ private fun MaterialGridCell(
     onLoadThumbnail: suspend (Material) -> ImageBitmap?,
     onClick: () -> Unit,
     onRetryUpload: () -> Unit,
+    modifier: Modifier = Modifier,
+    sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
     ) {
-        MaterialThumbnail(material = material, onLoadThumbnail = onLoadThumbnail)
+        MaterialThumbnail(
+            material = material,
+            onLoadThumbnail = onLoadThumbnail,
+            modifier =
+                Modifier.studyFlowSharedElement(
+                    StudyFlowSharedElementKeys.materialPreview(material.id),
+                    sharedElementScope,
+                ),
+        )
         Column(
             modifier = Modifier.padding(MaterialTheme.spacing.small),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
@@ -266,6 +308,11 @@ private fun MaterialGridCell(
                 style = MaterialTheme.typography.titleSmall,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
+                modifier =
+                    Modifier.studyFlowSharedElement(
+                        StudyFlowSharedElementKeys.materialTitle(material.id),
+                        sharedElementScope,
+                    ),
             )
             Text(text = formatSize(material.sizeBytes), style = MaterialTheme.typography.bodySmall)
             // A failed upload is the one sync state a tap on the cell cannot resolve — the user
@@ -291,6 +338,7 @@ private fun MaterialGridCell(
 private fun MaterialThumbnail(
     material: Material,
     onLoadThumbnail: suspend (Material) -> ImageBitmap?,
+    modifier: Modifier = Modifier,
 ) {
     val placeholder = remember(material.contentHash) { ThumbnailPlaceholder.of(material.contentHash) }
     // Read through a remembered snapshot so a caller passing a fresh lambda literal on every
@@ -302,7 +350,7 @@ private fun MaterialThumbnail(
 
     Box(
         modifier =
-            Modifier
+            modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
                 .background(
@@ -349,3 +397,13 @@ private val THUMBNAIL_CELL_MIN_SIZE = 112.dp
 /** Enough of the kind name to be recognisable on a placeholder without dominating the cell. */
 private const val KIND_BADGE_LENGTH = 3
 internal const val BYTES_PER_KIB = 1024L
+
+private enum class MaterialsDisplayState { Loading, Empty, Content }
+
+private val MaterialsUiState.displayState: MaterialsDisplayState
+    get() =
+        when {
+            !loaded -> MaterialsDisplayState.Loading
+            catalog.isEmpty() -> MaterialsDisplayState.Empty
+            else -> MaterialsDisplayState.Content
+        }

@@ -31,6 +31,7 @@ import kotlin.time.Duration.Companion.ZERO
 public fun StudyFlowTopAppBar(
     title: String,
     modifier: Modifier = Modifier,
+    titleModifier: Modifier = Modifier,
     navigationIcon: @Composable (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
@@ -38,7 +39,7 @@ public fun StudyFlowTopAppBar(
         title = {
             Text(
                 text = title,
-                modifier = Modifier.semantics { heading() },
+                modifier = titleModifier.semantics { heading() },
             )
         },
         modifier = modifier,
@@ -52,13 +53,14 @@ public fun StudyFlowTopAppBar(
 public fun StudyFlowListItem(
     headline: String,
     modifier: Modifier = Modifier,
+    headlineModifier: Modifier = Modifier,
     supportingText: String? = null,
     overlineText: String? = null,
     trailingContent: @Composable (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
     ListItem(
-        headlineContent = { Text(text = headline) },
+        headlineContent = { Text(text = headline, modifier = headlineModifier) },
         modifier =
             modifier.then(
                 if (onClick == null) {

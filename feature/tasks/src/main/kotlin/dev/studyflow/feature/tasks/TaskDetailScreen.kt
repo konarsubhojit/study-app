@@ -1,5 +1,9 @@
 package dev.studyflow.feature.tasks
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -8,9 +12,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -29,6 +37,10 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.studyflow.core.designsystem.motion.StudyFlowMotion
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementKeys
+import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementScope
+import dev.studyflow.core.designsystem.motion.studyFlowSharedElement
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.model.RecurrenceEnd
 import dev.studyflow.core.model.RecurrenceFrequency
@@ -53,6 +65,7 @@ public fun TaskDetailRoute(
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
     onStartStudySession: (taskId: String, subjectId: String?) -> Unit = { _, _ -> },
+    sharedElementScope: StudyFlowSharedElementScope? = null,
     viewModel: TaskDetailViewModel = hiltViewModel(key = taskId),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
@@ -72,7 +85,13 @@ public fun TaskDetailRoute(
         }
     }
 
-    TaskDetailScreen(state = state, onEvent = viewModel::onEvent, onBack = onBack, modifier = modifier)
+    TaskDetailScreen(
+        state = state,
+        onEvent = viewModel::onEvent,
+        onBack = onBack,
+        modifier = modifier,
+        sharedElementScope = sharedElementScope,
+    )
 }
 
 @Composable
@@ -81,55 +100,70 @@ public fun TaskDetailScreen(
     onEvent: (TaskDetailUiEvent) -> Unit,
     modifier: Modifier = Modifier,
     onBack: () -> Unit = {},
+    sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
     Column(modifier = modifier.fillMaxSize()) {
         StudyFlowTopAppBar(
             title = state.task?.title ?: "Task",
+            titleModifier =
+                state.task?.let { task ->
+                    Modifier.studyFlowSharedElement(
+                        StudyFlowSharedElementKeys.taskTitle(task.id),
+                        sharedElementScope,
+                    )
+                } ?: Modifier,
             navigationIcon = {
-                TextButton(
+                IconButton(
                     onClick = onBack,
                     modifier = Modifier.semantics { contentDescription = "Back to tasks" },
                 ) {
-                    Text(text = "Back")
+                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                 }
             },
         )
 
-        when {
-            state.loading -> {
-                LoadingState(modifier = Modifier.fillMaxSize())
-            }
+        AnimatedContent(
+            targetState = state.displayState,
+            transitionSpec = {
+                fadeIn(StudyFlowMotion.effects()) togetherWith fadeOut(StudyFlowMotion.effects())
+            },
+            label = "task detail state",
+        ) { displayState ->
+            when (displayState) {
+                DetailDisplayState.Loading -> {
+                    LoadingState(modifier = Modifier.fillMaxSize())
+                }
 
-            state.notFound -> {
-                EmptyState(
-                    message = "This task no longer exists. It may have been deleted on another device.",
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
+                DetailDisplayState.NotFound -> {
+                    EmptyState(
+                        message = "This task no longer exists. It may have been deleted on another device.",
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
 
-            else -> {
-                val task = requireNotNull(state.task)
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(MaterialTheme.spacing.medium),
-                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
-                ) {
-                    item { CompletionRow(task = task, onEvent = onEvent) }
-                    item { TitleField(task = task, onEvent = onEvent) }
-                    item { NotesField(task = task, onEvent = onEvent) }
-                    item { SubjectMaterialLinks(task = task) }
-                    item { StudyTimeSection(state = state) }
-                    item {
-                        SubtaskSection(
-                            subtasks = task.subtasks,
-                            newSubtaskTitle = state.newSubtaskTitle,
-                            onEvent = onEvent,
-                        )
+                DetailDisplayState.Content -> {
+                    val task = requireNotNull(state.task)
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
+                    ) {
+                        item { CompletionRow(task = task, onEvent = onEvent) }
+                        item { TitleField(task = task, onEvent = onEvent) }
+                        item { NotesField(task = task, onEvent = onEvent) }
+                        item { SubjectMaterialLinks(task = task) }
+                        item { StudyTimeSection(state = state) }
+                        item {
+                            SubtaskSection(
+                                subtasks = task.subtasks,
+                                newSubtaskTitle = state.newSubtaskTitle,
+                                onEvent = onEvent,
+                            )
+                        }
+                        item { ReminderSection(reminders = task.reminders, onEvent = onEvent) }
+                        item { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) }
+                        item { StartStudySessionButton(onEvent = onEvent) }
                     }
-
-                    item { ReminderSection(reminders = task.reminders, onEvent = onEvent) }
-                    item { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) }
-                    item { StartStudySessionButton(onEvent = onEvent) }
                 }
             }
         }
@@ -418,3 +452,13 @@ private fun SectionHeader(title: String) {
 
 /** The occurrence count the "After N" recurrence-end chip offers; a reasonable default, not a limit. */
 private const val DEFAULT_OCCURRENCE_COUNT = 10
+
+private enum class DetailDisplayState { Loading, NotFound, Content }
+
+private val TaskDetailUiState.displayState: DetailDisplayState
+    get() =
+        when {
+            loading -> DetailDisplayState.Loading
+            notFound -> DetailDisplayState.NotFound
+            else -> DetailDisplayState.Content
+        }
