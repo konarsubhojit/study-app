@@ -133,6 +133,21 @@ extensions.configure<ApplicationExtension> {
     }
 }
 
+// Two flavours times three build types is six variants, and `./gradlew build` (what CI runs)
+// assembles, shrinks, dexes, lints and unit-tests every one of them. Nothing consumes a minified
+// `mock` build: the flavour exists so a developer can run the app against `FakeStudyFlowBackend`
+// (`installMockDebug`, README), while the shrunk builds that have to be verified are the
+// `production` ones that ship and the `productionReleaseTest` the instrumented smoke test runs
+// against. Dropping the two unused variants removes two full R8 + dexing + lint pipelines from
+// every build, which is both the slowest and the most memory-hungry part of it.
+androidComponents {
+    beforeVariants(selector().withFlavor("backend" to "mock")) { variant ->
+        if (variant.buildType != "debug") {
+            variant.enable = false
+        }
+    }
+}
+
 tasks.register("printVersionName") {
     group = "versioning"
     description = "Prints the canonical StudyFlow semantic version."

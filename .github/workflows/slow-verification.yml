@@ -49,8 +49,8 @@ jobs:
           managed_device_tasks=()
           # Matched on the managed device name (`pixel6Api34`, from AndroidCommon.kt) rather than
           # on any particular build type, so a module's `*DebugAndroidTest` and `:app`'s
-          # `*ProductionReleaseTestAndroidTest`/`*MockReleaseTestAndroidTest` are all discovered the
-          # same way; this deliberately excludes the per-module aggregate tasks (`assembleAndroidTest`,
+          # `*ProductionReleaseTestAndroidTest` are all discovered the same way; this deliberately
+          # excludes the per-module aggregate tasks (`assembleAndroidTest`,
           # `connectedAndroidTest`, ...), which do not run on a managed device at all.
           mapfile -t additional_managed_device_tasks < <(
             awk '/^[[:space:]]*[^[:space:]]+pixel6Api34[^[:space:]]*AndroidTest[[:space:]]+-/ { print $1 }' build/ci/gradle-tasks.txt
