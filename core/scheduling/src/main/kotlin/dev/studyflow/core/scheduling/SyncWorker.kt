@@ -60,7 +60,7 @@ public class SyncWorker
                     runCatching { SyncTrigger.valueOf(name) }.getOrNull()
                 } ?: SyncTrigger.SCHEDULED
 
-            if (tokenStore.authState.value == AuthState.LocalOnly) return Result.success()
+            if (tokenStore.authState.value != AuthState.SignedIn) return Result.success()
 
             return when (val outcome = syncEngine.sync(trigger)) {
                 SyncOutcome.Idle -> {

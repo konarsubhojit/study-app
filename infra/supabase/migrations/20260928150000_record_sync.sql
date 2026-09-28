@@ -168,7 +168,7 @@ begin
     end;
     replay := not wins
       and incoming_updated = existing.sync_updated_at
-      and incoming_device = existing.device_id
+      and incoming_device collate "C" = existing.device_id collate "C"
       and incoming_deleted = existing.deleted;
 
     if wins then

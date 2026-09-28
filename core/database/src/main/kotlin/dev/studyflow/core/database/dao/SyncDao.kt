@@ -208,7 +208,9 @@ public abstract class SyncDao {
     ): SyncDocument? =
         when (entityType) {
             SyncEntityType.TASK -> taskWithReminders(id)?.asSyncRecord()
-            SyncEntityType.MATERIAL -> material(id)?.asSyncRecord()
+            // A material queued while uploaded may since have lost its object; the server would
+            // refuse the whole batch, so it is treated as gone rather than pushed.
+            SyncEntityType.MATERIAL -> material(id)?.takeIf { it.isSyncable }?.asSyncRecord()
             SyncEntityType.SESSION -> null
         }
 
