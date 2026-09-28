@@ -2,6 +2,7 @@ package dev.studyflow.core.designsystem.navigation
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
@@ -27,6 +28,10 @@ import dev.studyflow.core.designsystem.layout.StudyFlowScaffold
  * device type, per ADR 0015. Labels are kept to a single line: a bar that wraps "Material s" onto
  * two lines is the clearest signal an app is unfinished, and at 200% font scale an unbounded label
  * wraps on any phone.
+ *
+ * The suite draws no app bar of its own: each screen owns exactly one, titled for itself (issue
+ * #163). The insets the suite pads its content by are consumed, so a screen's `TopAppBar` does not
+ * pad for the status bar a second time and open an empty band above its title.
  *
  * @param items at most five destinations; more than that belongs behind another entry point.
  * @param selected the selected destination key, or `null` when the current screen is not a
@@ -63,11 +68,13 @@ public fun <T> StudyFlowNavigationSuite(
                 }
             },
         ) { padding ->
-            Box(modifier = Modifier.fillMaxSize().padding(padding)) { movableContent() }
+            Box(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
+                movableContent()
+            }
         }
     } else {
         StudyFlowScaffold(modifier = modifier) { padding ->
-            Row(modifier = Modifier.fillMaxSize().padding(padding)) {
+            Row(modifier = Modifier.fillMaxSize().padding(padding).consumeWindowInsets(padding)) {
                 NavigationRail {
                     items.forEach { item ->
                         NavigationRailItem(

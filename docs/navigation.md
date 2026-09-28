@@ -20,6 +20,14 @@ are readings of the same sessions Insights aggregates, so they select Insights a
 the Insights screen; settings, and the data & privacy screen reached from it, are opened from the
 home app bar. Both remain addressable by the deep links below, which are unchanged.
 
+## App bars
+
+Each screen owns its one app bar, titled for itself; the app shell draws only the navigation
+surface and never an app bar of its own. `StudyFlowNavigationSuite` consumes the insets it pads its
+content by, so a screen's `StudyFlowTopAppBar` does not pad for the status bar a second time. A
+detail screen's back action is an `IconButton` with `Icons.AutoMirrored.Filled.ArrowBack` in that
+app bar, and its title is not repeated in the body.
+
 ## Deep links
 
 External entry points must use `StudyFlowDeepLinks.uriFor` rather than constructing URI strings.
