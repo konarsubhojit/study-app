@@ -166,6 +166,9 @@ public fun MaterialDetailRoute(
     )
 }
 
+// Every parameter past the state is one navigation or sharing callback the host owns, so folding
+// them into a holder would only move the same list one call site up.
+@Suppress("LongParameterList")
 @Composable
 public fun MaterialDetailScreen(
     state: MaterialDetailUiState,

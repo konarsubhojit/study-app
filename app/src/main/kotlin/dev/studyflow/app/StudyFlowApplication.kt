@@ -3,6 +3,11 @@ package dev.studyflow.app
 import android.app.Application
 import androidx.hilt.work.HiltWorkerFactory
 import androidx.work.Configuration
+import coil3.ImageLoader
+import coil3.PlatformContext
+import coil3.SingletonImageLoader
+import coil3.network.okhttp.OkHttpNetworkFetcherFactory
+import coil3.util.DebugLogger
 import dagger.hilt.android.HiltAndroidApp
 import dev.studyflow.app.timer.TimerRecoveryCoordinator
 import dev.studyflow.core.common.coroutines.ApplicationScope
@@ -19,7 +24,8 @@ import javax.inject.Inject
 @HiltAndroidApp
 class StudyFlowApplication :
     Application(),
-    Configuration.Provider {
+    Configuration.Provider,
+    SingletonImageLoader.Factory {
     @Inject lateinit var workerFactory: HiltWorkerFactory
 
     @Inject lateinit var logger: AppLogger
@@ -62,4 +68,16 @@ class StudyFlowApplication :
             reminderIntegrityCoordinator.checkNow()
         }
     }
+
+    /**
+     * Coil's default loader has no fetcher for `http(s)` models, so a material that only exists in
+     * object storage previews as a blank surface. Registering the fetcher here also gives every
+     * preview one loader whose failures reach logcat in debug builds (issue #164).
+     */
+    override fun newImageLoader(context: PlatformContext): ImageLoader =
+        ImageLoader
+            .Builder(context)
+            .components { add(OkHttpNetworkFetcherFactory()) }
+            .logger(if (BuildConfig.DEBUG) DebugLogger() else null)
+            .build()
 }
