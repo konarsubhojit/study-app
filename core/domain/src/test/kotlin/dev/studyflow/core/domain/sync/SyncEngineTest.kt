@@ -2,7 +2,9 @@ package dev.studyflow.core.domain.sync
 
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.model.SessionStatus
+import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.testing.data.testStudySession
+import dev.studyflow.core.testing.data.testStudyTask
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.runTest
@@ -51,6 +53,7 @@ class SyncEngineTest {
 
                 assertEquals(SyncOutcome.Synced(pushed = 0, applied = 0), outcome)
                 assertEquals(1, transport.pulls)
+                assertEquals(1, transport.documentPulls)
                 assertEquals(0, store.appliedPages)
             }
 
@@ -191,6 +194,69 @@ class SyncEngineTest {
             }
     }
 
+    @Nested
+    @DisplayName("tasks and materials")
+    inner class Documents {
+        @Test
+        fun `a mixed batch sends sessions and documents on their own streams before acknowledging`() =
+            runTest {
+                store.enqueue(sessions = listOf("session-1"))
+                store.enqueueTask(testStudyTask(id = "task-1", updatedAt = NOW))
+
+                val outcome = engine().sync(SyncTrigger.OUTBOUND)
+
+                assertEquals(SyncOutcome.Synced(pushed = 2, applied = 0), outcome)
+                assertEquals(1, transport.pushes)
+                assertEquals(listOf(listOf("task-1")), transport.pushedDocuments)
+                assertTrue(store.queue.isEmpty(), "both entries are acknowledged")
+            }
+
+        @Test
+        fun `a failed document push leaves the whole batch queued`() =
+            runTest {
+                store.enqueue(sessions = listOf("session-1"))
+                store.enqueueTask(testStudyTask(id = "task-1", updatedAt = NOW))
+                transport.documentPushFailure = SyncFailure("offline")
+
+                val outcome = engine().sync(SyncTrigger.OUTBOUND)
+
+                assertInstanceOf(SyncOutcome.Failed::class.java, outcome)
+                assertEquals(2, store.queue.size)
+            }
+
+        @Test
+        fun `the record delta is read after the session delta and resumes from its own cursor`() =
+            runTest {
+                store.documentCursor = "records-4"
+                transport.documentPages =
+                    listOf(
+                        SyncDocumentPage(
+                            changes = listOf(SyncTaskRecord(testStudyTask(id = "task-9", updatedAt = NOW), "device-b")),
+                            nextCursor = "records-5",
+                            hasMore = false,
+                        ),
+                    )
+
+                val outcome = engine().sync(SyncTrigger.SCHEDULED)
+
+                assertEquals(SyncOutcome.Synced(pushed = 0, applied = 1), outcome)
+                assertEquals(listOf<String?>("records-4"), transport.requestedDocumentCursors)
+                assertEquals("records-5", store.documentCursor)
+                assertEquals(listOf(NOW), store.documentReceivedAt)
+            }
+
+        @Test
+        fun `a failed record pull fails the run`() =
+            runTest {
+                transport.documentPullFailure = SyncFailure("server is down")
+
+                val outcome = engine().sync(SyncTrigger.MANUAL)
+
+                assertInstanceOf(SyncOutcome.Failed::class.java, outcome)
+                assertEquals("server is down", store.status.value.lastError)
+            }
+    }
+
     private fun engine(
         batchSize: Int = 50,
         maxPagesPerRun: Int = 10,
@@ -221,7 +287,25 @@ private class FakeSyncStore : SyncStore {
     val acknowledged = mutableListOf<List<Long>>()
     var cursor: String? = null
     var appliedPages = 0
+    val documents = mutableMapOf<String, SyncDocument>()
+    var documentCursor: String? = null
+    val documentReceivedAt = mutableListOf<Instant>()
+    var resets = 0
     private var nextSequence = 1L
+
+    fun enqueueTask(task: StudyTask) {
+        queue +=
+            SyncQueueItem(
+                sequence = nextSequence++,
+                entityType = SyncEntityType.TASK,
+                entityId = task.id,
+                operation = SyncOperation.UPSERT,
+                updatedAt = task.updatedAt,
+                deviceId = "device-a",
+            )
+        documents[task.id] = SyncTaskRecord(task, "device-a")
+        status.value = status.value.copy(pendingCount = queue.size)
+    }
 
     fun enqueue(sessions: List<String>) {
         sessions.forEach { id ->
@@ -270,6 +354,26 @@ private class FakeSyncStore : SyncStore {
 
     override suspend fun cursor(): String? = cursor
 
+    override suspend fun documentRecord(item: SyncQueueItem): SyncDocument? = documents[item.entityId]
+
+    override suspend fun applyDocumentPage(
+        page: SyncDocumentPage,
+        receivedAt: Instant,
+    ): Int {
+        documentReceivedAt += receivedAt
+        page.changes.forEach { documents[it.id] = it }
+        page.nextCursor?.let { documentCursor = it }
+        return page.changes.size
+    }
+
+    override suspend fun documentCursor(): String? = documentCursor
+
+    override suspend fun resetForAccountChange() {
+        resets++
+        cursor = null
+        documentCursor = null
+    }
+
     override suspend fun recordSuccess(at: Instant) {
         status.value = status.value.copy(lastSuccessAt = at, lastError = null, lastAttemptAt = at)
     }
@@ -292,6 +396,32 @@ private class FakeSyncTransport : SyncTransport {
     var pulls = 0
     val requestedCursors = mutableListOf<String?>()
     private var pageIndex = 0
+    var documentPages: List<SyncDocumentPage> = emptyList()
+    var documentPushFailure: SyncFailure? = null
+    var documentPullFailure: SyncFailure? = null
+    val pushedDocuments = mutableListOf<List<String>>()
+    var documentPulls = 0
+    val requestedDocumentCursors = mutableListOf<String?>()
+    private var documentPageIndex = 0
+
+    override suspend fun pushDocuments(documents: List<SyncDocument>): SyncResult<SyncPushAck> {
+        documentPushFailure?.let { return SyncResult.Failure(it) }
+        pushedDocuments += documents.map { it.id }
+        return SyncResult.Success(SyncPushAck(acceptedIds = documents.map { it.id }.toSet()))
+    }
+
+    override suspend fun pullDocuments(
+        cursor: String?,
+        limit: Int,
+    ): SyncResult<SyncDocumentPage> {
+        documentPulls++
+        requestedDocumentCursors += cursor
+        documentPullFailure?.let { return SyncResult.Failure(it) }
+        val page =
+            documentPages.getOrNull(documentPageIndex)?.also { documentPageIndex++ }
+                ?: SyncDocumentPage(changes = emptyList(), nextCursor = cursor, hasMore = false)
+        return SyncResult.Success(page)
+    }
 
     override suspend fun push(records: List<SyncSessionRecord>): SyncResult<SyncPushAck> {
         // One-shot: the hook models a single mutation racing a single in-flight batch.
