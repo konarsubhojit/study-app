@@ -8,6 +8,7 @@ import dev.studyflow.core.model.ReminderTrigger
 import dev.studyflow.core.model.SnoozeState
 import dev.studyflow.core.model.StudyTask
 import dev.studyflow.core.model.Subtask
+import dev.studyflow.core.testing.data.TEST_DEVICE_ID
 import dev.studyflow.core.testing.data.TEST_WALL_CLOCK
 import dev.studyflow.core.testing.data.testReminder
 import dev.studyflow.core.testing.data.testStudyTask
@@ -43,7 +44,7 @@ class OfflineFirstTaskRepositoryTest {
             Room
                 .inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), StudyFlowDatabase::class.java)
                 .build()
-        repository = OfflineFirstTaskRepository(database.studyTaskDao(), { now }, { zone })
+        repository = OfflineFirstTaskRepository(database.studyTaskDao(), { now }, { zone }, TEST_DEVICE_ID)
     }
 
     @After

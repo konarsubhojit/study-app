@@ -68,7 +68,8 @@ public object DatabaseModule {
         dao: StudyTaskDao,
         clock: Clock,
         timeZoneProvider: TimeZoneProvider,
-    ): TaskRepository = OfflineFirstTaskRepository(dao, clock, timeZoneProvider)
+        deviceIdProvider: DeviceIdProvider,
+    ): TaskRepository = OfflineFirstTaskRepository(dao, clock, timeZoneProvider, deviceIdProvider.current())
 
     @Provides
     @Singleton

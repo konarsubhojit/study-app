@@ -46,6 +46,12 @@ public enum class ApiEndpoint(
     /** Reads the session changes recorded after a cursor. */
     PullSessionChanges("get", "/$API_VERSION/sync/sessions"),
 
+    /** Sends a batch of local task and material changes (ADR 0018). */
+    PushRecordChanges("post", "/$API_VERSION/sync/records"),
+
+    /** Reads the task and material changes recorded after a cursor. */
+    PullRecordChanges("get", "/$API_VERSION/sync/records"),
+
     /** Deletes the signed-in account, its rows and its stored objects (issue #78). */
     DeleteAccount("delete", "/$API_VERSION/account"),
     ;

@@ -9,8 +9,10 @@ import androidx.room.Upsert
 import dev.studyflow.core.database.entity.ReminderEntity
 import dev.studyflow.core.database.entity.StudyTaskEntity
 import dev.studyflow.core.database.entity.SubtaskEntity
+import dev.studyflow.core.database.entity.SyncQueueEntity
 import dev.studyflow.core.database.entity.TaskTagEntity
 import dev.studyflow.core.database.entity.TaskWithReminders
+import dev.studyflow.core.database.entity.asSyncQueueEntity
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
 
@@ -124,6 +126,8 @@ public abstract class StudyTaskDao {
         insertReminders(value.reminders)
         insertTags(value.tags)
         insertSubtasks(value.subtasks)
+        // In the same transaction as the write, so sync can never miss an edit that is durable.
+        enqueueSyncEntry(value.task.asSyncQueueEntity())
     }
 
     /**
@@ -137,12 +141,30 @@ public abstract class StudyTaskDao {
         values.forEach { save(it) }
     }
 
-    /** Tombstones a task, keeping the row so the deletion can be synced. */
-    @Query("UPDATE study_tasks SET deleted = 1, updated_at = :deletedAt WHERE id = :id")
-    public abstract suspend fun softDelete(
+    /** Tombstones a task, keeping the row so the deletion can be synced, and queues the deletion. */
+    @Transaction
+    public open suspend fun softDelete(
         id: String,
         deletedAt: Instant,
+        deviceId: String,
+    ) {
+        tombstoneTask(id, deletedAt, deviceId)
+        taskRow(id)?.let { enqueueSyncEntry(it.asSyncQueueEntity()) }
+    }
+
+    @Query("UPDATE study_tasks SET deleted = 1, updated_at = :deletedAt, device_id = :deviceId WHERE id = :id")
+    protected abstract suspend fun tombstoneTask(
+        id: String,
+        deletedAt: Instant,
+        deviceId: String,
     )
+
+    @Query("SELECT * FROM study_tasks WHERE id = :id")
+    protected abstract suspend fun taskRow(id: String): StudyTaskEntity?
+
+    /** Declared here, rather than borrowed from `SyncDao`, so it runs inside *this* transaction. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun enqueueSyncEntry(entry: SyncQueueEntity)
 
     @Upsert
     public abstract suspend fun upsertTasks(tasks: List<StudyTaskEntity>)

@@ -69,3 +69,6 @@ public data class SyncStateEntity(
 
 /** The primary key of the one [SyncStateEntity] row; sync state is per install, not per entity. */
 public const val SYNC_STATE_ID: String = "default"
+
+/** The `sync_state` row holding the record stream's cursor (ADR 0018); its status columns stay unused. */
+public const val RECORD_SYNC_STATE_ID: String = "records"

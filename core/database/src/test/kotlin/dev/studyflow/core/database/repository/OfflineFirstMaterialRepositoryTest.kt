@@ -4,6 +4,7 @@ import androidx.room.Room
 import dev.studyflow.core.database.DATABASE_ROBOLECTRIC_SDK
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.entity.FolderEntity
+import dev.studyflow.core.testing.data.TEST_DEVICE_ID
 import dev.studyflow.core.testing.data.TEST_WALL_CLOCK
 import dev.studyflow.core.testing.data.testContentHash
 import dev.studyflow.core.testing.data.testMaterial
@@ -33,7 +34,7 @@ class OfflineFirstMaterialRepositoryTest {
             Room
                 .inMemoryDatabaseBuilder(RuntimeEnvironment.getApplication(), StudyFlowDatabase::class.java)
                 .build()
-        repository = OfflineFirstMaterialRepository(database.materialDao())
+        repository = OfflineFirstMaterialRepository(database.materialDao(), TEST_DEVICE_ID)
     }
 
     @After

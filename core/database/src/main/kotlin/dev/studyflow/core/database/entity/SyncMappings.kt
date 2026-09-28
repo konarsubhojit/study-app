@@ -1,9 +1,11 @@
 package dev.studyflow.core.database.entity
 
 import dev.studyflow.core.domain.sync.SyncEntityType
+import dev.studyflow.core.domain.sync.SyncMaterialRecord
 import dev.studyflow.core.domain.sync.SyncOperation
 import dev.studyflow.core.domain.sync.SyncQueueItem
 import dev.studyflow.core.domain.sync.SyncSessionRecord
+import dev.studyflow.core.domain.sync.SyncTaskRecord
 import dev.studyflow.core.model.StudySession
 
 // Room rows in the shapes sync speaks (issue #55). Kept apart from `EntityMappings.kt` because
@@ -50,3 +52,33 @@ public fun SyncQueueEntity.asExternalModel(): SyncQueueItem =
         updatedAt = updatedAt,
         deviceId = deviceId,
     )
+
+/** A task aggregate in the shape the record stream carries (ADR 0018). */
+public fun TaskWithReminders.asSyncRecord(): SyncTaskRecord = SyncTaskRecord(asExternalModel(), task.deviceId)
+
+/** A catalogue row in the shape the record stream carries (ADR 0018). */
+public fun MaterialEntity.asSyncRecord(): SyncMaterialRecord = SyncMaterialRecord(asExternalModel(), deviceId)
+
+/** The queue row a task write enqueues; a tombstoned task queues a delete. */
+public fun StudyTaskEntity.asSyncQueueEntity(): SyncQueueEntity =
+    SyncQueueEntity(
+        entityType = SyncEntityType.TASK,
+        entityId = id,
+        operation = if (deleted) SyncOperation.DELETE else SyncOperation.UPSERT,
+        updatedAt = updatedAt,
+        deviceId = deviceId,
+    )
+
+/** The queue row a material write enqueues; a tombstoned material queues a delete. */
+public fun MaterialEntity.asSyncQueueEntity(): SyncQueueEntity =
+    SyncQueueEntity(
+        entityType = SyncEntityType.MATERIAL,
+        entityId = id,
+        operation = if (deleted) SyncOperation.DELETE else SyncOperation.UPSERT,
+        updatedAt = updatedAt,
+        deviceId = deviceId,
+    )
+
+/** Whether this row may cross the wire; see [dev.studyflow.core.domain.sync.DocumentSyncMerge.isSyncable]. */
+public val MaterialEntity.isSyncable: Boolean
+    get() = remoteKey != null && syncState == MaterialSyncState.SYNCED

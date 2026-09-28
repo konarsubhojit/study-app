@@ -2,6 +2,7 @@ package dev.studyflow.core.network
 
 import dev.studyflow.core.network.model.StudyFlowJson
 import dev.studyflow.core.network.model.SyncDeltaDto
+import dev.studyflow.core.network.model.SyncRecordDeltaDto
 import dev.studyflow.core.network.model.SyncSessionEventDto
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -60,5 +61,24 @@ class SyncWireShapeTest {
 
         assertEquals(true, encoded.contains("\"uptimeMillis\":1200"), encoded)
         assertEquals(true, encoded.contains("\"bootId\":\"boot-0\""), encoded)
+    }
+
+    @Test
+    fun `a record delta keeps its payload as opaque JSON`() {
+        val serverDelta =
+            """
+            {"changes":[{"entityType":"task","id":"task-1","deviceId":"device-a",
+             "updatedAt":"2026-03-01T09:30:00Z","deleted":false,"schemaVersion":1,
+             "payload":{"id":"task-1","title":"Revise","futureField":[1,2]}}],
+             "nextCursor":"cursor-1","hasMore":true}
+            """.trimIndent()
+
+        val delta = StudyFlowJson.decodeFromString<SyncRecordDeltaDto>(serverDelta)
+
+        val record = delta.changes.single()
+        assertEquals("task", record.entityType)
+        assertEquals(1, record.schemaVersion)
+        assertEquals(true, record.payload.containsKey("futureField"), "unknown payload fields survive the round trip")
+        assertEquals(true, delta.hasMore)
     }
 }

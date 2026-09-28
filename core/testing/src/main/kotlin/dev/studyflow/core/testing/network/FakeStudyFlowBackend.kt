@@ -23,6 +23,8 @@ import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.SyncDeltaDto
 import dev.studyflow.core.network.model.SyncPushRequestDto
 import dev.studyflow.core.network.model.SyncPushResponseDto
+import dev.studyflow.core.network.model.SyncRecordDeltaDto
+import dev.studyflow.core.network.model.SyncRecordPushRequestDto
 import dev.studyflow.core.network.model.TaskDto
 import dev.studyflow.core.network.retry.RetryPolicy
 import dev.studyflow.core.network.version.ClientVersion
@@ -75,6 +77,12 @@ public class FakeStudyFlowBackend(
 
     /** What the next `GET /v1/sync/sessions` answers with. */
     public var syncDelta: SyncDeltaDto = SyncDeltaDto()
+
+    /** Push bodies received on `POST /v1/sync/records`, in order. */
+    public val pushedRecordChanges: MutableList<SyncRecordPushRequestDto> = mutableListOf()
+
+    /** What the next `GET /v1/sync/records` answers with. */
+    public var recordDelta: SyncRecordDeltaDto = SyncRecordDeltaDto()
 
     /** What `POST /v1/auth/signin/challenge` answers with. */
     public var signInChallenge: SignInChallengeDto =
@@ -171,6 +179,19 @@ public class FakeStudyFlowBackend(
                     respondJson(StudyFlowJson.encodeToString(response))
                 } else {
                     respondJson(StudyFlowJson.encodeToString(syncDelta.withoutDeviceAnchors()))
+                }
+            }
+
+            ApiEndpoint.PullRecordChanges.path -> {
+                if (request.method == HttpMethod.Post) {
+                    val body = request.body.toByteArray().decodeToString()
+                    val push = StudyFlowJson.decodeFromString<SyncRecordPushRequestDto>(body)
+                    pushedRecordChanges += push
+                    respondJson(
+                        StudyFlowJson.encodeToString(SyncPushResponseDto(acceptedIds = push.changes.map { it.id })),
+                    )
+                } else {
+                    respondJson(StudyFlowJson.encodeToString(recordDelta))
                 }
             }
 

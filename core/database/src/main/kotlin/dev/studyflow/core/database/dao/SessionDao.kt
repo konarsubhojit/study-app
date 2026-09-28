@@ -154,6 +154,8 @@ public abstract class SessionDao {
         upsertSessions(sessions)
         sessions.forEach { deleteEventsForSession(it.id) }
         insertEvents(events)
+        // A restored session is a local write like any other, so it replicates once signed in.
+        sessions.forEach { session -> enqueueIfSyncable(session) }
     }
 
     @Query("DELETE FROM session_events WHERE session_id = :sessionId")

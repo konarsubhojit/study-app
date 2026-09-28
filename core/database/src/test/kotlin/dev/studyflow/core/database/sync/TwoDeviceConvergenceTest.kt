@@ -4,10 +4,16 @@ import androidx.room.Room
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.database.DATABASE_ROBOLECTRIC_SDK
 import dev.studyflow.core.database.StudyFlowDatabase
+import dev.studyflow.core.database.repository.OfflineFirstMaterialRepository
+import dev.studyflow.core.database.repository.OfflineFirstTaskRepository
 import dev.studyflow.core.database.session.OfflineFirstSessionHistoryRepository
 import dev.studyflow.core.database.session.OfflineFirstSessionRepository
 import dev.studyflow.core.domain.session.SessionCommandResult
+import dev.studyflow.core.domain.sync.LastWriteWins
 import dev.studyflow.core.domain.sync.SessionSyncMerge
+import dev.studyflow.core.domain.sync.SyncDocument
+import dev.studyflow.core.domain.sync.SyncDocumentCodec
+import dev.studyflow.core.domain.sync.SyncDocumentPage
 import dev.studyflow.core.domain.sync.SyncEngine
 import dev.studyflow.core.domain.sync.SyncPage
 import dev.studyflow.core.domain.sync.SyncPushAck
@@ -16,10 +22,20 @@ import dev.studyflow.core.domain.sync.SyncSessionRecord
 import dev.studyflow.core.domain.sync.SyncTransport
 import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.domain.timer.TimerCommand
+import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SessionStatus
 import dev.studyflow.core.model.StudySession
+import dev.studyflow.core.model.StudyTask
+import dev.studyflow.core.model.Subtask
+import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.testing.data.testMaterial
+import dev.studyflow.core.testing.data.testReminder
+import dev.studyflow.core.testing.data.testStudyTask
 import dev.studyflow.core.testing.time.FakeDevice
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.datetime.LocalDateTime
+import kotlinx.datetime.TimeZone
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -196,12 +212,91 @@ class TwoDeviceConvergenceTest {
 
             assertEquals(0, server.pushes)
             assertEquals(0, server.pulls)
+            assertEquals(0, server.recordPulls)
 
-            // A scheduled run still asks — that is the protocol's minimum for "anything new?" —
-            // but the answer carries no changes and nothing is written.
+            // A scheduled run still asks — that is the protocol's minimum for "anything new?",
+            // once per stream — but the answer carries no changes and nothing is written.
             deviceA.sync(SyncTrigger.SCHEDULED)
             assertEquals(1, server.pulls)
+            assertEquals(1, server.recordPulls)
             assertEquals(0, server.pushes)
+        }
+
+    @Test
+    fun `a task arrives whole on the other device without replaying its reminders`() =
+        runBlocking {
+            // Linked to a material and a session B has never seen: the link must survive anyway.
+            val task = task(materialId = "material-elsewhere", sessionId = "session-elsewhere")
+            deviceA.tasks.save(task)
+
+            deviceA.sync()
+            deviceB.sync()
+
+            val onB = requireNotNull(deviceB.task(TASK_ID))
+            assertEquals(task, onB.copy(reminders = onB.reminders.map { it.copy(lastFiredAt = null) }))
+            // B learnt of the reminder at its own "now", so a trigger already past is not replayed.
+            assertEquals(deviceB.clock.now(), onB.reminders.single().lastFiredAt)
+            assertEquals(0, deviceB.pendingCount())
+        }
+
+    @Test
+    fun `concurrent task edits converge on the later write, and deletes replicate`() =
+        runBlocking {
+            deviceA.tasks.save(task())
+            deviceA.sync()
+            deviceB.sync()
+
+            deviceA.tasks.save(task(title = "Edited on A", updatedAt = T1))
+            deviceB.tasks.save(task(title = "Edited on B", updatedAt = T2))
+            deviceA.sync()
+            deviceB.sync()
+            deviceA.sync()
+
+            assertEquals("Edited on B", deviceA.task(TASK_ID)?.title)
+            assertEquals(deviceA.task(TASK_ID)?.title, deviceB.task(TASK_ID)?.title)
+
+            deviceA.tasks.delete(TASK_ID, deletedAt = T3)
+            deviceA.sync()
+            deviceB.sync()
+
+            assertNull("the tombstone reaches B", deviceB.task(TASK_ID))
+            assertEquals(0, deviceA.pendingCount() + deviceB.pendingCount())
+        }
+
+    @Test
+    fun `an uploaded material appears on the other device, which can then fetch it`() =
+        runBlocking {
+            val uploaded =
+                testMaterial(sync = SyncState.Synced, localUri = "file:///a/notes.pdf", pinnedForOffline = true)
+                    .copy(remoteKey = "owner/hash")
+            deviceA.materials.save(testMaterial(id = "pending-upload"))
+            deviceA.materials.save(uploaded)
+
+            deviceA.sync()
+            deviceB.sync()
+
+            val onB = requireNotNull(deviceB.material(uploaded.id))
+            assertEquals(uploaded.copy(localPath = null, pinnedForOffline = false), onB)
+            assertNull("a file that is not uploaded yet stays on its device", deviceB.material("pending-upload"))
+
+            // Downloading the file is device-local: it must not be echoed back as B's own edit.
+            deviceB.materials.save(onB.copy(localPath = "file:///b/notes.pdf"))
+            assertEquals(0, deviceB.pendingCount())
+        }
+
+    @Test
+    fun `after an account change the device re-sends its data and reads the new account from the start`() =
+        runBlocking {
+            deviceA.recordSession()
+            deviceA.tasks.save(task())
+            deviceA.sync()
+            assertEquals(0, deviceA.pendingCount())
+
+            deviceA.resetForAccountChange()
+
+            assertEquals(2, deviceA.pendingCount())
+            assertNull(deviceA.cursors().first)
+            assertNull(deviceA.cursors().second)
         }
 
     /** One device: a real database, a real store, a real engine, pointed at the shared server. */
@@ -219,6 +314,8 @@ class TwoDeviceConvergenceTest {
         private val sessions = OfflineFirstSessionRepository(database.sessionDao(), deviceId)
         private val history = OfflineFirstSessionHistoryRepository(database.sessionDao())
         private val store = RoomSyncStore(database.syncDao())
+        val tasks = OfflineFirstTaskRepository(database.studyTaskDao(), { clock.now() }, { TimeZone.UTC }, deviceId)
+        val materials = OfflineFirstMaterialRepository(database.materialDao(), deviceId, { clock.now() })
         private val engine =
             SyncEngine(
                 store = store,
@@ -267,6 +364,16 @@ class TwoDeviceConvergenceTest {
 
         suspend fun pendingCount(): Int = store.pending(limit = 10).size
 
+        suspend fun task(id: String): StudyTask? = tasks.observeTask(id).first()
+
+        suspend fun material(id: String): Material? = materials.observeById(id).first()
+
+        suspend fun resetForAccountChange() {
+            store.resetForAccountChange()
+        }
+
+        suspend fun cursors(): Pair<String?, String?> = store.cursor() to store.documentCursor()
+
         fun close() {
             database.close()
         }
@@ -277,8 +384,28 @@ class TwoDeviceConvergenceTest {
         }
     }
 
+    private fun task(
+        title: String = "Revise integration",
+        updatedAt: Instant = T0,
+        materialId: String? = null,
+        sessionId: String? = null,
+    ): StudyTask =
+        testStudyTask(
+            id = TASK_ID,
+            title = title,
+            materialId = materialId,
+            sessionId = sessionId,
+            dueAt = LocalDateTime(2026, 3, 1, 8, 0),
+            tags = setOf("exam"),
+            subtasks = listOf(Subtask(id = "subtask-1", title = "Chapter 4")),
+            reminders = listOf(testReminder(id = "reminder-1", taskId = TASK_ID)),
+            updatedAt = updatedAt,
+        )
+
     private companion object {
         const val SESSION_ID = "session-1"
+        const val TASK_ID = "task-1"
+        val T0: Instant = Instant.parse("2026-03-01T12:00:00Z")
         val T1: Instant = Instant.parse("2026-03-01T12:01:00Z")
         val T2: Instant = Instant.parse("2026-03-01T12:02:00Z")
         val T3: Instant = Instant.parse("2026-03-01T12:03:00Z")
@@ -296,9 +423,13 @@ class TwoDeviceConvergenceTest {
 private class FakeSyncServer : SyncTransport {
     private val state = linkedMapOf<String, SyncSessionRecord>()
     private val log = mutableListOf<SyncSessionRecord>()
+    private val documents = linkedMapOf<Pair<String, String>, SyncDocument>()
+    private val documentLog = mutableListOf<SyncDocument>()
     var pushes: Int = 0
         private set
     var pulls: Int = 0
+        private set
+    var recordPulls: Int = 0
         private set
 
     fun recordCount(): Int = state.size
@@ -308,6 +439,7 @@ private class FakeSyncServer : SyncTransport {
     fun resetCounters() {
         pushes = 0
         pulls = 0
+        recordPulls = 0
     }
 
     /** A deletion made by neither device — a browser tab, or another phone entirely. */
@@ -357,6 +489,51 @@ private class FakeSyncServer : SyncTransport {
             SyncPage(changes = page, nextCursor = next.toString(), hasMore = next < log.size),
         )
     }
+
+    override suspend fun pushDocuments(documents: List<SyncDocument>): SyncResult<SyncPushAck> {
+        pushes++
+        val accepted = mutableSetOf<String>()
+        val rejected = mutableSetOf<String>()
+        documents.forEach { document ->
+            // Through the real wire format, so what the other device receives is what the codec
+            // can actually carry — device-local state included, or rather excluded.
+            val wire = document.overTheWire()
+            val key = wire.entityType.name to wire.id
+            val current = this.documents[key]
+            if (current == null || LastWriteWins.wins(wire, current)) {
+                this.documents[key] = wire
+                documentLog += wire
+                accepted += wire.id
+            } else {
+                rejected += wire.id
+            }
+        }
+        return SyncResult.Success(SyncPushAck(acceptedIds = accepted, rejectedIds = rejected))
+    }
+
+    override suspend fun pullDocuments(
+        cursor: String?,
+        limit: Int,
+    ): SyncResult<SyncDocumentPage> {
+        recordPulls++
+        val from = cursor?.toIntOrNull() ?: 0
+        val page = documentLog.drop(from).take(limit)
+        val next = from + page.size
+        return SyncResult.Success(
+            SyncDocumentPage(changes = page, nextCursor = next.toString(), hasMore = next < documentLog.size),
+        )
+    }
+
+    private fun SyncDocument.overTheWire(): SyncDocument =
+        SyncDocumentCodec.decode(
+            entityType = entityType,
+            id = id,
+            deviceId = deviceId,
+            updatedAt = updatedAt,
+            deleted = deleted,
+            schemaVersion = SyncDocumentCodec.SCHEMA_VERSION,
+            payload = SyncDocumentCodec.encode(this),
+        )
 
     /** @return true when the change was stored, false when the server already holds something newer. */
     private fun accept(record: SyncSessionRecord): Boolean {

@@ -306,6 +306,50 @@ class DatabaseMigrationTest {
     }
 
     @Test
+    fun `migration 12 to 13 keeps task children, adds device ids and queues unreplicated data`() {
+        helper.createDatabase(DATABASE_NAME, 12).use { database ->
+            database.insertVersionElevenStoppedSession()
+            database.insertVersionTwelveTaskWithChildren()
+            database.insertVersionTwelveUploadedMaterial()
+        }
+
+        helper
+            .runMigrationsAndValidate(
+                DATABASE_NAME,
+                StudyFlowDatabase.VERSION,
+                true,
+                *DatabaseMigrations.ALL,
+            ).use { database ->
+                // Rebuilding study_tasks drops and recreates it; its cascading children survive.
+                listOf("reminders", "task_tags", "task_subtasks").forEach { table ->
+                    database.query("SELECT COUNT(*) FROM $table WHERE task_id = 'legacy-task'").use { cursor ->
+                        assertTrue(cursor.moveToFirst())
+                        assertEquals(table, 1, cursor.getInt(0))
+                    }
+                }
+                database.query("SELECT device_id FROM study_tasks").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(DatabaseMigrations.MIGRATED_DEVICE_ID, cursor.getString(0))
+                }
+                database.query("SELECT device_id FROM materials").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals(DatabaseMigrations.MIGRATED_DEVICE_ID, cursor.getString(0))
+                }
+                // Tasks and uploaded materials have never been replicated, so they are queued;
+                // sessions keep version 12's no-backfill rule.
+                database.query("SELECT entity_type, entity_id FROM sync_queue ORDER BY entity_type").use { cursor ->
+                    assertTrue(cursor.moveToFirst())
+                    assertEquals("MATERIAL", cursor.getString(0))
+                    assertEquals("legacy-material", cursor.getString(1))
+                    assertTrue(cursor.moveToNext())
+                    assertEquals("TASK", cursor.getString(0))
+                    assertEquals("legacy-task", cursor.getString(1))
+                    assertFalse(cursor.moveToNext())
+                }
+            }
+    }
+
+    @Test
     fun `migration 2 to 3 derives the session projection from the event log`() {
         helper.createDatabase(DATABASE_NAME, 2).use { database -> database.insertVersionTwoSession() }
 
@@ -423,6 +467,44 @@ class DatabaseMigrationTest {
             ) VALUES (
                 'legacy-session', NULL, NULL, NULL, 'STOPPED', 1789601069317, 1789601169317,
                 'legacy-device', 1789601169317, 0, 0, NULL, NULL
+            )
+            """.trimIndent(),
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionTwelveTaskWithChildren() {
+        execSQL(
+            """
+            INSERT INTO study_tasks (
+                id, title, time_zone, is_all_day, priority, updated_at, deleted
+            ) VALUES ('legacy-task', 'Revise databases', 'Europe/London', 0, 'NONE', 1789601069317, 0)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            INSERT INTO reminders (id, task_id, trigger_type, lead_time, precision)
+            VALUES ('legacy-reminder', 'legacy-task', 'BEFORE_DUE', 1800000, 'EXACT')
+            """.trimIndent(),
+        )
+        execSQL("INSERT INTO task_tags (task_id, tag) VALUES ('legacy-task', 'exam')")
+        execSQL(
+            "INSERT INTO task_subtasks (id, task_id, position, title) VALUES ('step', 'legacy-task', 0, 'Read')",
+        )
+    }
+
+    private fun SupportSQLiteDatabase.insertVersionTwelveUploadedMaterial() {
+        execSQL(
+            """
+            INSERT INTO materials (
+                id, folder_id, subject_id, display_name, mime_type, size_bytes, content_hash,
+                created_at, updated_at, notes, remote_key, sync_state, uploaded_bytes,
+                upload_total_bytes, failure_reason, failure_retryable, local_path,
+                pinned_for_offline, encrypted, deleted, page_count, duration_millis,
+                preview_page_index, preview_position_millis, playback_speed
+            ) VALUES (
+                'legacy-material', NULL, NULL, 'Legacy.pdf', 'application/pdf', 1024,
+                '${"3".repeat(64)}', 1789601069317, 1789601069317, NULL, 'owner/legacy', 'SYNCED',
+                NULL, NULL, NULL, NULL, '/legacy/material.pdf', 0, 0, 0, 12, NULL, 0, 0, 1.0
             )
             """.trimIndent(),
         )

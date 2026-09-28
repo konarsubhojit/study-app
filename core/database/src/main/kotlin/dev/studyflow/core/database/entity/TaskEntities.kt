@@ -7,6 +7,7 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import dev.studyflow.core.database.DatabaseMigrations
 import dev.studyflow.core.model.RecurrenceFrequency
 import dev.studyflow.core.model.ReminderPrecision
 import dev.studyflow.core.model.TaskPriority
@@ -24,6 +25,7 @@ import kotlin.time.Instant
  *   persistence never changes what "09:00" meant.
  * @property dueAtUtc the instant [dueAt] resolves to, derived on write. Every list screen filters
  *   and orders by it, and SQLite cannot index a value it would have to call back into Kotlin for.
+ * @property deviceId the device that made the last replicated write; the sync tie-break.
  */
 @Entity(
     tableName = "study_tasks",
@@ -34,18 +36,9 @@ import kotlin.time.Instant
             childColumns = ["subject_id"],
             onDelete = ForeignKey.SET_NULL,
         ),
-        ForeignKey(
-            entity = MaterialEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["material_id"],
-            onDelete = ForeignKey.SET_NULL,
-        ),
-        ForeignKey(
-            entity = StudySessionEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["session_id"],
-            onDelete = ForeignKey.SET_NULL,
-        ),
+        // `material_id` and `session_id` deliberately have no foreign key (ADR 0018): a task synced
+        // from another device may arrive before the material or session it links to, and a
+        // constraint would force the link to be dropped — and then pushed back as dropped.
     ],
     indices = [
         // The three list screens — overdue, today, upcoming — are all
@@ -107,6 +100,8 @@ public data class StudyTaskEntity(
     @ColumnInfo(name = "updated_at")
     val updatedAt: Instant,
     val deleted: Boolean,
+    @ColumnInfo(name = "device_id")
+    val deviceId: String = DatabaseMigrations.MIGRATED_DEVICE_ID,
 )
 
 /**

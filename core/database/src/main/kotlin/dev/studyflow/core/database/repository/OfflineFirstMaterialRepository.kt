@@ -22,6 +22,8 @@ import kotlinx.coroutines.flow.map
  */
 public class OfflineFirstMaterialRepository(
     private val dao: MaterialDao,
+    /** Stamped on every replicated write this device makes; the sync tie-break (ADR 0018). */
+    private val deviceId: String,
     private val clock: Clock = SystemWallClock,
 ) : MaterialRepository {
     override fun observeAll(): Flow<List<Material>> = dao.observeAll().asExternalModels()
@@ -35,7 +37,7 @@ public class OfflineFirstMaterialRepository(
         dao.findByContentHash(contentHash)?.asExternalModel()
 
     override suspend fun save(material: Material) {
-        dao.save(material.asEntity())
+        dao.save(material.asEntity(deviceId))
     }
 
     override suspend fun updatePreviewState(
@@ -48,7 +50,7 @@ public class OfflineFirstMaterialRepository(
     }
 
     override suspend fun delete(id: String) {
-        dao.softDelete(id, clock.now())
+        dao.softDelete(id, clock.now(), deviceId)
     }
 
     private fun Flow<List<MaterialEntity>>.asExternalModels(): Flow<List<Material>> =
