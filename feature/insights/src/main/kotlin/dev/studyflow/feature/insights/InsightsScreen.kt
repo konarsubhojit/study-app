@@ -1,6 +1,7 @@
 package dev.studyflow.feature.insights
 
 import android.content.Intent
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -27,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,6 +36,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalInspectionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
@@ -41,6 +44,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.domain.stats.AverageSessionLength
 import dev.studyflow.core.domain.stats.BucketTotal
@@ -268,6 +272,11 @@ private fun TrendSection(
         // The baseline is what makes a short bar read as a small value rather than as a bar that
         // failed to draw.
         HorizontalDivider()
+        Text(
+            text = "0 min",
+            style = MaterialTheme.typography.labelSmall,
+            modifier = Modifier.padding(top = MaterialTheme.spacing.extraSmall),
+        )
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = MaterialTheme.spacing.extraSmall),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -307,6 +316,7 @@ private fun TrendBars(
         verticalAlignment = Alignment.Bottom,
     ) {
         fractions.forEach { fraction ->
+            val animatedFraction = animateChartFraction(fraction)
             Box(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
                 contentAlignment = Alignment.BottomCenter,
@@ -316,7 +326,7 @@ private fun TrendBars(
                         Modifier
                             .widthIn(max = BAR_MAX_WIDTH)
                             .fillMaxWidth()
-                            .fillMaxHeight(fraction)
+                            .fillMaxHeight(animatedFraction)
                             .clip(MaterialTheme.shapes.small)
                             .background(MaterialTheme.colorScheme.primary),
                 )
@@ -338,10 +348,14 @@ private fun TrendArea(
     modifier: Modifier = Modifier,
 ) {
     val plotColor = MaterialTheme.colorScheme.primary
+    val animatedFractions = fractions.map { fraction -> animateChartFraction(fraction) }
     Canvas(modifier = modifier) {
-        if (fractions.isEmpty()) return@Canvas
-        val stepX = if (fractions.size > 1) size.width / (fractions.size - 1) else size.width
-        val points = fractions.mapIndexed { index, fraction -> Offset(index * stepX, size.height * (1f - fraction)) }
+        if (animatedFractions.isEmpty()) return@Canvas
+        val stepX = if (animatedFractions.size > 1) size.width / (animatedFractions.size - 1) else size.width
+        val points =
+            animatedFractions.mapIndexed { index, fraction ->
+                Offset(index * stepX, size.height * (1f - fraction))
+            }
         val area =
             Path().apply {
                 moveTo(points.first().x, size.height)
@@ -389,10 +403,11 @@ private fun SubjectBreakdownSection(
                         value = total.totalCounted.inWholeMinutes,
                         max = maxMinutes,
                     )
+                val animatedFraction = animateChartFraction(fraction)
                 Box(
                     modifier =
                         Modifier
-                            .fillMaxWidth(fraction)
+                            .fillMaxWidth(animatedFraction)
                             .height(BAR_HEIGHT)
                             .clip(MaterialTheme.shapes.small)
                             .background(MaterialTheme.colorScheme.secondary),
@@ -410,6 +425,16 @@ private fun SubjectBreakdownSection(
             }
         }
     }
+}
+
+@Composable
+private fun animateChartFraction(targetFraction: Float): Float {
+    if (LocalInspectionMode.current) return targetFraction
+    val fraction = remember(targetFraction) { Animatable(0f) }
+    LaunchedEffect(fraction, targetFraction) {
+        fraction.animateTo(targetFraction, animationSpec = StudyFlowMotion.spatial())
+    }
+    return fraction.value
 }
 
 @Composable
