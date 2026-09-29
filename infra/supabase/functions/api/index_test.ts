@@ -790,7 +790,10 @@ Deno.test("passkey sign-in verifies the assertion, consumes the challenge once a
         const response = await handleRequest(new Request("https://example.test/v1/auth/signin", {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ type: "passkey", assertion: await assertionJson(passkey, { counter: 4 }) }),
+            body: JSON.stringify({
+                type: "passkey",
+                assertion: await assertionJson(passkey, { counter: 4, userHandle: OWNER }),
+            }),
         }));
         const body = await response.json();
         if (response.status !== 200 || body.accessToken !== "passkey-access" || body.refreshToken !== "passkey-refresh") {
@@ -863,6 +866,13 @@ Deno.test("passkey sign-in never trusts a client-supplied user handle", async ()
         if (response.status !== 401) throw new Error("a user handle naming another account was accepted");
     });
     if (state.calls.length !== 0) throw new Error("a session was minted for a client-named account");
+});
+
+Deno.test("passkey sign-in rejects an assertion without a user handle", async () => {
+    await expectPasskeySignInRejected(
+        { omitUserHandle: true },
+        "an assertion without a user handle was accepted",
+    );
 });
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -1002,6 +1012,7 @@ async function expectPasskeySignInRejected(
         counter?: number;
         storedCounter?: number;
         storeCredential?: boolean;
+        omitUserHandle?: boolean;
         signWith?: Passkey;
     },
     message: string,
@@ -1019,6 +1030,7 @@ async function expectPasskeySignInRejected(
             rpId: options.rpId,
             flags: options.flags,
             credentialId: passkey.credentialId,
+            userHandle: options.omitUserHandle ? undefined : options.userHandle ?? OWNER,
         });
         const response = await handleRequest(passkeySignInRequest(assertion));
         if (response.status !== 401) throw new Error(message);
@@ -1038,7 +1050,14 @@ async function newPasskey(): Promise<Passkey> {
 
 async function assertionJson(
     passkey: Passkey,
-    options: { counter: number; origin?: string; rpId?: string; flags?: number; credentialId?: string; userHandle?: string },
+    options: {
+        counter: number;
+        origin?: string;
+        rpId?: string;
+        flags?: number;
+        credentialId?: string;
+        userHandle?: string;
+    },
 ): Promise<string> {
     const credentialId = options.credentialId ?? passkey.credentialId;
     const clientDataJSON = new TextEncoder().encode(JSON.stringify({
