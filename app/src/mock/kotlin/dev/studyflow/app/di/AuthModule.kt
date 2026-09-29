@@ -4,7 +4,9 @@ import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
+import dev.studyflow.app.BuildConfig
 import dev.studyflow.feature.auth.GoogleSignInConfig
+import dev.studyflow.feature.auth.PasskeySignInConfig
 import dev.studyflow.feature.auth.SignInCredential
 import dev.studyflow.feature.auth.SignInCredentialProvider
 
@@ -13,6 +15,9 @@ import dev.studyflow.feature.auth.SignInCredentialProvider
 object AuthModule {
     @Provides
     fun googleSignInConfig(): GoogleSignInConfig = GoogleSignInConfig("mock-client-id")
+
+    @Provides
+    fun passkeySignInConfig(): PasskeySignInConfig = PasskeySignInConfig(enabled = BuildConfig.PASSKEY_SIGN_IN_ENABLED)
 
     @Provides
     fun credentialProvider(): SignInCredentialProvider =

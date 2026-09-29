@@ -48,6 +48,21 @@ val googleServerClientId: String =
         .gradleProperty("studyflow.googleServerClientId")
         .orElse(providers.environmentVariable("STUDYFLOW_GOOGLE_SERVER_CLIENT_ID"))
         .getOrElse("")
+// Passkey sign-in is opt-in (off unless explicitly enabled) because it only works once the
+// relying-party domain serves an assetlinks.json naming this build's signing certificate. CI sets
+// it from the STUDYFLOW_PASSKEY_SIGN_IN_ENABLED repository variable; see docs/authentication.md.
+val passkeySignInEnabled: Boolean =
+    providers
+        .gradleProperty("studyflow.passkeySignInEnabled")
+        .orElse(providers.environmentVariable("STUDYFLOW_PASSKEY_SIGN_IN_ENABLED"))
+        .map(String::trim)
+        .filter(String::isNotEmpty)
+        .getOrElse("false")
+        .let {
+            requireNotNull(it.toBooleanStrictOrNull()) {
+                "studyflow.passkeySignInEnabled '$it' must be 'true' or 'false'"
+            }
+        }
 val versionProperties =
     Properties().apply {
         file("version.properties").inputStream().use(::load)
@@ -102,6 +117,7 @@ extensions.configure<ApplicationExtension> {
 
         // The server uses this to decide when an installed build is too old to serve.
         buildConfigField("String", "API_CLIENT_VERSION", "\"$appVersionName\"")
+        buildConfigField("boolean", "PASSKEY_SIGN_IN_ENABLED", "$passkeySignInEnabled")
     }
 
     flavorDimensions += "backend"

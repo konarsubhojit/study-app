@@ -10,6 +10,7 @@ import dagger.hilt.components.SingletonComponent
 import dev.studyflow.app.BuildConfig
 import dev.studyflow.feature.auth.CredentialManagerSignInClient
 import dev.studyflow.feature.auth.GoogleSignInConfig
+import dev.studyflow.feature.auth.PasskeySignInConfig
 import dev.studyflow.feature.auth.SignInCredentialProvider
 import javax.inject.Singleton
 
@@ -43,4 +44,7 @@ object AuthModule {
         }
         return GoogleSignInConfig(serverClientId = BuildConfig.GOOGLE_SERVER_CLIENT_ID)
     }
+
+    @Provides
+    fun passkeySignInConfig(): PasskeySignInConfig = PasskeySignInConfig(enabled = BuildConfig.PASSKEY_SIGN_IN_ENABLED)
 }

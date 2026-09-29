@@ -8,21 +8,36 @@ import androidx.credentials.GetPublicKeyCredentialOption
 import androidx.credentials.PublicKeyCredential
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetGoogleIdOption
+import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 
 /**
  * Obtains an assertion from the system Credential Manager. The caller sends the returned assertion
  * to its backend, which verifies it and exchanges it for [dev.studyflow.core.network.auth.AuthTokens].
+ *
+ * Two request shapes are used, because the pinned `credentials-play-services-auth` rejects a
+ * [GetSignInWithGoogleOption] that shares a request with any other option
+ * ("GetSignInWithGoogleOption cannot be combined with other options"):
+ *
+ * * With a passkey request, one sheet offers the passkey and Google together. Google is a
+ *   [GetGoogleIdOption] there — the only Google option that may be combined — and if that sheet
+ *   has nothing to offer, the client retries with Google alone.
+ * * Google alone — the retry, and the whole flow while passkey sign-in is switched off — is a
+ *   [GetSignInWithGoogleOption]. It always shows the account chooser, where a [GetGoogleIdOption]
+ *   may drop itself from the sheet without raising anything.
  */
 public class CredentialManagerSignInClient(
     private val credentialManager: CredentialManager,
 ) : SignInCredentialProvider {
     override suspend fun getCredential(
         activity: Activity,
-        passkeyRequestJson: String,
+        passkeyRequestJson: String?,
         google: GoogleSignInConfig,
     ): SignInCredential {
-        require(passkeyRequestJson.isNotBlank()) { "passkeyRequestJson must not be blank" }
+        require(passkeyRequestJson == null || passkeyRequestJson.isNotBlank()) {
+            "passkeyRequestJson must be null or non-blank"
+        }
+        if (passkeyRequestJson == null) return signInWithGoogle(activity, google)
 
         val request =
             GetCredentialRequest(
@@ -38,21 +53,19 @@ public class CredentialManagerSignInClient(
         return try {
             credentialManager.getCredential(activity, request).credential.toSignInCredential()
         } catch (_: NoCredentialException) {
-            try {
-                val googleRequest =
-                    GetCredentialRequest(
-                        listOf(
-                            GetGoogleIdOption
-                                .Builder()
-                                .setServerClientId(google.serverClientId)
-                                .setFilterByAuthorizedAccounts(false)
-                                .build(),
-                        ),
-                    )
-                credentialManager.getCredential(activity, googleRequest).credential.toSignInCredential()
-            } catch (stillNoCredential: NoCredentialException) {
-                throw NoSignInCredentialAvailableException(stillNoCredential)
-            }
+            signInWithGoogle(activity, google)
+        }
+    }
+
+    private suspend fun signInWithGoogle(
+        activity: Activity,
+        google: GoogleSignInConfig,
+    ): SignInCredential {
+        val request = GetCredentialRequest(listOf(GetSignInWithGoogleOption.Builder(google.serverClientId).build()))
+        return try {
+            credentialManager.getCredential(activity, request).credential.toSignInCredential()
+        } catch (stillNoCredential: NoCredentialException) {
+            throw NoSignInCredentialAvailableException(stillNoCredential)
         }
     }
 
@@ -63,9 +76,10 @@ public class CredentialManagerSignInClient(
 }
 
 public fun interface SignInCredentialProvider {
+    /** [passkeyRequestJson] is `null` when passkey sign-in is disabled; only Google is offered then. */
     public suspend fun getCredential(
         activity: Activity,
-        passkeyRequestJson: String,
+        passkeyRequestJson: String?,
         google: GoogleSignInConfig,
     ): SignInCredential
 }
@@ -97,7 +111,7 @@ private fun androidx.credentials.Credential.toSignInCredential(): SignInCredenti
         }
 
         is CustomCredential
-        if type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL -> {
+        if type in GOOGLE_ID_TOKEN_TYPES -> {
             SignInCredential.GoogleIdToken(GoogleIdTokenCredential.createFrom(data).idToken)
         }
 
@@ -105,3 +119,11 @@ private fun androidx.credentials.Credential.toSignInCredential(): SignInCredenti
             error("Unsupported Credential Manager credential type")
         }
     }
+
+// A Play Services sign-in intent reports the plain ID-token type; a framework provider answering a
+// Sign in with Google request may report the SIWG variant. Both carry the same bundle.
+private val GOOGLE_ID_TOKEN_TYPES =
+    setOf(
+        GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL,
+        GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_SIWG_CREDENTIAL,
+    )

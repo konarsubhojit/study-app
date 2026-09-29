@@ -35,6 +35,7 @@ public data class AccountUiState(
     val authState: AuthState = AuthState.LocalOnly,
     val busy: Boolean = false,
     val outcome: SignInOutcome? = null,
+    val passkeySignIn: Boolean = false,
 ) : UiState
 
 public sealed interface AccountUiEvent : UiEvent {
@@ -55,6 +56,7 @@ public class AccountViewModel
         private val session: AuthSession,
         private val coordinator: SignInCoordinator,
         private val credentials: SignInCredentialProvider,
+        passkeys: PasskeySignInConfig,
     ) : MviViewModel<AccountUiEvent, AccountUiEffect>(savedStateHandle) {
         private val busy = MutableStateFlow(false)
         private val outcome = MutableStateFlow<SignInOutcome?>(null)
@@ -63,8 +65,9 @@ public class AccountViewModel
                 session.state,
                 busy,
                 outcome,
-                ::AccountUiState,
-            ).stateInViewModel(AccountUiState(session.state.value))
+            ) { authState, isBusy, lastOutcome ->
+                AccountUiState(authState, isBusy, lastOutcome, passkeys.enabled)
+            }.stateInViewModel(AccountUiState(session.state.value, passkeySignIn = passkeys.enabled))
 
         override fun onEvent(event: AccountUiEvent) {
             if (busy.value) return
@@ -137,7 +140,9 @@ public fun AccountScreen(
             when (state.authState) {
                 AuthState.LocalOnly -> {
                     Text("Local only — study data stays on this device.")
-                    TextButton(onClick = onSignIn, enabled = !state.busy) { Text("Sign in with passkey or Google") }
+                    TextButton(onClick = onSignIn, enabled = !state.busy) {
+                        Text(if (state.passkeySignIn) "Sign in with passkey or Google" else "Sign in with Google")
+                    }
                 }
 
                 AuthState.SignedIn -> {
