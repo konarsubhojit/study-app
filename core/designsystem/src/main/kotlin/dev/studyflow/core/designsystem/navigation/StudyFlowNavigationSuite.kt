@@ -106,7 +106,7 @@ private fun <T> NavigationItemIcon(
 
 @Composable
 private fun NavigationItemLabel(label: String) {
-    Text(text = label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    Text(text = label, maxLines = 1, softWrap = false, overflow = TextOverflow.Ellipsis)
 }
 
 /** The Material 3 maximum for a navigation bar. */
