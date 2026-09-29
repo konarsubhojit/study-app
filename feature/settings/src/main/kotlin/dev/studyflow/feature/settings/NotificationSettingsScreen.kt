@@ -161,10 +161,10 @@ public fun NotificationSettingsScreen(
                 modifier = Modifier.fillMaxSize().padding(MaterialTheme.spacing.medium),
                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
             ) {
-                item {
+                item(key = "settings-account") {
                     Box(Modifier.animateItem()) { account() }
                 }
-                item {
+                item(key = "settings-title") {
                     Text(
                         text = "Notifications",
                         style = MaterialTheme.typography.headlineSmall,
@@ -172,31 +172,31 @@ public fun NotificationSettingsScreen(
                     )
                 }
 
-                item {
+                item(key = "settings-sync-status") {
                     Box(Modifier.animateItem()) { syncStatus() }
                 }
 
                 if (state.notificationsBlocked) {
-                    item {
+                    item(key = "blocked-notifications") {
                         Box(Modifier.animateItem()) {
                             BlockedCard(state = state, onEvent = onEvent)
                         }
                     }
                 }
 
-                item {
+                item(key = "battery-diagnostics") {
                     Box(Modifier.animateItem()) {
                         BatteryDiagnosticsCard(state.batteryDiagnostics, onEvent)
                     }
                 }
 
-                item {
+                item(key = "weekly-summary") {
                     Box(Modifier.animateItem()) {
                         WeeklySummaryCard(schedule = state.weeklySummary, onEvent = onEvent)
                     }
                 }
 
-                items(state.channels, key = { it.channel.id }) { status ->
+                items(state.channels, key = { "channel-${it.channel.id}" }) { status ->
                     ChannelCard(
                         status = status,
                         blockedAppWide = state.notificationsBlocked,
@@ -206,7 +206,7 @@ public fun NotificationSettingsScreen(
                     )
                 }
 
-                item {
+                item(key = "open-system-settings") {
                     TextButton(
                         onClick = { onEvent(NotificationSettingsUiEvent.OpenAppSettings) },
                         modifier = Modifier.animateItem(),
@@ -215,7 +215,7 @@ public fun NotificationSettingsScreen(
                     }
                 }
 
-                item {
+                item(key = "data-privacy") {
                     Box(Modifier.animateItem()) {
                         DataPrivacyCard(onOpen = onOpenDataPrivacy)
                     }

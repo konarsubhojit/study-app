@@ -158,7 +158,7 @@ private fun FilterRow(
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         contentPadding = PaddingValues(vertical = MaterialTheme.spacing.small),
     ) {
-        item {
+        item(key = "all-subjects") {
             FilterChip(
                 selected = state.filter.subjectId == null,
                 onClick = { onEvent(HistoryUiEvent.SubjectFilterChanged(null)) },
@@ -166,7 +166,7 @@ private fun FilterRow(
                 modifier = Modifier.animateItem(),
             )
         }
-        items(state.subjectOptions, key = { it.id }) { subject ->
+        items(state.subjectOptions, key = { "subject-${it.id}" }) { subject ->
             FilterChip(
                 selected = state.filter.subjectId == subject.id,
                 onClick = { onEvent(HistoryUiEvent.SubjectFilterChanged(subject.id)) },
@@ -175,7 +175,7 @@ private fun FilterRow(
             )
         }
         if (state.filter.isNarrowed) {
-            item {
+            item(key = "clear-filter") {
                 TextButton(
                     onClick = { onEvent(HistoryUiEvent.FilterCleared) },
                     modifier = Modifier.animateItem(),
@@ -475,7 +475,7 @@ private fun SubjectPicker(
     onSubjectChange: (String?) -> Unit,
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-        item {
+        item(key = "no-subject") {
             FilterChip(
                 selected = selectedSubjectId == null,
                 onClick = { onSubjectChange(null) },
@@ -483,7 +483,7 @@ private fun SubjectPicker(
                 modifier = Modifier.animateItem(),
             )
         }
-        items(subjectOptions, key = { it.id }) { subject ->
+        items(subjectOptions, key = { "subject-${it.id}" }) { subject ->
             FilterChip(
                 selected = selectedSubjectId == subject.id,
                 onClick = { onSubjectChange(subject.id) },

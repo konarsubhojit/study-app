@@ -59,12 +59,12 @@ public fun HomeScreen(
             contentPadding = PaddingValues(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-            item {
+            item(key = "focus-action") {
                 Button(onClick = actions.onOpenTimer, modifier = Modifier.fillMaxWidth().animateItem()) {
                     Text(if (state.activeSession == null) "Start a focus session" else "Resume focus session")
                 }
             }
-            item {
+            item(key = "focus-time") {
                 SummaryCard(
                     title = "Focus time",
                     detail = "${state.focusTime.inWholeMinutes} of ${state.focusGoal.inWholeMinutes} min",
@@ -72,7 +72,7 @@ public fun HomeScreen(
                     modifier = Modifier.animateItem(),
                 )
             }
-            item {
+            item(key = "current-streak") {
                 SummaryCard(
                     title = "Current streak",
                     detail = if (state.streakDays == 1) "1 day" else "${state.streakDays} days",
@@ -81,7 +81,7 @@ public fun HomeScreen(
                 )
             }
             state.activeSession?.let { session ->
-                item {
+                item(key = "active-session") {
                     SummaryCard(
                         title = activeSessionTitle(session.elapsed.hasUnverifiedTime),
                         detail = session.note ?: "Tap to continue",
@@ -91,7 +91,7 @@ public fun HomeScreen(
                 }
             }
             state.nextTask?.let { task ->
-                item {
+                item(key = "next-task") {
                     SummaryCard(
                         title = "Next due",
                         detail = task.title,
@@ -101,14 +101,14 @@ public fun HomeScreen(
                 }
             }
             if (state.recentMaterials.isNotEmpty()) {
-                item {
+                item(key = "recent-materials-header") {
                     Text(
                         "Recent materials",
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.animateItem(),
                     )
                 }
-                items(state.recentMaterials, key = { it.id }) { material ->
+                items(state.recentMaterials, key = { "material-${it.id}" }) { material ->
                     SummaryCard(
                         title = material.displayName,
                         detail =
