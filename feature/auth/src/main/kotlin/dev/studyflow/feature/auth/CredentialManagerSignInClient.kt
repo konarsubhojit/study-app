@@ -104,7 +104,7 @@ public sealed interface SignInCredential {
     }
 }
 
-internal fun androidx.credentials.Credential.toSignInCredential(): SignInCredential =
+private fun androidx.credentials.Credential.toSignInCredential(): SignInCredential =
     when (this) {
         is PublicKeyCredential -> {
             SignInCredential.Passkey(authenticationResponseJson)
