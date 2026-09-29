@@ -625,6 +625,7 @@ private fun FilterChipsRow(
                     onEvent(TasksListUiEvent.SortChanged(nextSort))
                 },
                 label = { Text(text = if (sortedByPriority) "Sorted by priority" else "Sorted by due date") },
+                modifier = Modifier.animateItem(),
             )
         }
         items(TaskPriority.entries.toList()) { priority ->

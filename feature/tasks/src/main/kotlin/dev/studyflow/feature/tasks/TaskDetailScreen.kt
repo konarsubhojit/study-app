@@ -146,8 +146,16 @@ public fun TaskDetailScreen(
                                 )
                             }
                         }
-                        item { Box(Modifier.animateItem()) { ReminderSection(reminders = task.reminders, onEvent = onEvent) } }
-                        item { Box(Modifier.animateItem()) { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) } }
+                        item {
+                            Box(
+                                Modifier.animateItem(),
+                            ) { ReminderSection(reminders = task.reminders, onEvent = onEvent) }
+                        }
+                        item {
+                            Box(
+                                Modifier.animateItem(),
+                            ) { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) }
+                        }
                         item { Box(Modifier.animateItem()) { StartStudySessionButton(onEvent = onEvent) } }
                     }
                 }

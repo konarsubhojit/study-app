@@ -83,15 +83,14 @@ public fun WeeklySummaryScreen(
             },
         )
         AnimatedContent(
-            targetState = state.summary != null,
+            targetState = state.summary,
             modifier = Modifier.fillMaxSize(),
             transitionSpec = {
                 fadeIn(StudyFlowMotion.effects()) togetherWith fadeOut(StudyFlowMotion.effects())
             },
             label = "weekly summary state",
-        ) { hasSummary ->
-            val summary = state.summary
-            if (!hasSummary || summary == null) {
+        ) { summary ->
+            if (summary == null) {
                 LoadingState()
             } else {
                 Column(
@@ -103,7 +102,10 @@ public fun WeeklySummaryScreen(
                 ) {
                     SummaryHeadline(summary)
                     HorizontalDivider()
-                    SummaryRow(label = "Top subjects", value = WeeklySummaryCopy.topSubjectsLabel(summary, state::subjectName))
+                    SummaryRow(
+                        label = "Top subjects",
+                        value = WeeklySummaryCopy.topSubjectsLabel(summary, state::subjectName),
+                    )
                     SummaryRow(label = "Streak", value = WeeklySummaryCopy.streakLabel(summary))
                     SummaryRow(label = "Goal", value = WeeklySummaryCopy.goalLabel(summary))
                     SummaryRow(label = "Compared with last week", value = WeeklySummaryCopy.deltaLabel(summary))

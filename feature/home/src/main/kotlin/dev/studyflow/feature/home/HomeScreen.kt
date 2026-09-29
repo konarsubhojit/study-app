@@ -101,7 +101,13 @@ public fun HomeScreen(
                 }
             }
             if (state.recentMaterials.isNotEmpty()) {
-                item { Text("Recent materials", style = MaterialTheme.typography.titleLarge, modifier = Modifier.animateItem()) }
+                item {
+                    Text(
+                        "Recent materials",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
                 items(state.recentMaterials, key = { it.id }) { material ->
                     SummaryCard(
                         title = material.displayName,
