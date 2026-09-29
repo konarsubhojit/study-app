@@ -973,9 +973,12 @@ async function verifyPasskeyAssertion(assertion: unknown): Promise<Response> {
     // used to choose it — trusting it would let anyone sign in as anyone by editing one field.
     if (!credential) throw invalidCredentials();
     const userHandle = credentialResponse(response).userHandle;
-    if (typeof userHandle === "string" && userHandle.length > 0) {
-        const claimed = new TextDecoder().decode(decodeBase64Url(userHandle));
+    if (typeof userHandle !== "string" || userHandle.length === 0) throw invalidCredentials();
+    try {
+        const claimed = new TextDecoder("utf-8", { fatal: true }).decode(decodeBase64Url(userHandle));
         if (claimed !== credential.user_id) throw invalidCredentials();
+    } catch {
+        throw invalidCredentials();
     }
 
     let verification;
