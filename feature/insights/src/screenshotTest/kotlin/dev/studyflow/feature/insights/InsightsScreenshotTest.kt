@@ -145,6 +145,19 @@ private fun PopulatedInsightsLargeFontScalePreview() {
     PopulatedInsightsPreview()
 }
 
+@PreviewTest
+@Preview
+@Composable
+private fun EmptyInsightsPreview() {
+    StudyFlowTheme(dynamicColor = false, edgeToEdge = false) {
+        InsightsScreen(
+            state = InsightsUiState(range = previewRange),
+            onEvent = {},
+            onOpenWeeklySummary = {},
+        )
+    }
+}
+
 /**
  * The trend chart at the data densities that used to break it (issue #168): one bucket, which
  * rendered as a full-width, full-height slab, and a year of daily buckets, which rendered as bars
