@@ -5,6 +5,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -131,21 +132,23 @@ public fun TaskDetailScreen(
                         contentPadding = PaddingValues(MaterialTheme.spacing.medium),
                         verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
                     ) {
-                        item { CompletionRow(task = task, onEvent = onEvent) }
-                        item { TitleField(task = task, onEvent = onEvent) }
-                        item { NotesField(task = task, onEvent = onEvent) }
-                        item { SubjectMaterialLinks(task = task) }
-                        item { StudyTimeSection(state = state) }
+                        item { Box(Modifier.animateItem()) { CompletionRow(task = task, onEvent = onEvent) } }
+                        item { Box(Modifier.animateItem()) { TitleField(task = task, onEvent = onEvent) } }
+                        item { Box(Modifier.animateItem()) { NotesField(task = task, onEvent = onEvent) } }
+                        item { Box(Modifier.animateItem()) { SubjectMaterialLinks(task = task) } }
+                        item { Box(Modifier.animateItem()) { StudyTimeSection(state = state) } }
                         item {
-                            SubtaskSection(
-                                subtasks = task.subtasks,
-                                newSubtaskTitle = state.newSubtaskTitle,
-                                onEvent = onEvent,
-                            )
+                            Box(Modifier.animateItem()) {
+                                SubtaskSection(
+                                    subtasks = task.subtasks,
+                                    newSubtaskTitle = state.newSubtaskTitle,
+                                    onEvent = onEvent,
+                                )
+                            }
                         }
-                        item { ReminderSection(reminders = task.reminders, onEvent = onEvent) }
-                        item { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) }
-                        item { StartStudySessionButton(onEvent = onEvent) }
+                        item { Box(Modifier.animateItem()) { ReminderSection(reminders = task.reminders, onEvent = onEvent) } }
+                        item { Box(Modifier.animateItem()) { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) } }
+                        item { Box(Modifier.animateItem()) { StartStudySessionButton(onEvent = onEvent) } }
                     }
                 }
             }

@@ -11,7 +11,12 @@ import android.os.Build
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -47,6 +52,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import dev.studyflow.core.datastore.WeeklySummarySchedule
+import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.notifications.NotificationChannelStatus
 import dev.studyflow.core.notifications.NotificationMessageKey
@@ -140,61 +146,81 @@ public fun NotificationSettingsScreen(
         NotificationRationaleDialog(key = key, onEvent = onEvent)
     }
 
-    if (!state.loaded) {
-        LoadingState(modifier = modifier)
-        return
-    }
+    AnimatedContent(
+        targetState = state.loaded,
+        modifier = modifier.fillMaxSize(),
+        transitionSpec = {
+            fadeIn(StudyFlowMotion.effects()) togetherWith fadeOut(StudyFlowMotion.effects())
+        },
+        label = "notification settings state",
+    ) { loaded ->
+        if (!loaded) {
+            LoadingState()
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(MaterialTheme.spacing.medium),
+                verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+            ) {
+                item {
+                    Box(Modifier.animateItem()) { account() }
+                }
+                item {
+                    Text(
+                        text = "Notifications",
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
 
-    LazyColumn(
-        modifier =
-            modifier
-                .fillMaxSize()
-                .padding(MaterialTheme.spacing.medium),
-        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-    ) {
-        item {
-            account()
-        }
-        item {
-            Text(text = "Notifications", style = MaterialTheme.typography.headlineSmall)
-        }
+                item {
+                    Box(Modifier.animateItem()) { syncStatus() }
+                }
 
-        item {
-            syncStatus()
-        }
+                if (state.notificationsBlocked) {
+                    item {
+                        Box(Modifier.animateItem()) {
+                            BlockedCard(state = state, onEvent = onEvent)
+                        }
+                    }
+                }
 
-        if (state.notificationsBlocked) {
-            item {
-                BlockedCard(state = state, onEvent = onEvent)
+                item {
+                    Box(Modifier.animateItem()) {
+                        BatteryDiagnosticsCard(state.batteryDiagnostics, onEvent)
+                    }
+                }
+
+                item {
+                    Box(Modifier.animateItem()) {
+                        WeeklySummaryCard(schedule = state.weeklySummary, onEvent = onEvent)
+                    }
+                }
+
+                items(state.channels, key = { it.channel.id }) { status ->
+                    ChannelCard(
+                        status = status,
+                        blockedAppWide = state.notificationsBlocked,
+                        onOpenSettings = { onEvent(NotificationSettingsUiEvent.OpenChannelSettings(status.channel)) },
+                        onPickAlarmRingtone = { onEvent(NotificationSettingsUiEvent.PickAlarmRingtone) },
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+
+                item {
+                    TextButton(
+                        onClick = { onEvent(NotificationSettingsUiEvent.OpenAppSettings) },
+                        modifier = Modifier.animateItem(),
+                    ) {
+                        Text(text = "Open system notification settings")
+                    }
+                }
+
+                item {
+                    Box(Modifier.animateItem()) {
+                        DataPrivacyCard(onOpen = onOpenDataPrivacy)
+                    }
+                }
             }
-        }
-
-        item {
-            BatteryDiagnosticsCard(state.batteryDiagnostics, onEvent)
-        }
-
-        item {
-            WeeklySummaryCard(schedule = state.weeklySummary, onEvent = onEvent)
-        }
-
-        items(state.channels, key = { it.channel.id }) { status ->
-            ChannelCard(
-                status = status,
-                blockedAppWide = state.notificationsBlocked,
-                onOpenSettings = { onEvent(NotificationSettingsUiEvent.OpenChannelSettings(status.channel)) },
-                onPickAlarmRingtone = { onEvent(NotificationSettingsUiEvent.PickAlarmRingtone) },
-                modifier = Modifier.animateItem(),
-            )
-        }
-
-        item {
-            TextButton(onClick = { onEvent(NotificationSettingsUiEvent.OpenAppSettings) }) {
-                Text(text = "Open system notification settings")
-            }
-        }
-
-        item {
-            DataPrivacyCard(onOpen = onOpenDataPrivacy)
         }
     }
 }

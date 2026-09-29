@@ -216,6 +216,7 @@ private fun SubjectFilterRow(
                 selected = selectedSubjectId == null,
                 onClick = { onEvent(InsightsUiEvent.SubjectFilterChanged(null)) },
                 label = { Text("All subjects") },
+                modifier = Modifier.animateItem(),
             )
         }
         items(subjects, key = { it.id }) { subject ->

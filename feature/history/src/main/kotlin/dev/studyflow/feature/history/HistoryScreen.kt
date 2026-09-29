@@ -163,6 +163,7 @@ private fun FilterRow(
                 selected = state.filter.subjectId == null,
                 onClick = { onEvent(HistoryUiEvent.SubjectFilterChanged(null)) },
                 label = { Text("All subjects") },
+                modifier = Modifier.animateItem(),
             )
         }
         items(state.subjectOptions, key = { it.id }) { subject ->
@@ -175,7 +176,12 @@ private fun FilterRow(
         }
         if (state.filter.isNarrowed) {
             item {
-                TextButton(onClick = { onEvent(HistoryUiEvent.FilterCleared) }) { Text("Clear") }
+                TextButton(
+                    onClick = { onEvent(HistoryUiEvent.FilterCleared) },
+                    modifier = Modifier.animateItem(),
+                ) {
+                    Text("Clear")
+                }
             }
         }
     }
@@ -474,6 +480,7 @@ private fun SubjectPicker(
                 selected = selectedSubjectId == null,
                 onClick = { onSubjectChange(null) },
                 label = { Text("No subject") },
+                modifier = Modifier.animateItem(),
             )
         }
         items(subjectOptions, key = { it.id }) { subject ->
