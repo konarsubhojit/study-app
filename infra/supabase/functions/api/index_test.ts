@@ -497,6 +497,113 @@ Deno.test("push refuses an active session with 409 and malformed input with 400,
     });
 });
 
+function taskRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+        entityType: "task",
+        id: "c3333333-1111-1111-1111-111111111111",
+        deviceId: "device-a",
+        updatedAt: "2026-03-01T10:00:00.000Z",
+        deleted: false,
+        schemaVersion: 1,
+        payload: { id: "c3333333-1111-1111-1111-111111111111", title: "private task title" },
+        ...overrides,
+    };
+}
+
+Deno.test("record routes require JWT and keep their cursor sequence apart from sessions", async () => {
+    const pull = resolveRoute("GET", routedPath("/functions/v1/api/v1/sync/records"));
+    const push = resolveRoute("POST", routedPath("/functions/v1/api/v1/sync/records"));
+    if (pull?.operation !== "pullRecordChanges" || pull.auth !== "jwt") throw new Error("wrong record pull route policy");
+    if (push?.operation !== "pushRecordChanges" || push.auth !== "jwt") throw new Error("wrong record push route policy");
+
+    const recorded: Recorded = { rpc: [], telemetry: [] };
+    await withFetch(syncBackend("sync_pull_records", () => [], recorded), async () => {
+        // A session cursor is not a record cursor: accepting it would silently skip records.
+        const response = await handleRequest(new Request(
+            `https://example.test/v1/sync/records?cursor=${encodeSyncCursor(5)}`,
+            { headers: authorized },
+        ));
+        if (response.status !== 400 || (await response.json()).code !== "invalid_cursor") {
+            throw new Error("a session cursor was accepted on the record stream");
+        }
+        if (recorded.rpc.length !== 0) throw new Error("an invalid record pull reached the database");
+    });
+});
+
+Deno.test("record pull scopes to the JWT owner, pages with a look-ahead row and returns records verbatim", async () => {
+    const recorded: Recorded = { rpc: [], telemetry: [] };
+    await withFetch(syncBackend("sync_pull_records", () => [
+        { change_seq: 4, record: taskRecord() },
+        { change_seq: 6, record: taskRecord({ entityType: "material", payload: { remoteKey: "materials/abc" } }) },
+    ], recorded), async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/sync/records?limit=1", {
+            headers: authorized,
+        }));
+        const body = await response.json();
+        const args = recorded.rpc[0];
+        if (args.p_user_id !== ALICE || args.p_after !== 0 || args.p_limit !== 2) {
+            throw new Error(`record pull was not owner-scoped with a look-ahead row: ${JSON.stringify(args)}`);
+        }
+        if (JSON.stringify(body.changes) !== JSON.stringify([taskRecord()]) || body.hasMore !== true) {
+            throw new Error("record page was not returned verbatim");
+        }
+        if (decodeSyncCursor(body.nextCursor, "r1:") !== 4) throw new Error("nextCursor does not point at the last record");
+        const telemetry = JSON.stringify(recorded.telemetry);
+        if (!telemetry.includes('"operation":"pullRecordChanges"')) throw new Error("record pull was not recorded");
+        if (telemetry.includes("private task title") || telemetry.includes(ALICE)) throw new Error("telemetry leaked content");
+    });
+});
+
+Deno.test("record push forwards validated envelopes to the owner-scoped RPC and refuses malformed batches", async () => {
+    const recorded: Recorded = { rpc: [], telemetry: [] };
+    const id = "c3333333-1111-1111-1111-111111111111";
+    await withFetch(syncBackend("sync_push_records", () => ({ acceptedIds: [id], rejectedIds: [] }), recorded), async () => {
+        const response = await handleRequest(new Request("https://example.test/v1/sync/records", {
+            method: "POST",
+            headers: authorized,
+            body: JSON.stringify({ deviceId: "device-a", changes: [taskRecord({ extra: "dropped" })] }),
+        }));
+        const body = await response.json();
+        if (response.status !== 200 || JSON.stringify(body) !== JSON.stringify({ acceptedIds: [id], rejectedIds: [] })) {
+            throw new Error(`record push failed: ${response.status} ${JSON.stringify(body)}`);
+        }
+        const args = recorded.rpc[0];
+        if (args.p_user_id !== ALICE) throw new Error("record push was not scoped to the JWT owner");
+        const sent = (args.p_changes as Record<string, unknown>[])[0];
+        const expected = { ...taskRecord() };
+        if (JSON.stringify(sent) !== JSON.stringify(expected)) throw new Error(`unexpected envelope ${JSON.stringify(sent)}`);
+        if (!JSON.stringify(recorded.telemetry).includes('"operation":"pushRecordChanges"')) {
+            throw new Error("record push was not recorded");
+        }
+
+        recorded.rpc.length = 0;
+        const oversized = { blob: "x".repeat(64 * 1024) };
+        const cases: unknown[] = [
+            { deviceId: "d", changes: [taskRecord({ entityType: "subject" })] },
+            { deviceId: "d", changes: [taskRecord({ id: "has spaces" })] },
+            { deviceId: "d", changes: [taskRecord({ schemaVersion: 0 })] },
+            { deviceId: "d", changes: [taskRecord({ payload: [] })] },
+            { deviceId: "d", changes: [taskRecord({ payload: oversized })] },
+            { deviceId: "d", changes: [taskRecord({ updatedAt: "yesterday" })] },
+            { deviceId: "d", changes: [taskRecord({ entityType: "material", payload: { title: "not uploaded" } })] },
+            { deviceId: "d", changes: Array.from({ length: 201 }, () => taskRecord()) },
+            { changes: [] },
+        ];
+        for (const payload of cases) {
+            const refused = await handleRequest(new Request("https://example.test/v1/sync/records", {
+                method: "POST",
+                headers: authorized,
+                body: JSON.stringify(payload),
+            }));
+            const error = await refused.json();
+            if (refused.status !== 400 || error.code !== "invalid_request") {
+                throw new Error(`${JSON.stringify(payload).slice(0, 80)} gave ${refused.status} ${error.code}`);
+            }
+        }
+        if (recorded.rpc.length !== 0) throw new Error("a refused record batch reached the database");
+    });
+});
+
 Deno.test("refresh translates client and GoTrue token field names", async () => {
     const calls: { url: string; body: string }[] = [];
     await withFetch(async (input, init) => {

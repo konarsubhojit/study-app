@@ -3,7 +3,10 @@
 StudyFlow starts in **local-only** mode. Sessions, tasks, subjects, and materials remain in the
 single local database and every feature except cross-device sync is available without an account.
 Creating an account does not copy or reset that database: sync uploads the existing rows using
-their stable IDs, so an upgrade cannot create a second local copy.
+their stable IDs, so an upgrade cannot create a second local copy. Completing sign-in requests a
+sync straight away, so a second device fills with the account's sessions, tasks and materials
+without waiting for the periodic run ([ADR 0018](adr/0018-task-material-sync.md)). While nobody is
+signed in the sync worker does nothing, so local-only mode never touches the network.
 
 ## Sign-in
 
@@ -66,4 +69,6 @@ The HTTP client silently refreshes access tokens and clears an invalid refresh t
 
 Sign-out clears credentials and account-scoped remote replicas, but retains local study content.
 If a future product flow offers deletion, it must ask for explicit confirmation and delete only
-then. Remote replicas must be cleared before a different account can sync.
+then. Remote replicas must be cleared before a different account can sync: sign-out calls
+`SyncStore.resetForAccountChange()`, which drops both sync cursors and re-queues every syncable
+row, so the next account reads its own history from the start and receives this device's data.

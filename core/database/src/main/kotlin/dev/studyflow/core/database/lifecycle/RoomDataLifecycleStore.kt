@@ -63,10 +63,13 @@ public class RoomDataLifecycleStore
          * absent rather than half-present — the user's next move is to try the same archive again.
          */
         override suspend fun applyImport(batch: ImportBatch) {
+            val deviceId = deviceIdProvider.current()
             database.withTransaction {
                 database.subjectDao().upsertAll(batch.subjects.map { it.asEntity() })
-                database.studyTaskDao().saveAll(batch.tasks.map { it.asEntity() })
-                database.materialDao().upsertAll(batch.materials.map { it.asEntity() })
+                // Saved through the DAO's write path, so an imported task is queued for sync like
+                // any other edit; imported materials are pending re-upload and queue once uploaded.
+                database.studyTaskDao().saveAll(batch.tasks.map { it.asEntity(deviceId) })
+                database.materialDao().upsertAll(batch.materials.map { it.asEntity(deviceId) })
                 database.sessionDao().restore(
                     sessions = batch.sessions.map { it.session.asEntity() },
                     events = batch.sessions.flatMap { it.events }.map { it.asEntity() },

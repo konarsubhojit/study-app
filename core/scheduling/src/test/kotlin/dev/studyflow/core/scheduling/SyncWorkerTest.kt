@@ -5,6 +5,8 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.workDataOf
+import dev.studyflow.core.domain.sync.SyncDocument
+import dev.studyflow.core.domain.sync.SyncDocumentPage
 import dev.studyflow.core.domain.sync.SyncEngine
 import dev.studyflow.core.domain.sync.SyncFailure
 import dev.studyflow.core.domain.sync.SyncPage
@@ -16,6 +18,8 @@ import dev.studyflow.core.domain.sync.SyncStatus
 import dev.studyflow.core.domain.sync.SyncStore
 import dev.studyflow.core.domain.sync.SyncTransport
 import dev.studyflow.core.domain.sync.SyncTrigger
+import dev.studyflow.core.network.auth.AuthTokens
+import dev.studyflow.core.network.auth.InMemoryTokenStore
 import dev.studyflow.core.testing.logging.RecordingAppLogger
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
@@ -74,11 +78,38 @@ class SyncWorkerTest {
             assertEquals(0, transport.calls)
         }
 
+    @Test
+    fun `a local-only user never reaches the network`() =
+        runBlocking {
+            val transport = FailingTransport(SyncFailure("must not be called", retryable = false))
+            val worker = worker(transport, signedIn = false)
+
+            assertEquals(ListenableWorker.Result.success(), worker.doWork())
+            assertEquals(0, transport.calls)
+        }
+
+    @Test
+    fun `reminders are reconciled only when another device's changes were applied`() =
+        runBlocking {
+            worker(FailingTransport(failure = null), store = EmptyStore(applied = 0)).doWork()
+            assertEquals(0, remoteChanges)
+
+            // A page that moves the cursor is written, and here the write reports one change.
+            worker(FailingTransport(failure = null, nextCursor = "c1"), store = EmptyStore(applied = 1)).doWork()
+            assertEquals(1, remoteChanges)
+        }
+
+    private var remoteChanges = 0
+
     private fun worker(
         transport: SyncTransport,
         trigger: SyncTrigger = SyncTrigger.SCHEDULED,
+        signedIn: Boolean = true,
+        store: SyncStore = EmptyStore(),
     ): SyncWorker {
-        val engine = SyncEngine(store = EmptyStore(), transport = transport, clock = { NOW })
+        val engine = SyncEngine(store = store, transport = transport, clock = { NOW })
+        val tokenStore = InMemoryTokenStore(if (signedIn) AuthTokens("access", "refresh") else null)
+        val listener = RemoteChangesListener { remoteChanges++ }
         return TestListenableWorkerBuilder<SyncWorker>(context)
             .setInputData(workDataOf(EXTRA_SYNC_TRIGGER to trigger.name))
             .setWorkerFactory(
@@ -87,22 +118,46 @@ class SyncWorkerTest {
                         appContext: Context,
                         workerClassName: String,
                         workerParameters: WorkerParameters,
-                    ): ListenableWorker = SyncWorker(appContext, workerParameters, engine, RecordingAppLogger())
+                    ): ListenableWorker =
+                        SyncWorker(
+                            appContext,
+                            workerParameters,
+                            engine,
+                            tokenStore,
+                            listener,
+                            RecordingAppLogger(),
+                        )
                 },
             ).build()
     }
 
-    /** A device with nothing queued: every run is a pull, so the trigger decides the traffic. */
-    private class EmptyStore : SyncStore {
+    /**
+     * A device with nothing queued: every run is a pull, so the trigger decides the traffic.
+     * [applied] is how many inbound changes each page write reports, per stream.
+     */
+    private class EmptyStore(
+        private val applied: Int = 0,
+    ) : SyncStore {
         override suspend fun pending(limit: Int): List<SyncQueueItem> = emptyList()
 
         override suspend fun sessionRecord(sessionId: String): SyncSessionRecord? = null
 
         override suspend fun acknowledge(sequences: List<Long>) = Unit
 
-        override suspend fun applyPage(page: SyncPage): Int = 0
+        override suspend fun applyPage(page: SyncPage): Int = applied
 
         override suspend fun cursor(): String? = null
+
+        override suspend fun documentRecord(item: SyncQueueItem): SyncDocument? = null
+
+        override suspend fun applyDocumentPage(
+            page: SyncDocumentPage,
+            receivedAt: Instant,
+        ): Int = 0
+
+        override suspend fun documentCursor(): String? = null
+
+        override suspend fun resetForAccountChange() = Unit
 
         override suspend fun recordSuccess(at: Instant) = Unit
 
@@ -116,6 +171,7 @@ class SyncWorkerTest {
 
     private class FailingTransport(
         private val failure: SyncFailure?,
+        private val nextCursor: String? = null,
     ) : SyncTransport {
         var calls: Int = 0
             private set
@@ -131,7 +187,21 @@ class SyncWorkerTest {
         ): SyncResult<SyncPage> {
             calls++
             return failure?.let { SyncResult.Failure(it) }
-                ?: SyncResult.Success(SyncPage(changes = emptyList(), nextCursor = null, hasMore = false))
+                ?: SyncResult.Success(SyncPage(changes = emptyList(), nextCursor = nextCursor, hasMore = false))
+        }
+
+        override suspend fun pushDocuments(documents: List<SyncDocument>): SyncResult<SyncPushAck> {
+            calls++
+            return failure?.let { SyncResult.Failure(it) } ?: SyncResult.Success(SyncPushAck(emptySet()))
+        }
+
+        override suspend fun pullDocuments(
+            cursor: String?,
+            limit: Int,
+        ): SyncResult<SyncDocumentPage> {
+            calls++
+            return failure?.let { SyncResult.Failure(it) }
+                ?: SyncResult.Success(SyncDocumentPage(changes = emptyList(), nextCursor = null, hasMore = false))
         }
     }
 

@@ -41,6 +41,8 @@ type Route = {
         | "listTasks"
         | "pullSessionChanges"
         | "pushSessionChanges"
+        | "pullRecordChanges"
+        | "pushRecordChanges"
         | "deleteAccount"
         | "beginPasskeyRegistration"
         | "completePasskeyRegistration";
@@ -87,6 +89,7 @@ type TaskRow = {
     time_zone: unknown;
 };
 type SyncPullRow = { change_seq: unknown; session: unknown };
+type RecordPullRow = { change_seq: unknown; record: unknown };
 
 class ApiError extends Error {
     constructor(
@@ -389,6 +392,13 @@ const SYNC_MAX_ID_LENGTH = 128;
 const SYNC_MAX_NOTE_LENGTH = 10_000;
 const SYNC_MAX_MILLIS = 999_999_999_999;
 const SYNC_CURSOR_PREFIX = "v1:";
+// The record stream has its own sequence, so its cursors are distinguishable: a session cursor
+// replayed against /v1/sync/records (or the reverse) is refused rather than silently skipping.
+const RECORD_CURSOR_PREFIX = "r1:";
+const RECORD_ENTITY_TYPES = new Set(["task", "material"]);
+const RECORD_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+const RECORD_MAX_PAYLOAD_BYTES = 64 * 1024;
+const RECORD_MAX_SCHEMA_VERSION = 1_000_000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_INSTANT_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 const SESSION_EVENT_TYPES = new Set([
@@ -404,11 +414,11 @@ const SESSION_EVENT_TYPES = new Set([
 // The cursor is a position in the caller's own commit-ordered change sequence. It is opaque so the
 // encoding can change without an app release, and it cannot reach another user's rows because the
 // pull is always filtered by the JWT's owner, never by anything the cursor says.
-export function encodeSyncCursor(changeSeq: number): string {
-    return btoa(SYNC_CURSOR_PREFIX + changeSeq).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+export function encodeSyncCursor(changeSeq: number, prefix = SYNC_CURSOR_PREFIX): string {
+    return btoa(prefix + changeSeq).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-export function decodeSyncCursor(cursor: string): number {
+export function decodeSyncCursor(cursor: string, prefix = SYNC_CURSOR_PREFIX): number {
     const invalid = () => new ApiError(400, "invalid_cursor", "The sync cursor is not recognised; restart from no cursor.");
     if (!/^[A-Za-z0-9_-]{1,64}$/.test(cursor)) throw invalid();
     let decoded: string;
@@ -417,7 +427,7 @@ export function decodeSyncCursor(cursor: string): number {
     } catch {
         throw invalid();
     }
-    const match = /^v1:(0|[1-9][0-9]{0,15})$/.exec(decoded);
+    const match = decoded.startsWith(prefix) ? /^(0|[1-9][0-9]{0,15})$/.exec(decoded.slice(prefix.length)) : null;
     const changeSeq = match ? Number(match[1]) : NaN;
     if (!Number.isSafeInteger(changeSeq)) throw invalid();
     return changeSeq;
@@ -590,6 +600,93 @@ async function pushSessionChanges(request: Request, owner?: string): Promise<Res
     const changes = value.changes.map(syncChange);
     if (changes.length === 0) return json(200, { acceptedIds: [], rejectedIds: [] });
     const outcome = await databaseJson<{ acceptedIds?: unknown; rejectedIds?: unknown }>("rpc/sync_push_study_sessions", {
+        method: "POST",
+        body: JSON.stringify({ p_user_id: owner, p_changes: changes }),
+    });
+    if (!Array.isArray(outcome?.acceptedIds) || !Array.isArray(outcome?.rejectedIds)) {
+        throw new Error("Database response had an invalid push outcome");
+    }
+    return json(200, { acceptedIds: outcome.acceptedIds, rejectedIds: outcome.rejectedIds });
+}
+
+async function pullRecordChanges(request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    const params = new URL(request.url).searchParams;
+    const cursor = params.get("cursor");
+    const after = cursor === null || cursor === "" ? 0 : decodeSyncCursor(cursor, RECORD_CURSOR_PREFIX);
+    const limit = syncLimit(params.get("limit"));
+    const rows = await databaseJson<RecordPullRow[]>("rpc/sync_pull_records", {
+        method: "POST",
+        body: JSON.stringify({ p_user_id: owner, p_after: after, p_limit: limit + 1 }),
+    });
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    let nextCursor: string | null = cursor || null;
+    if (last) {
+        if (!Number.isSafeInteger(last.change_seq)) throw new Error("Database response had invalid change_seq");
+        nextCursor = encodeSyncCursor(last.change_seq as number, RECORD_CURSOR_PREFIX);
+    }
+    return json(200, {
+        changes: page.map((row) => {
+            if (!row.record || typeof row.record !== "object" || Array.isArray(row.record)) {
+                throw new Error("Database response had an invalid record");
+            }
+            return row.record;
+        }),
+        nextCursor,
+        hasMore: rows.length > limit,
+    });
+}
+
+// The payload is stored without interpretation (ADR 0018); only the envelope is validated, plus
+// the one payload field the protocol depends on: a material is only replicated once its bytes are
+// stored, so it must carry its object key. Keys are opaque and resolved within the caller's own
+// storage namespace on download, so a key can never reach another account's objects.
+function syncRecord(value: unknown): Json {
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw invalidChange("Each change must be an object.");
+    const change = value as Json;
+    if (typeof change.entityType !== "string" || !RECORD_ENTITY_TYPES.has(change.entityType)) {
+        throw invalidChange("entityType must be task or material.");
+    }
+    if (typeof change.id !== "string" || !RECORD_ID_PATTERN.test(change.id)) {
+        throw invalidChange("A record id must be 1 to 128 of A-Z, a-z, 0-9, '.', '_', ':' or '-'.");
+    }
+    const schemaVersion = change.schemaVersion;
+    if (!Number.isSafeInteger(schemaVersion) || (schemaVersion as number) < 1 || (schemaVersion as number) > RECORD_MAX_SCHEMA_VERSION) {
+        throw invalidChange("schemaVersion must be a positive integer.");
+    }
+    const payload = change.payload;
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw invalidChange("payload must be an object.");
+    if (new TextEncoder().encode(JSON.stringify(payload)).length > RECORD_MAX_PAYLOAD_BYTES) {
+        throw invalidChange(`payload must be at most ${RECORD_MAX_PAYLOAD_BYTES} bytes.`);
+    }
+    if (change.entityType === "material") {
+        const remoteKey = (payload as Json).remoteKey;
+        if (typeof remoteKey !== "string" || remoteKey.trim().length === 0 || remoteKey.length > 1024) {
+            throw invalidChange("A material is only synced once uploaded, with its remoteKey.");
+        }
+    }
+    return {
+        entityType: change.entityType,
+        id: change.id,
+        deviceId: boundedString(change.deviceId, "deviceId"),
+        updatedAt: instant(change.updatedAt, "updatedAt"),
+        deleted: optionalBoolean(change.deleted, "deleted"),
+        schemaVersion,
+        payload,
+    };
+}
+
+async function pushRecordChanges(request: Request, owner?: string): Promise<Response> {
+    if (!owner) throw new Error("Authenticated owner missing");
+    const value = await body(request);
+    boundedString(value.deviceId, "deviceId");
+    if (!Array.isArray(value.changes) || value.changes.length > SYNC_MAX_CHANGES) {
+        throw invalidChange(`changes must be an array of at most ${SYNC_MAX_CHANGES} records.`);
+    }
+    const changes = value.changes.map(syncRecord);
+    if (changes.length === 0) return json(200, { acceptedIds: [], rejectedIds: [] });
+    const outcome = await databaseJson<{ acceptedIds?: unknown; rejectedIds?: unknown }>("rpc/sync_push_records", {
         method: "POST",
         body: JSON.stringify({ p_user_id: owner, p_changes: changes }),
     });
@@ -1044,6 +1141,20 @@ const routes: Route[] = [
         operation: "pushSessionChanges",
         auth: "jwt",
         handler: pushSessionChanges,
+    },
+    {
+        method: "GET",
+        path: "/v1/sync/records",
+        operation: "pullRecordChanges",
+        auth: "jwt",
+        handler: pullRecordChanges,
+    },
+    {
+        method: "POST",
+        path: "/v1/sync/records",
+        operation: "pushRecordChanges",
+        auth: "jwt",
+        handler: pushRecordChanges,
     },
     { method: "DELETE", path: "/v1/account", operation: "deleteAccount", auth: "jwt", handler: deleteAccount },
     {

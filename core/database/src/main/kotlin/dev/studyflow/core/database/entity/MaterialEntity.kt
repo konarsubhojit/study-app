@@ -9,6 +9,7 @@ import androidx.room.Index
 import androidx.room.Junction
 import androidx.room.PrimaryKey
 import androidx.room.Relation
+import dev.studyflow.core.database.DatabaseMigrations
 import dev.studyflow.core.model.ContentHash
 import kotlin.time.Duration
 import kotlin.time.Instant
@@ -99,6 +100,9 @@ public data class MaterialEntity(
     val previewPositionMillis: Long = 0,
     @ColumnInfo(name = "playback_speed")
     val playbackSpeed: Float = 1f,
+    /** The device that made the last replicated write; the sync tie-break (ADR 0018). */
+    @ColumnInfo(name = "device_id")
+    val deviceId: String = DatabaseMigrations.MIGRATED_DEVICE_ID,
 )
 
 public enum class MaterialSyncState {

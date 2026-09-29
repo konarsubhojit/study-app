@@ -1,18 +1,22 @@
 package dev.studyflow.core.domain.sync
 
+import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SessionEvent
 import dev.studyflow.core.model.StudySession
+import dev.studyflow.core.model.StudyTask
 import kotlin.time.Instant
 
 /**
- * What a queued change refers to (issue #55).
+ * What a queued change refers to (issues #55 and #7).
  *
- * Only completed study sessions are replicated today — they are the only entity
- * `docs/api/openapi.yaml` describes a write for — but the queue carries the type so that a second
- * syncable entity becomes a new constant and a new branch rather than a second table.
+ * Completed study sessions travel on their own stream because they carry an event log; tasks and
+ * catalogued materials travel as [SyncDocument]s on the record stream (ADR 0018). Subjects and
+ * folders are not user-editable yet and so are not replicated.
  */
 public enum class SyncEntityType {
     SESSION,
+    TASK,
+    MATERIAL,
 }
 
 /** Whether a queued change upserts the entity remotely or tombstones it. */
@@ -60,6 +64,51 @@ public data class SyncSessionRecord(
         }
     }
 }
+
+/**
+ * A task or material as it travels between devices (ADR 0018): the whole aggregate, plus the
+ * last-write-wins metadata the conflict rule compares.
+ *
+ * Only replicated state is carried. Device-local state — a reminder's platform alarm, snooze and
+ * fired marker, a material's downloaded file, offline pin and preview position — is stripped by
+ * [SyncDocumentCodec] and kept from the receiving device's own copy by [DocumentSyncMerge].
+ */
+public sealed interface SyncDocument {
+    public val id: String
+    public val entityType: SyncEntityType
+
+    /** The device that made the write this copy reflects; the last-write-wins tie-break. */
+    public val deviceId: String
+    public val updatedAt: Instant
+    public val deleted: Boolean
+}
+
+public data class SyncTaskRecord(
+    val task: StudyTask,
+    override val deviceId: String,
+) : SyncDocument {
+    override val id: String get() = task.id
+    override val entityType: SyncEntityType get() = SyncEntityType.TASK
+    override val updatedAt: Instant get() = task.updatedAt
+    override val deleted: Boolean get() = task.deleted
+}
+
+public data class SyncMaterialRecord(
+    val material: Material,
+    override val deviceId: String,
+) : SyncDocument {
+    override val id: String get() = material.id
+    override val entityType: SyncEntityType get() = SyncEntityType.MATERIAL
+    override val updatedAt: Instant get() = material.updatedAt
+    override val deleted: Boolean get() = material.deleted
+}
+
+/** One page of the inbound record delta. */
+public data class SyncDocumentPage(
+    val changes: List<SyncDocument>,
+    val nextCursor: String?,
+    val hasMore: Boolean,
+)
 
 /** One page of the inbound delta, as the server answered it. */
 public data class SyncPage(

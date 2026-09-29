@@ -20,6 +20,8 @@ import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.SyncDeltaDto
 import dev.studyflow.core.network.model.SyncPushRequestDto
 import dev.studyflow.core.network.model.SyncPushResponseDto
+import dev.studyflow.core.network.model.SyncRecordDeltaDto
+import dev.studyflow.core.network.model.SyncRecordPushRequestDto
 import dev.studyflow.core.network.model.TaskDto
 import javax.inject.Singleton
 
@@ -88,6 +90,16 @@ internal class FakeStudyFlowBackend(
         cursor: String?,
         limit: Int,
     ): ApiResult<SyncDeltaDto> = ApiResult.Success(SyncDeltaDto())
+
+    override suspend fun pushRecordChanges(request: SyncRecordPushRequestDto): ApiResult<SyncPushResponseDto> =
+        ApiResult.Success(
+            SyncPushResponseDto(acceptedIds = request.changes.map { it.id }),
+        )
+
+    override suspend fun recordChanges(
+        cursor: String?,
+        limit: Int,
+    ): ApiResult<SyncRecordDeltaDto> = ApiResult.Success(SyncRecordDeltaDto())
 
     override suspend fun deleteAccount(): ApiResult<AccountDeletionReceiptDto> =
         ApiResult.Success(

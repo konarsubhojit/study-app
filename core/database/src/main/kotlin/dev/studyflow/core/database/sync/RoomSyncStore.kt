@@ -4,6 +4,8 @@ import dev.studyflow.core.database.dao.SyncDao
 import dev.studyflow.core.database.entity.SyncQueueEntity
 import dev.studyflow.core.database.entity.asExternalModel
 import dev.studyflow.core.database.entity.asSyncRecord
+import dev.studyflow.core.domain.sync.SyncDocument
+import dev.studyflow.core.domain.sync.SyncDocumentPage
 import dev.studyflow.core.domain.sync.SyncFailure
 import dev.studyflow.core.domain.sync.SyncPage
 import dev.studyflow.core.domain.sync.SyncQueueItem
@@ -49,6 +51,20 @@ public class RoomSyncStore(
     override suspend fun applyPage(page: SyncPage): Int = dao.applyPage(page.changes, page.nextCursor)
 
     override suspend fun cursor(): String? = dao.state()?.cursor
+
+    override suspend fun documentRecord(item: SyncQueueItem): SyncDocument? =
+        dao.document(item.entityType, item.entityId)
+
+    override suspend fun applyDocumentPage(
+        page: SyncDocumentPage,
+        receivedAt: Instant,
+    ): Int = dao.applyDocumentPage(page.changes, page.nextCursor, receivedAt)
+
+    override suspend fun documentCursor(): String? = dao.documentCursor()
+
+    override suspend fun resetForAccountChange() {
+        dao.resetForAccountChange()
+    }
 
     override suspend fun recordSuccess(at: Instant) {
         dao.recordSuccess(at)

@@ -32,6 +32,8 @@ public class OfflineFirstTaskRepository(
     private val dao: StudyTaskDao,
     private val clock: Clock,
     private val timeZoneProvider: TimeZoneProvider,
+    /** Stamped on every write this device makes; the sync tie-break (ADR 0018). */
+    private val deviceId: String,
 ) : TaskRepository {
     override fun observeTasks(): Flow<List<StudyTask>> = dao.observeAll().asExternalModels()
 
@@ -52,18 +54,18 @@ public class OfflineFirstTaskRepository(
         dao.observeById(id).map { row -> row?.takeUnless { it.task.deleted }?.asExternalModel() }
 
     override suspend fun save(task: StudyTask) {
-        dao.save(task.asEntity())
+        dao.save(task.asEntity(deviceId))
     }
 
     override suspend fun saveAll(values: List<StudyTask>) {
-        dao.saveAll(values.map { it.asEntity() })
+        dao.saveAll(values.map { it.asEntity(deviceId) })
     }
 
     override suspend fun delete(
         id: String,
         deletedAt: Instant,
     ) {
-        dao.softDelete(id, deletedAt)
+        dao.softDelete(id, deletedAt, deviceId)
     }
 
     override suspend fun updateReminder(reminder: Reminder) {

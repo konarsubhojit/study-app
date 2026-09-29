@@ -23,7 +23,7 @@ public fun LoadingState(modifier: Modifier = Modifier) {
             Surface(
                 modifier =
                     Modifier
-                        .fillMaxWidth(if (index == SKELETON_LINE_COUNT - 1) 0.6f else 1f)
+                        .fillMaxWidth(if (index == SKELETON_LINE_COUNT - 1) SKELETON_LAST_LINE_FRACTION else 1f)
                         .height(MaterialTheme.spacing.large),
                 shape = MaterialTheme.shapes.small,
                 color = MaterialTheme.colorScheme.surfaceVariant,
@@ -90,3 +90,4 @@ private fun UserMessage.copy(): String =
     }
 
 private const val SKELETON_LINE_COUNT = 3
+private const val SKELETON_LAST_LINE_FRACTION = 0.6f

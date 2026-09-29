@@ -8,6 +8,7 @@ import dev.studyflow.core.database.entity.FolderEntity
 import dev.studyflow.core.database.entity.MaterialEntity
 import dev.studyflow.core.database.entity.MaterialSyncState
 import dev.studyflow.core.model.ContentHash
+import dev.studyflow.core.testing.data.TEST_DEVICE_ID
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -67,7 +68,7 @@ class MaterialDaoTest {
             dao.save(material("name-match", displayName = "Quantum notes.pdf"))
             dao.save(material("note-match", notes = "Worked examples for quantum mechanics"))
             dao.save(material("deleted", displayName = "Quantum deleted.pdf"))
-            dao.softDelete("deleted", BASE_TIME + 10.minutes)
+            dao.softDelete("deleted", BASE_TIME + 10.minutes, TEST_DEVICE_ID)
 
             val ids =
                 dao
@@ -98,8 +99,8 @@ class MaterialDaoTest {
                 setOf("draft"),
             )
 
-            dao.rename("material", "Final.pdf", "exam solution", BASE_TIME + 1.minutes)
-            dao.move("material", "folder-b", BASE_TIME + 2.minutes)
+            dao.rename("material", "Final.pdf", "exam solution", BASE_TIME + 1.minutes, TEST_DEVICE_ID)
+            dao.move("material", "folder-b", BASE_TIME + 2.minutes, TEST_DEVICE_ID)
             dao.replaceTags("material", setOf("exam"))
 
             assertEquals(listOf("material"), dao.observeInFolder("folder-b").first().map(MaterialEntity::id))
@@ -114,12 +115,12 @@ class MaterialDaoTest {
             assertEquals(listOf("material"), dao.searchPaged("solution", null, null, null, "exam").loadIds())
             assertEquals(listOf("material"), dao.uploadCandidates(limit = 10).map(MaterialEntity::id))
 
-            dao.softDelete("material", BASE_TIME + 3.minutes)
+            dao.softDelete("material", BASE_TIME + 3.minutes, TEST_DEVICE_ID)
             assertEquals(emptyList<String>(), dao.observeAll().first().map(MaterialEntity::id))
             assertEquals(emptyList<String>(), dao.searchPaged("solution", null, null, null, null).loadIds())
             assertEquals(emptyList<String>(), dao.uploadCandidates(limit = 10).map(MaterialEntity::id))
 
-            dao.undoDelete("material", BASE_TIME + 4.minutes)
+            dao.undoDelete("material", BASE_TIME + 4.minutes, TEST_DEVICE_ID)
             assertEquals(listOf("material"), dao.searchPaged("solution", null, null, null, null).loadIds())
             assertEquals(listOf("material"), dao.uploadCandidates(limit = 10).map(MaterialEntity::id))
         }

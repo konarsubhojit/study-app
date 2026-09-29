@@ -274,6 +274,29 @@ public object DatabaseMigrations {
             }
         }
 
+    /**
+     * Prepares tasks and materials for replication (ADR 0018).
+     *
+     * - `study_tasks` is rebuilt without its foreign keys to `materials` and `study_sessions` —
+     *   SQLite cannot drop a constraint in place — and gains `device_id`, the sync tie-break.
+     *   Dropping the old table cascades to reminders, tags and checklist items, so they are set
+     *   aside first and restored once the new table carries the name again.
+     * - `materials` gains `device_id`.
+     * - Existing tasks and uploaded materials are queued: they have never been replicated, so
+     *   without this they would never reach a second device. Sessions keep version 12's rule and
+     *   are not re-queued wholesale.
+     */
+    public val MIGRATION_12_13: Migration =
+        object : Migration(12, 13) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.rebuildTasksForSync()
+                connection.execSQL(
+                    "ALTER TABLE materials ADD COLUMN device_id TEXT NOT NULL DEFAULT '$MIGRATED_DEVICE_ID'",
+                )
+                connection.backfillSyncQueue()
+            }
+        }
+
     public val ALL: Array<Migration>
         get() =
             arrayOf(
@@ -288,7 +311,68 @@ public object DatabaseMigrations {
                 MIGRATION_9_10,
                 MIGRATION_10_11,
                 MIGRATION_11_12,
+                MIGRATION_12_13,
             )
+
+    private fun SQLiteConnection.rebuildTasksForSync() {
+        val children = listOf("reminders", "task_tags", "task_subtasks")
+        children.forEach { table -> execSQL("CREATE TEMP TABLE `migration_$table` AS SELECT * FROM `$table`") }
+        execSQL(
+            """
+            CREATE TABLE `study_tasks_new` (
+            `id` TEXT NOT NULL, `title` TEXT NOT NULL, `notes` TEXT, `subject_id` TEXT,
+            `material_id` TEXT, `session_id` TEXT, `due_at` TEXT, `due_at_utc` INTEGER,
+            `time_zone` TEXT NOT NULL, `is_all_day` INTEGER NOT NULL, `priority` TEXT NOT NULL,
+            `recurrence_frequency` TEXT, `recurrence_interval` INTEGER, `recurrence_days_of_week` TEXT,
+            `recurrence_day_of_month` INTEGER, `recurrence_week_of_month` INTEGER,
+            `recurrence_month_of_year` INTEGER, `recurrence_exceptions` TEXT, `recurrence_end_type` TEXT,
+            `recurrence_end_count` INTEGER, `recurrence_end_date` TEXT, `completed_at` INTEGER,
+            `updated_at` INTEGER NOT NULL, `deleted` INTEGER NOT NULL, `device_id` TEXT NOT NULL,
+            PRIMARY KEY(`id`),
+            FOREIGN KEY(`subject_id`) REFERENCES `subjects`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )
+            """.trimIndent(),
+        )
+        val columns =
+            "id, title, notes, subject_id, material_id, session_id, due_at, due_at_utc, time_zone, " +
+                "is_all_day, priority, recurrence_frequency, recurrence_interval, recurrence_days_of_week, " +
+                "recurrence_day_of_month, recurrence_week_of_month, recurrence_month_of_year, " +
+                "recurrence_exceptions, recurrence_end_type, recurrence_end_count, recurrence_end_date, " +
+                "completed_at, updated_at, deleted"
+        execSQL(
+            "INSERT INTO study_tasks_new ($columns, device_id) " +
+                "SELECT $columns, '$MIGRATED_DEVICE_ID' FROM study_tasks",
+        )
+        execSQL("DROP TABLE study_tasks")
+        execSQL("ALTER TABLE study_tasks_new RENAME TO study_tasks")
+        execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS index_study_tasks_open_due_at_utc
+            ON study_tasks (deleted, completed_at, due_at_utc, id)
+            """.trimIndent(),
+        )
+        execSQL(
+            """
+            CREATE INDEX IF NOT EXISTS index_study_tasks_subject_id_due_at
+            ON study_tasks (subject_id, due_at_utc, id)
+            """.trimIndent(),
+        )
+        execSQL("CREATE INDEX IF NOT EXISTS index_study_tasks_material_id ON study_tasks (material_id)")
+        execSQL("CREATE INDEX IF NOT EXISTS index_study_tasks_session_id ON study_tasks (session_id)")
+        execSQL("CREATE INDEX IF NOT EXISTS index_study_tasks_updated_at ON study_tasks (updated_at, id)")
+        children.forEach { table ->
+            execSQL("INSERT OR IGNORE INTO `$table` SELECT * FROM temp.`migration_$table`")
+            execSQL("DROP TABLE temp.`migration_$table`")
+        }
+    }
+
+    private fun SQLiteConnection.backfillSyncQueue() {
+        val insert = "INSERT OR IGNORE INTO sync_queue (entity_type, entity_id, operation, updated_at, device_id)"
+        execSQL("$insert SELECT 'TASK', id, 'UPSERT', updated_at, device_id FROM study_tasks WHERE deleted = 0")
+        execSQL(
+            "$insert SELECT 'MATERIAL', id, 'UPSERT', updated_at, device_id FROM materials " +
+                "WHERE deleted = 0 AND remote_key IS NOT NULL AND sync_state = 'SYNCED'",
+        )
+    }
 
     // The task tables are rebuilt rather than altered: version 4 adds foreign keys and non-null
     // columns that SQLite cannot add in place, and Room validates the resulting DDL exactly.

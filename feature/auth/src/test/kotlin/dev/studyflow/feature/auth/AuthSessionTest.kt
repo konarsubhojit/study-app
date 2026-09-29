@@ -22,6 +22,18 @@ class AuthSessionTest {
         }
 
     @Test
+    fun `signing in notifies the listener once the tokens are stored`() =
+        runTest {
+            val tokens = InMemoryTokenStore()
+            var stateWhenNotified: AuthState? = null
+            val session = AuthSession(tokens, signInListener = { stateWhenNotified = tokens.authState.value })
+
+            session.completeSignIn(AuthTokens("access", "refresh"))
+
+            assertEquals(AuthState.SignedIn, stateWhenNotified)
+        }
+
+    @Test
     fun `sign out clears credentials and account cache only`() =
         runTest {
             val tokens = InMemoryTokenStore(AuthTokens("access", "refresh"))

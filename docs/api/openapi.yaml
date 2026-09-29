@@ -436,6 +436,79 @@ paths:
         default:
           $ref: '#/components/responses/Error'
 
+  /v1/sync/records:
+    get:
+      operationId: pullRecordChanges
+      summary: Task and material changes recorded after a cursor
+      description: |
+        The inbound half of the record stream (ADR 0018), which replicates tasks and catalogued
+        materials. It behaves exactly like `GET /v1/sync/sessions` — commit-ordered, opaque
+        cursor, an empty page with the same cursor when nothing changed — but its cursor is a
+        separate sequence and is refused with `400 invalid_cursor` on the session stream and vice
+        versa.
+
+        The server stores each `payload` without interpreting it; the client versions it with
+        `schemaVersion` and ignores a record whose version it does not understand.
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+        - name: cursor
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Opaque position from the previous delta; omitted on a first sync
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int32
+          description: Maximum number of changes to return; the server may return fewer
+      responses:
+        '200':
+          description: The next page of changes
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRecordDelta'
+        default:
+          $ref: '#/components/responses/Error'
+    post:
+      operationId: pushRecordChanges
+      summary: Upload a batch of local task and material changes
+      description: |
+        The outbound half of the record stream (ADR 0018). Each record is resolved independently
+        by the same rule as a session: last-write-wins on `updatedAt`, then the greater
+        `deviceId` (code-point order), then a tombstone beats a live row. The whole record is
+        replaced — there is no field-level merge — so a replayed batch is a no-op.
+
+        At most 200 changes per batch and 64 KiB per payload; a malformed batch is refused as a
+        whole with `400 invalid_request`. A material may only be sent once its bytes are in the
+        object store (`payload.remoteKey` is set).
+      parameters:
+        - $ref: '#/components/parameters/ClientVersion'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SyncRecordPushRequest'
+      responses:
+        '200':
+          description: Which changes the server stored, and which its own newer state beat
+          headers:
+            X-Minimum-Client-Version:
+              $ref: '#/components/headers/MinimumClientVersion'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncPushResponse'
+        default:
+          $ref: '#/components/responses/Error'
+
   /v1/account:
     delete:
       operationId: deleteAccount
@@ -921,6 +994,63 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SyncSession'
+        nextCursor:
+          type: string
+          description: Opaque; store verbatim and send it back on the next pull.
+        hasMore:
+          type: boolean
+
+    SyncRecord:
+      type: object
+      required: [entityType, id, deviceId, updatedAt, schemaVersion, payload]
+      properties:
+        entityType:
+          type: string
+          enum: [task, material]
+        id:
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{1,128}$'
+        deviceId:
+          type: string
+        updatedAt:
+          type: string
+          format: date-time
+        deleted:
+          type: boolean
+          default: false
+          description: A tombstone rather than an absence, so a deletion replicates.
+        schemaVersion:
+          type: integer
+          format: int32
+          minimum: 1
+          description: Version of the payload format; the export archive's schema version.
+        payload:
+          type: object
+          additionalProperties: true
+          description: |
+            The aggregate in the export archive's format (`ArchivedTask` or `ArchivedMaterial`),
+            without device-local state such as reminder alarms, snoozes, downloads or offline
+            pins. Opaque to the server.
+
+    SyncRecordPushRequest:
+      type: object
+      required: [deviceId, changes]
+      properties:
+        deviceId:
+          type: string
+        changes:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/SyncRecord'
+
+    SyncRecordDelta:
+      type: object
+      properties:
+        changes:
+          type: array
+          items:
+            $ref: '#/components/schemas/SyncRecord'
         nextCursor:
           type: string
           description: Opaque; store verbatim and send it back on the next pull.

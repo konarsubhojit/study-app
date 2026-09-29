@@ -1,5 +1,6 @@
 package dev.studyflow.core.database.entity
 
+import dev.studyflow.core.database.DatabaseMigrations
 import dev.studyflow.core.domain.session.SessionCorrection
 import dev.studyflow.core.domain.session.SessionDescriptor
 import dev.studyflow.core.domain.session.SessionReducer
@@ -34,7 +35,7 @@ public fun Folder.asEntity(): FolderEntity = FolderEntity(id, parentId, name, cr
 
 public fun FolderEntity.asExternalModel(): Folder = Folder(id, parentId, name, createdAt)
 
-public fun Material.asEntity(): MaterialEntity {
+public fun Material.asEntity(deviceId: String = DatabaseMigrations.MIGRATED_DEVICE_ID): MaterialEntity {
     val upload = sync as? SyncState.Uploading
     val failure = sync as? SyncState.Failed
     return MaterialEntity(
@@ -63,6 +64,7 @@ public fun Material.asEntity(): MaterialEntity {
         previewPageIndex = previewPageIndex,
         previewPositionMillis = previewPositionMillis,
         playbackSpeed = playbackSpeed,
+        deviceId = deviceId,
     )
 }
 
@@ -134,7 +136,7 @@ private fun MaterialEntity.asExternalSyncState(): SyncState =
  * Derived columns (`due_at_utc`, `trigger_at_utc`) are computed here, on the single write path, so
  * they cannot drift from the authored local time and trigger they are derived from.
  */
-public fun StudyTask.asEntity(): TaskWithReminders =
+public fun StudyTask.asEntity(deviceId: String = DatabaseMigrations.MIGRATED_DEVICE_ID): TaskWithReminders =
     TaskWithReminders(
         task =
             StudyTaskEntity(
@@ -162,6 +164,7 @@ public fun StudyTask.asEntity(): TaskWithReminders =
                 completedAt = completedAt,
                 updatedAt = updatedAt,
                 deleted = deleted,
+                deviceId = deviceId,
             ),
         reminders = reminders.map { it.asReminderEntity(dueAtUtc) },
         tags = tags.map { TaskTagEntity(taskId = id, tag = it) },

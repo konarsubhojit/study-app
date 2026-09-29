@@ -12,6 +12,8 @@ import dev.studyflow.core.network.model.SubjectDto
 import dev.studyflow.core.network.model.SyncDeltaDto
 import dev.studyflow.core.network.model.SyncPushRequestDto
 import dev.studyflow.core.network.model.SyncPushResponseDto
+import dev.studyflow.core.network.model.SyncRecordDeltaDto
+import dev.studyflow.core.network.model.SyncRecordPushRequestDto
 import dev.studyflow.core.network.model.TaskDto
 
 /**
@@ -21,6 +23,7 @@ import dev.studyflow.core.network.model.TaskDto
  * a feature test swaps in a fake without a socket in sight, and no layer above the data layer ever
  * sees an [io.ktor.client.HttpClient].
  */
+@Suppress("TooManyFunctions") // One function per documented operation.
 public interface StudyFlowApi {
     /** `POST /v1/auth/signin/challenge` — creates the short-lived WebAuthn challenge. */
     public suspend fun beginSignIn(): ApiResult<SignInChallengeDto>
@@ -77,6 +80,19 @@ public interface StudyFlowApi {
         cursor: String?,
         limit: Int,
     ): ApiResult<SyncDeltaDto>
+
+    /**
+     * `POST /v1/sync/records` — sends a batch of local task and material changes (ADR 0018).
+     *
+     * Idempotent by the same contract as [pushSessionChanges].
+     */
+    public suspend fun pushRecordChanges(request: SyncRecordPushRequestDto): ApiResult<SyncPushResponseDto>
+
+    /** `GET /v1/sync/records` — the task and material changes recorded after [cursor], oldest first. */
+    public suspend fun recordChanges(
+        cursor: String?,
+        limit: Int,
+    ): ApiResult<SyncRecordDeltaDto>
 
     /**
      * `DELETE /v1/account` — deletes the account, its rows and its stored objects (issue #78).

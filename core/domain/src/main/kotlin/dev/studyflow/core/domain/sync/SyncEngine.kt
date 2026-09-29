@@ -15,8 +15,9 @@ import dev.studyflow.core.common.time.Clock
  *
  * **Nothing to do means no traffic.** A run triggered by a local mutation
  * ([SyncTrigger.OUTBOUND]) with an empty queue makes no request at all. A scheduled or manual run
- * spends exactly one conditional `GET` — the protocol's minimum for "has anything changed?" — and
- * stops there when the answer is "no", without writing to the database.
+ * spends exactly one conditional `GET` per stream (sessions, then tasks and materials) — the
+ * protocol's minimum for "has anything changed?" — and stops there when the answer is "no",
+ * without writing to the database.
  *
  * **Interruption is free.** Every page is merged and its cursor advanced in one [SyncStore]
  * transaction, so a run that is killed mid-delta resumes from the last page it *finished* rather
@@ -65,22 +66,33 @@ public class SyncEngine(
             }
         }
 
+    @Suppress("ReturnCount") // Each stream's failure ends the drain before the batch is acknowledged.
     private suspend fun drainQueue(): DrainOutcome {
         var pushed = 0
         while (true) {
             val batch = store.pending(batchSize)
             if (batch.isEmpty()) return DrainOutcome.Drained(pushed)
 
-            val records = batch.mapNotNull { item -> store.sessionRecord(item.entityId) }
-            if (records.isNotEmpty()) {
-                when (val result = transport.push(records)) {
-                    is SyncResult.Failure -> return DrainOutcome.Failed(result.failure)
-
-                    // Counted as sent rather than as accepted: a batch the server rejected because
-                    // it holds something newer still costs a request, and the pull that follows is
-                    // how this device learns what that newer state is.
-                    is SyncResult.Success -> pushed += records.size
-                }
+            val sessions =
+                batch
+                    .filter { it.entityType == SyncEntityType.SESSION }
+                    .mapNotNull { item -> store.sessionRecord(item.entityId) }
+            val documents =
+                batch
+                    .filter { it.entityType != SyncEntityType.SESSION }
+                    .mapNotNull { item -> store.documentRecord(item) }
+            // Counted as sent rather than as accepted: a batch the server rejected because it
+            // holds something newer still costs a request, and the pull that follows is how this
+            // device learns what that newer state is.
+            if (sessions.isNotEmpty()) {
+                val result = transport.push(sessions)
+                if (result is SyncResult.Failure) return DrainOutcome.Failed(result.failure)
+                pushed += sessions.size
+            }
+            if (documents.isNotEmpty()) {
+                val result = transport.pushDocuments(documents)
+                if (result is SyncResult.Failure) return DrainOutcome.Failed(result.failure)
+                pushed += documents.size
             }
             // Acknowledged by sequence: a mutation that re-queued one of these entities while the
             // batch was in flight holds a newer sequence and stays pending.
@@ -88,30 +100,63 @@ public class SyncEngine(
         }
     }
 
+    @Suppress("ReturnCount") // Either stream's failure ends the pass.
     private suspend fun readDelta(): PullOutcome {
+        val sessions =
+            readStream(
+                cursor = store::cursor,
+                pull = transport::pull,
+                apply = store::applyPage,
+                describe = { page -> PageShape(page.changes.isEmpty(), page.nextCursor, page.hasMore) },
+            )
+        if (sessions is PullOutcome.Failed) return sessions
+        val documents =
+            readStream(
+                cursor = store::documentCursor,
+                pull = transport::pullDocuments,
+                apply = { page -> store.applyDocumentPage(page, clock.now()) },
+                describe = { page -> PageShape(page.changes.isEmpty(), page.nextCursor, page.hasMore) },
+            )
+        if (documents is PullOutcome.Failed) return documents
+        return PullOutcome.Pulled((sessions as PullOutcome.Pulled).applied + (documents as PullOutcome.Pulled).applied)
+    }
+
+    private suspend fun <P> readStream(
+        cursor: suspend () -> String?,
+        pull: suspend (String?, Int) -> SyncResult<P>,
+        apply: suspend (P) -> Int,
+        describe: (P) -> PageShape,
+    ): PullOutcome {
         var applied = 0
         var pagesLeft = maxPagesPerRun
         var moreToRead = true
         while (moreToRead && pagesLeft-- > 0) {
-            val cursor = store.cursor()
+            val from = cursor()
             val page =
-                when (val result = transport.pull(cursor, batchSize)) {
+                when (val result = pull(from, batchSize)) {
                     is SyncResult.Failure -> return PullOutcome.Failed(result.failure)
                     is SyncResult.Success -> result.value
                 }
+            val shape = describe(page)
 
             // Nothing changed: no rows to merge and the same cursor to resume from, so there is
             // nothing worth opening a transaction for.
-            val unchanged = page.changes.isEmpty() && page.nextCursor == cursor
-            if (!unchanged) applied += store.applyPage(page)
+            val unchanged = shape.empty && shape.nextCursor == from
+            if (!unchanged) applied += apply(page)
 
             // Stopping when the page budget runs out — rather than looping until the server says
             // it is done — is what keeps a busy server from holding a worker, and the user's
             // radio, open indefinitely; the next run resumes from the cursor.
-            moreToRead = !unchanged && page.hasMore
+            moreToRead = !unchanged && shape.hasMore
         }
         return PullOutcome.Pulled(applied)
     }
+
+    private data class PageShape(
+        val empty: Boolean,
+        val nextCursor: String?,
+        val hasMore: Boolean,
+    )
 
     private suspend fun fail(failure: SyncFailure): SyncOutcome {
         store.recordFailure(failure, clock.now())

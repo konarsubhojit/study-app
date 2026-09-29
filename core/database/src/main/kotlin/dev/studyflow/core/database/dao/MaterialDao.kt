@@ -15,7 +15,10 @@ import dev.studyflow.core.database.entity.MaterialFtsEntity
 import dev.studyflow.core.database.entity.MaterialSyncState
 import dev.studyflow.core.database.entity.MaterialTagEntity
 import dev.studyflow.core.database.entity.MaterialWithTags
+import dev.studyflow.core.database.entity.SyncQueueEntity
 import dev.studyflow.core.database.entity.TagEntity
+import dev.studyflow.core.database.entity.asSyncQueueEntity
+import dev.studyflow.core.database.entity.isSyncable
 import dev.studyflow.core.model.ContentHash
 import kotlinx.coroutines.flow.Flow
 import kotlin.time.Instant
@@ -86,14 +89,31 @@ public abstract class MaterialDao {
         limit: Int,
     ): List<MaterialEntity>
 
+    /**
+     * Stores a catalogue row and, when it is a replicated write, queues it for sync (ADR 0018).
+     *
+     * Not every save is a replicated write: recording a download or an upload's progress changes
+     * only device-local columns. Those keep the previous writer's [MaterialEntity.deviceId] and
+     * queue nothing, so a second device fetching a file cannot echo the record back as its own
+     * edit. A material is queued once it is syncable — uploaded — and whenever a replicated field
+     * of a syncable material changes.
+     */
     @Transaction
     public open suspend fun save(
         material: MaterialEntity,
         tags: Set<String> = emptySet(),
     ) {
-        upsertMaterial(material)
+        val existing = materialRow(material.id)
+        val unchangedFrom = existing?.takeIf { it.replicated() == material.replicated() }
+        val replicatedUnchanged = unchangedFrom != null
+        val stored = unchangedFrom?.let { material.copy(deviceId = it.deviceId) } ?: material
+        upsertMaterial(stored)
         replaceTags(material.id, tags)
         reindexMaterial(material.id)
+        val newlySyncable = existing == null || !existing.isSyncable
+        if (stored.isSyncable && (newlySyncable || !replicatedUnchanged)) {
+            enqueueSyncEntry(stored.asSyncQueueEntity())
+        }
     }
 
     @Transaction
@@ -119,17 +139,23 @@ public abstract class MaterialDao {
         displayName: String,
         notes: String?,
         updatedAt: Instant,
+        deviceId: String,
     ) {
-        renameMaterial(id, displayName, notes, updatedAt)
+        renameMaterial(id, displayName, notes, updatedAt, deviceId)
         reindexMaterial(id)
+        enqueueIfSyncable(id)
     }
 
-    @Query("UPDATE materials SET folder_id = :folderId, updated_at = :updatedAt WHERE id = :id")
-    public abstract suspend fun move(
+    @Transaction
+    public open suspend fun move(
         id: String,
         folderId: String?,
         updatedAt: Instant,
-    )
+        deviceId: String,
+    ) {
+        moveMaterial(id, folderId, updatedAt, deviceId)
+        enqueueIfSyncable(id)
+    }
 
     @Query(
         """
@@ -151,18 +177,22 @@ public abstract class MaterialDao {
     public open suspend fun softDelete(
         id: String,
         deletedAt: Instant,
+        deviceId: String,
     ) {
-        tombstoneMaterial(id, deletedAt)
+        tombstoneMaterial(id, deletedAt, deviceId)
         deleteFtsForMaterial(id)
+        enqueueIfSyncable(id)
     }
 
     @Transaction
     public open suspend fun undoDelete(
         id: String,
         restoredAt: Instant,
+        deviceId: String,
     ) {
-        restoreMaterial(id, restoredAt)
+        restoreMaterial(id, restoredAt, deviceId)
         reindexMaterial(id)
+        enqueueIfSyncable(id)
     }
 
     @Query("SELECT COUNT(*) FROM materials")
@@ -193,7 +223,7 @@ public abstract class MaterialDao {
     @Query(
         """
         UPDATE materials
-        SET display_name = :displayName, notes = :notes, updated_at = :updatedAt
+        SET display_name = :displayName, notes = :notes, updated_at = :updatedAt, device_id = :deviceId
         WHERE id = :id
         """,
     )
@@ -202,19 +232,60 @@ public abstract class MaterialDao {
         displayName: String,
         notes: String?,
         updatedAt: Instant,
+        deviceId: String,
     )
 
-    @Query("UPDATE materials SET deleted = 1, updated_at = :deletedAt WHERE id = :id")
+    @Query(
+        "UPDATE materials SET folder_id = :folderId, updated_at = :updatedAt, device_id = :deviceId WHERE id = :id",
+    )
+    protected abstract suspend fun moveMaterial(
+        id: String,
+        folderId: String?,
+        updatedAt: Instant,
+        deviceId: String,
+    )
+
+    @Query("UPDATE materials SET deleted = 1, updated_at = :deletedAt, device_id = :deviceId WHERE id = :id")
     protected abstract suspend fun tombstoneMaterial(
         id: String,
         deletedAt: Instant,
+        deviceId: String,
     )
 
-    @Query("UPDATE materials SET deleted = 0, updated_at = :restoredAt WHERE id = :id")
+    @Query("UPDATE materials SET deleted = 0, updated_at = :restoredAt, device_id = :deviceId WHERE id = :id")
     protected abstract suspend fun restoreMaterial(
         id: String,
         restoredAt: Instant,
+        deviceId: String,
     )
+
+    @Query("SELECT * FROM materials WHERE id = :id")
+    protected abstract suspend fun materialRow(id: String): MaterialEntity?
+
+    /** Declared here, rather than borrowed from `SyncDao`, so it runs inside *this* transaction. */
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    protected abstract suspend fun enqueueSyncEntry(entry: SyncQueueEntity)
+
+    private suspend fun enqueueIfSyncable(id: String) {
+        val row = materialRow(id) ?: return
+        if (row.isSyncable) enqueueSyncEntry(row.asSyncQueueEntity())
+    }
+
+    /** The columns another device receives; everything else is this device's own state. */
+    private fun MaterialEntity.replicated(): MaterialEntity =
+        copy(
+            syncState = MaterialSyncState.PENDING,
+            uploadedBytes = null,
+            uploadTotalBytes = null,
+            failureReason = null,
+            failureRetryable = null,
+            localPath = null,
+            pinnedForOffline = false,
+            previewPageIndex = 0,
+            previewPositionMillis = 0,
+            playbackSpeed = 1f,
+            deviceId = "",
+        )
 
     @Query("DELETE FROM material_fts WHERE material_id = :id")
     protected abstract suspend fun deleteFtsForMaterial(id: String)

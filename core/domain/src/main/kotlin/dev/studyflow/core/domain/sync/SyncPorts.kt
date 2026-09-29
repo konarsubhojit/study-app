@@ -30,6 +30,18 @@ public interface SyncTransport {
         cursor: String?,
         limit: Int,
     ): SyncResult<SyncPage>
+
+    /** [push] for the record stream: tasks and materials (ADR 0018). Same retry contract. */
+    public suspend fun pushDocuments(documents: List<SyncDocument>): SyncResult<SyncPushAck>
+
+    /**
+     * [pull] for the record stream. Its cursor is independent of the session stream's: the two are
+     * separate server-side sequences.
+     */
+    public suspend fun pullDocuments(
+        cursor: String?,
+        limit: Int,
+    ): SyncResult<SyncDocumentPage>
 }
 
 /** The read-only slice of sync state the UI binds to. */
@@ -44,6 +56,7 @@ public interface SyncStatusRepository {
  * them, in one transaction. That is what makes the inbound delta resumable: a run killed halfway
  * either advanced the cursor with its page, or did neither and re-reads the same page next time.
  */
+@Suppress("TooManyFunctions") // One port per stream operation; splitting would separate each stream's halves.
 public interface SyncStore : SyncStatusRepository {
     /** The oldest [limit] queued changes, in insertion order. */
     public suspend fun pending(limit: Int): List<SyncQueueItem>
@@ -69,6 +82,30 @@ public interface SyncStore : SyncStatusRepository {
 
     /** The cursor the next pull resumes from; `null` before the first successful page. */
     public suspend fun cursor(): String?
+
+    /** The current local state of a queued task or material, tombstone included. */
+    public suspend fun documentRecord(item: SyncQueueItem): SyncDocument?
+
+    /**
+     * [applyPage] for the record stream, with the same atomicity rule.
+     *
+     * @param receivedAt when the page arrived, for [DocumentSyncMerge.merge].
+     * @return how many changes were stored.
+     */
+    public suspend fun applyDocumentPage(
+        page: SyncDocumentPage,
+        receivedAt: Instant,
+    ): Int
+
+    /** The record stream's cursor; `null` before its first successful page. */
+    public suspend fun documentCursor(): String?
+
+    /**
+     * Forgets everything tied to the account that was signed in: both cursors and the last status,
+     * and re-queues every syncable local row, so the next account starts from a full pull and
+     * receives this device's data — just as signing in for the first time does.
+     */
+    public suspend fun resetForAccountChange()
 
     public suspend fun recordSuccess(at: Instant)
 

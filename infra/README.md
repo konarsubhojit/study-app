@@ -276,6 +276,24 @@ An unchanged pull returns the request's cursor verbatim. That is the client's "n
 
 `study_session_events` stores stopped sessions' logs **without** `uptime_millis` or `boot_id`. ADR 0017 treats those as device-local anchors, so the API drops them on upload and never returns them. This supersedes the `study_sessions` migration's comment that the log "never leaves the device (ADR 0003)". Applied migrations are append-only, so that comment is corrected in `20260927130000_session_sync.sql` rather than edited in place.
 
+**Task and material sync (ADR 0018).** `GET`/`POST /v1/sync/records` behave the same way through
+`sync_pull_records` and `sync_push_records`, and resolve conflicts by the same rule. The
+differences:
+
+- `sync_records` stores each task or material as the client's versioned JSON `payload`. The
+  server does not interpret it; it resolves conflicts on the envelope alone, and the winning
+  record replaces the stored one.
+- Records are keyed per owner by `(user_id, entity_type, entity_id)`.
+- The stream has its own change clock, and its cursors use a different encoding. A session cursor
+  sent to the record stream, or the reverse, is refused with `invalid_cursor`.
+- The Edge Function checks each batch before storing it:
+  - at most 200 changes;
+  - each payload at most 64 KiB;
+  - a material is refused unless it has a `remoteKey`.
+- Account deletion cascades to `sync_records` and `sync_record_clocks`.
+- Tasks now replicate as records, so `study_sessions.task_id` keeps the device's task id as sent.
+  It is no longer a foreign key to `study_tasks`.
+
 Deploy it with the **Deploy Edge Function** workflow by choosing `api`, or locally with:
 
 ```sh

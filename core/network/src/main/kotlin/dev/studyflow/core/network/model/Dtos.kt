@@ -4,6 +4,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.json.JsonObject
 
 // Wire models, hand-written against `docs/api/openapi.yaml` (issue #63).
 //
@@ -210,6 +211,41 @@ public data class SyncPushResponseDto(
 @Serializable
 public data class SyncDeltaDto(
     val changes: List<SyncSessionDto> = emptyList(),
+    val nextCursor: String? = null,
+    val hasMore: Boolean = false,
+)
+
+/**
+ * One task or material on the record stream (`/v1/sync/records`, ADR 0018).
+ *
+ * The envelope carries what the server needs to resolve a conflict — the same last-write-wins
+ * terms as a session — and the [payload] carries the aggregate itself. The server stores the
+ * payload opaquely: it never interprets a task or a material, which keeps the record format a
+ * client concern versioned by [schemaVersion].
+ */
+@Serializable
+public data class SyncRecordDto(
+    /** `task` or `material`. */
+    val entityType: String,
+    val id: String,
+    val deviceId: String,
+    @SerialName("updatedAt") val updatedAtIso: String,
+    val deleted: Boolean = false,
+    val schemaVersion: Int,
+    val payload: JsonObject,
+)
+
+/** Request body of `POST /v1/sync/records`. */
+@Serializable
+public data class SyncRecordPushRequestDto(
+    val deviceId: String,
+    val changes: List<SyncRecordDto>,
+)
+
+/** Response body of `GET /v1/sync/records`; the cursor is opaque, as on the session stream. */
+@Serializable
+public data class SyncRecordDeltaDto(
+    val changes: List<SyncRecordDto> = emptyList(),
     val nextCursor: String? = null,
     val hasMore: Boolean = false,
 )

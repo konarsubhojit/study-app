@@ -7,6 +7,7 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import dev.studyflow.core.common.coroutines.DispatcherProvider
+import dev.studyflow.core.common.time.DeviceIdProvider
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.dao.MaterialDao
@@ -42,8 +43,10 @@ public object MaterialsModule {
 
     @Provides
     @Singleton
-    public fun materialRepository(dao: MaterialDao): MaterialRepository =
-        OfflineFirstMaterialRepository(dao, clock = SystemWallClock)
+    public fun materialRepository(
+        dao: MaterialDao,
+        deviceIdProvider: DeviceIdProvider,
+    ): MaterialRepository = OfflineFirstMaterialRepository(dao, deviceIdProvider.current(), clock = SystemWallClock)
 
     @Provides
     @Singleton

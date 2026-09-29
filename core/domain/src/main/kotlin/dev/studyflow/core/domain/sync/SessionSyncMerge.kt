@@ -91,16 +91,14 @@ public object SessionSyncMerge {
         candidate: StudySession,
         incumbent: StudySession,
     ): Boolean =
-        when {
-            candidate.updatedAt != incumbent.updatedAt -> candidate.updatedAt > incumbent.updatedAt
-
-            candidate.deviceId != incumbent.deviceId -> candidate.deviceId > incumbent.deviceId
-
-            // Same device, same instant: the two copies describe the same write — unless one is a
-            // tombstone, and letting that win is what stops a delete being undone by a stale copy
-            // of the row it deleted.
-            else -> candidate.deleted && !incumbent.deleted
-        }
+        LastWriteWins.wins(
+            candidateUpdatedAt = candidate.updatedAt,
+            candidateDeviceId = candidate.deviceId,
+            candidateDeleted = candidate.deleted,
+            incumbentUpdatedAt = incumbent.updatedAt,
+            incumbentDeviceId = incumbent.deviceId,
+            incumbentDeleted = incumbent.deleted,
+        )
 
     /**
      * Unions two logs by [SessionEvent.id], keeping the copy this device already stored.
