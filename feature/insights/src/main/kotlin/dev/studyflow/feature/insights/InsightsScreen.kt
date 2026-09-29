@@ -211,14 +211,15 @@ private fun SubjectFilterRow(
     modifier: Modifier = Modifier,
 ) {
     LazyRow(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-        item {
+        item(key = "all-subjects") {
             FilterChip(
                 selected = selectedSubjectId == null,
                 onClick = { onEvent(InsightsUiEvent.SubjectFilterChanged(null)) },
                 label = { Text("All subjects") },
+                modifier = Modifier.animateItem(),
             )
         }
-        items(subjects, key = { it.id }) { subject ->
+        items(subjects, key = { "subject-${it.id}" }) { subject ->
             FilterChip(
                 selected = selectedSubjectId == subject.id,
                 onClick = { onEvent(InsightsUiEvent.SubjectFilterChanged(subject.id)) },

@@ -59,42 +59,56 @@ public fun HomeScreen(
             contentPadding = PaddingValues(MaterialTheme.spacing.medium),
             verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
         ) {
-            item {
-                Button(onClick = actions.onOpenTimer, modifier = Modifier.fillMaxWidth()) {
+            item(key = "focus-action") {
+                Button(onClick = actions.onOpenTimer, modifier = Modifier.fillMaxWidth().animateItem()) {
                     Text(if (state.activeSession == null) "Start a focus session" else "Resume focus session")
                 }
             }
-            item {
+            item(key = "focus-time") {
                 SummaryCard(
                     title = "Focus time",
                     detail = "${state.focusTime.inWholeMinutes} of ${state.focusGoal.inWholeMinutes} min",
                     onClick = actions.onOpenHistory,
+                    modifier = Modifier.animateItem(),
                 )
             }
-            item {
+            item(key = "current-streak") {
                 SummaryCard(
                     title = "Current streak",
                     detail = if (state.streakDays == 1) "1 day" else "${state.streakDays} days",
                     onClick = actions.onOpenHistory,
+                    modifier = Modifier.animateItem(),
                 )
             }
             state.activeSession?.let { session ->
-                item {
+                item(key = "active-session") {
                     SummaryCard(
                         title = activeSessionTitle(session.elapsed.hasUnverifiedTime),
                         detail = session.note ?: "Tap to continue",
                         onClick = actions.onOpenTimer,
+                        modifier = Modifier.animateItem(),
                     )
                 }
             }
             state.nextTask?.let { task ->
-                item {
-                    SummaryCard(title = "Next due", detail = task.title, onClick = { actions.onOpenTask(task.id) })
+                item(key = "next-task") {
+                    SummaryCard(
+                        title = "Next due",
+                        detail = task.title,
+                        onClick = { actions.onOpenTask(task.id) },
+                        modifier = Modifier.animateItem(),
+                    )
                 }
             }
             if (state.recentMaterials.isNotEmpty()) {
-                item { Text("Recent materials", style = MaterialTheme.typography.titleLarge) }
-                items(state.recentMaterials, key = { it.id }) { material ->
+                item(key = "recent-materials-header") {
+                    Text(
+                        "Recent materials",
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.animateItem(),
+                    )
+                }
+                items(state.recentMaterials, key = { "material-${it.id}" }) { material ->
                     SummaryCard(
                         title = material.displayName,
                         detail =

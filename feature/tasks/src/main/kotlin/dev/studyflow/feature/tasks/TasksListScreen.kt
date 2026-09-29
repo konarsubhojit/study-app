@@ -616,7 +616,7 @@ private fun FilterChipsRow(
                 .fillMaxWidth()
                 .padding(vertical = MaterialTheme.spacing.small),
     ) {
-        item {
+        item(key = "task-sort") {
             val sortedByPriority = state.filter.sort == TaskSort.PRIORITY
             FilterChip(
                 selected = sortedByPriority,
@@ -625,9 +625,10 @@ private fun FilterChipsRow(
                     onEvent(TasksListUiEvent.SortChanged(nextSort))
                 },
                 label = { Text(text = if (sortedByPriority) "Sorted by priority" else "Sorted by due date") },
+                modifier = Modifier.animateItem(),
             )
         }
-        items(TaskPriority.entries.toList()) { priority ->
+        items(TaskPriority.entries.toList(), key = { "priority-${it.name}" }) { priority ->
             FilterChip(
                 selected = state.filter.priority == priority,
                 onClick = {
@@ -641,7 +642,7 @@ private fun FilterChipsRow(
                 modifier = Modifier.animateItem(),
             )
         }
-        items(state.filterOptions.subjectIds.toList()) { subjectId ->
+        items(state.filterOptions.subjectIds.toList(), key = { "subject-$it" }) { subjectId ->
             FilterChip(
                 selected = state.filter.subjectId == subjectId,
                 onClick = {
@@ -655,7 +656,7 @@ private fun FilterChipsRow(
                 modifier = Modifier.animateItem(),
             )
         }
-        items(state.filterOptions.tags.toList()) { tag ->
+        items(state.filterOptions.tags.toList(), key = { "tag-$it" }) { tag ->
             FilterChip(
                 selected = state.filter.tag == tag,
                 onClick = {

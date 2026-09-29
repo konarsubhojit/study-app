@@ -1,6 +1,10 @@
 package dev.studyflow.feature.insights
 
 import android.content.Intent
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,6 +23,7 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.spacing
 import dev.studyflow.core.domain.stats.WeeklySummary
 import dev.studyflow.core.domain.stats.WeeklySummaryCopy
@@ -77,24 +82,35 @@ public fun WeeklySummaryScreen(
                 }
             },
         )
-        val summary = state.summary
-        if (summary == null) {
-            LoadingState(modifier = Modifier.fillMaxSize())
-            return@Column
-        }
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
-        ) {
-            SummaryHeadline(summary)
-            HorizontalDivider()
-            SummaryRow(label = "Top subjects", value = WeeklySummaryCopy.topSubjectsLabel(summary, state::subjectName))
-            SummaryRow(label = "Streak", value = WeeklySummaryCopy.streakLabel(summary))
-            SummaryRow(label = "Goal", value = WeeklySummaryCopy.goalLabel(summary))
-            SummaryRow(label = "Compared with last week", value = WeeklySummaryCopy.deltaLabel(summary))
+        AnimatedContent(
+            targetState = state.summary,
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                fadeIn(StudyFlowMotion.effects()) togetherWith fadeOut(StudyFlowMotion.effects())
+            },
+            label = "weekly summary state",
+        ) { summary ->
+            if (summary == null) {
+                LoadingState()
+            } else {
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = MaterialTheme.spacing.medium),
+                    verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+                ) {
+                    SummaryHeadline(summary)
+                    HorizontalDivider()
+                    SummaryRow(
+                        label = "Top subjects",
+                        value = WeeklySummaryCopy.topSubjectsLabel(summary, state::subjectName),
+                    )
+                    SummaryRow(label = "Streak", value = WeeklySummaryCopy.streakLabel(summary))
+                    SummaryRow(label = "Goal", value = WeeklySummaryCopy.goalLabel(summary))
+                    SummaryRow(label = "Compared with last week", value = WeeklySummaryCopy.deltaLabel(summary))
+                }
+            }
         }
     }
 }

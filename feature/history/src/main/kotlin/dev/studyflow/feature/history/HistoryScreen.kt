@@ -158,14 +158,15 @@ private fun FilterRow(
         horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
         contentPadding = PaddingValues(vertical = MaterialTheme.spacing.small),
     ) {
-        item {
+        item(key = "all-subjects") {
             FilterChip(
                 selected = state.filter.subjectId == null,
                 onClick = { onEvent(HistoryUiEvent.SubjectFilterChanged(null)) },
                 label = { Text("All subjects") },
+                modifier = Modifier.animateItem(),
             )
         }
-        items(state.subjectOptions, key = { it.id }) { subject ->
+        items(state.subjectOptions, key = { "subject-${it.id}" }) { subject ->
             FilterChip(
                 selected = state.filter.subjectId == subject.id,
                 onClick = { onEvent(HistoryUiEvent.SubjectFilterChanged(subject.id)) },
@@ -174,8 +175,13 @@ private fun FilterRow(
             )
         }
         if (state.filter.isNarrowed) {
-            item {
-                TextButton(onClick = { onEvent(HistoryUiEvent.FilterCleared) }) { Text("Clear") }
+            item(key = "clear-filter") {
+                TextButton(
+                    onClick = { onEvent(HistoryUiEvent.FilterCleared) },
+                    modifier = Modifier.animateItem(),
+                ) {
+                    Text("Clear")
+                }
             }
         }
     }
@@ -469,14 +475,15 @@ private fun SubjectPicker(
     onSubjectChange: (String?) -> Unit,
 ) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-        item {
+        item(key = "no-subject") {
             FilterChip(
                 selected = selectedSubjectId == null,
                 onClick = { onSubjectChange(null) },
                 label = { Text("No subject") },
+                modifier = Modifier.animateItem(),
             )
         }
-        items(subjectOptions, key = { it.id }) { subject ->
+        items(subjectOptions, key = { "subject-${it.id}" }) { subject ->
             FilterChip(
                 selected = selectedSubjectId == subject.id,
                 onClick = { onSubjectChange(subject.id) },
