@@ -2,6 +2,7 @@ package dev.studyflow.feature.auth
 
 import androidx.credentials.exceptions.GetCredentialCancellationException
 import androidx.credentials.exceptions.GetCredentialException
+import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.network.ApiResult
 import dev.studyflow.core.network.StudyFlowApi
 import dev.studyflow.core.network.auth.AuthTokens
@@ -26,48 +27,79 @@ public class SignInCoordinator
         private val api: StudyFlowApi,
         private val session: AuthSession,
         private val google: Provider<GoogleSignInConfig>,
+        private val passkeys: PasskeySignInConfig,
+        private val logger: AppLogger,
     ) {
+        /**
+         * [getCredential] receives the passkey request JSON, or `null` while passkey sign-in is
+         * disabled, in which case no challenge is requested and only Google is offered.
+         */
         public suspend fun signIn(
-            getCredential: suspend (String, GoogleSignInConfig) -> SignInCredential,
+            getCredential: suspend (String?, GoogleSignInConfig) -> SignInCredential,
         ): SignInOutcome {
             val config =
                 try {
                     google.get()
-                } catch (_: IllegalStateException) {
+                } catch (unconfigured: IllegalStateException) {
+                    // An empty GOOGLE_SERVER_CLIENT_ID would otherwise surface only as the generic
+                    // "could not be completed" message; the exception names the missing property.
+                    logger.warning(
+                        TAG,
+                        "Google sign-in is not configured; the Google option cannot be offered",
+                        unconfigured,
+                    )
                     null
                 }
-            return if (config == null) {
-                SignInOutcome.Failed
-            } else {
-                when (val challenge = api.beginSignIn()) {
-                    is ApiResult.Failure -> {
-                        challenge.error.toSignInOutcome()
-                    }
+            return when {
+                config == null -> {
+                    SignInOutcome.Failed
+                }
 
-                    is ApiResult.Success -> {
-                        when (val selection = selectCredential(challenge.value.requestJson, config, getCredential)) {
-                            is CredentialSelection.Unavailable -> selection.outcome
-                            is CredentialSelection.Selected -> exchange(selection.credential)
+                !passkeys.enabled -> {
+                    completeWith(selectCredential(null, config, getCredential))
+                }
+
+                else -> {
+                    when (val challenge = api.beginSignIn()) {
+                        is ApiResult.Failure -> {
+                            challenge.error.toSignInOutcome()
+                        }
+
+                        is ApiResult.Success -> {
+                            completeWith(
+                                selectCredential(challenge.value.requestJson, config, getCredential),
+                            )
                         }
                     }
                 }
             }
         }
 
+        private suspend fun completeWith(selection: CredentialSelection): SignInOutcome =
+            when (selection) {
+                is CredentialSelection.Unavailable -> selection.outcome
+                is CredentialSelection.Selected -> exchange(selection.credential)
+            }
+
         private suspend fun selectCredential(
-            request: String,
+            request: String?,
             config: GoogleSignInConfig,
-            getCredential: suspend (String, GoogleSignInConfig) -> SignInCredential,
+            getCredential: suspend (String?, GoogleSignInConfig) -> SignInCredential,
         ): CredentialSelection =
             try {
-                CredentialSelection.Selected(getCredential(request, config))
+                val credential = getCredential(request, config)
+                // Only the kind of credential is logged, never its contents.
+                logger.debug(TAG, "Credential selected: ${credential.kind}")
+                CredentialSelection.Selected(credential)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: GetCredentialCancellationException) {
                 CredentialSelection.Unavailable(SignInOutcome.Cancelled)
             } catch (_: NoSignInCredentialAvailableException) {
+                logger.warning(TAG, "Credential Manager offered neither a passkey nor a Google account")
                 CredentialSelection.Unavailable(SignInOutcome.NoCredential)
-            } catch (_: GetCredentialException) {
+            } catch (failure: GetCredentialException) {
+                logger.warning(TAG, "Credential Manager request failed: ${failure.type}")
                 CredentialSelection.Unavailable(SignInOutcome.Failed)
             }
 
@@ -106,3 +138,12 @@ private fun ApiError.toSignInOutcome(): SignInOutcome =
         is ApiError.Unauthorized, is ApiError.Forbidden -> SignInOutcome.Rejected
         else -> SignInOutcome.Failed
     }
+
+private const val TAG = "SignIn"
+
+private val SignInCredential.kind: String
+    get() =
+        when (this) {
+            is SignInCredential.Passkey -> "passkey"
+            is SignInCredential.GoogleIdToken -> "google"
+        }
