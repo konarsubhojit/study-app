@@ -96,6 +96,13 @@ Add the following repository Actions secrets for each operation.
 Except for the two platform-provided `SUPABASE_*` settings, add each setting that applies as a
 repository Actions secret with the same name.
 
+Passkey sign-in in the app is separately opt-in. It is off unless the
+`STUDYFLOW_PASSKEY_SIGN_IN_ENABLED` repository **variable** is `true`, and `ci.yml` and
+`release.yml` build with it. The `api` function still requires both `PASSKEY_*` secrets either way.
+For the Google Cloud OAuth clients, `assetlinks.json`, and the fingerprint encodings these secrets
+expect, see
+[Google Cloud and Digital Asset Links setup](../docs/authentication.md#google-cloud-and-digital-asset-links-setup).
+
 #### Hourly orphan reaper
 
 | Secret | Purpose | Where to get it |
@@ -185,6 +192,10 @@ cannot drift from the server. A tagged release fails fast if the secret is missi
 must pass the value itself. Without it the production flavour still builds, but `AuthModule` fails
 to provide `GoogleSignInConfig`, with a message naming the missing property.
 
+Google sign-in also needs an **Android** OAuth client for the package name and signing-certificate
+SHA-1. Without it the Google option is silently dropped from the sheet. See
+[Google Cloud OAuth clients](../docs/authentication.md#google-cloud-oauth-clients).
+
 The app's base URL must point at this function — `https://<project-ref>.supabase.co/functions/v1/api`.
 An unconfigured production-flavour build defaults to `https://api.studyflow.dev`, an **undeployed**
 custom domain; it cannot reach the API. This fallback keeps local debug builds possible without
@@ -217,6 +228,9 @@ Android that is **not** a web origin: Credential Manager reports
 `android:apk-key-hash:<base64url SHA-256 of the APK signing certificate>`. It accepts a
 comma-separated list so a rollout signed with a different key than the installed build still
 verifies.
+The RP id must serve `https://<rp-id>/.well-known/assetlinks.json` and can never change once
+passkeys exist. See
+[Relying-party id and `assetlinks.json`](../docs/authentication.md#relying-party-id-and-assetlinksjson).
 
 Misconfiguration presents in two distinct ways:
 

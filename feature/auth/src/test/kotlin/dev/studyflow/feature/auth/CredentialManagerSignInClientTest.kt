@@ -204,6 +204,7 @@ private class ScriptedCredentialManager(
         callback: CredentialManagerCallback<CreateCredentialResponse, CreateCredentialException>,
     ): Unit = unused()
 
+    @Suppress("ForbiddenVoid") // The callback type is fixed by CredentialManager's signature.
     override fun clearCredentialStateAsync(
         request: ClearCredentialStateRequest,
         cancellationSignal: CancellationSignal?,
