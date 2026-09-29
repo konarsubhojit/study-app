@@ -53,14 +53,7 @@ public fun HomeScreen(
     Column(modifier = modifier.fillMaxSize()) {
         // Settings is an app-bar action rather than a bottom-bar destination (issue #167): it is
         // visited rarely, and a five-destination bar is what keeps the labels on one line.
-        StudyFlowTopAppBar(
-            title = "Today",
-            actions = {
-                IconButton(onClick = actions.onOpenSettings) {
-                    Icon(imageVector = Icons.Outlined.Settings, contentDescription = "Settings")
-                }
-            },
-        )
+        HomeTopAppBar(onOpenSettings = actions.onOpenSettings)
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(MaterialTheme.spacing.medium),
@@ -115,6 +108,18 @@ public fun HomeScreen(
             }
         }
     }
+}
+
+@Composable
+private fun HomeTopAppBar(onOpenSettings: () -> Unit) {
+    StudyFlowTopAppBar(
+        title = "Today",
+        actions = {
+            IconButton(onClick = onOpenSettings) {
+                Icon(imageVector = Icons.Outlined.Settings, contentDescription = "Settings")
+            }
+        },
+    )
 }
 
 private fun activeSessionTitle(hasUnverifiedTime: Boolean): String =
