@@ -124,6 +124,7 @@ public fun NotificationSettingsRoute(
         modifier = modifier,
         onOpenDataPrivacy = onOpenDataPrivacy,
         syncStatus = { SyncStatusRoute() },
+        logExport = { LogExportRoute() },
         account = account,
     )
 }
@@ -131,6 +132,8 @@ public fun NotificationSettingsRoute(
 /**
  * @param syncStatus the sync card (issue #55), passed as a slot so this screen stays renderable
  *   without a ViewModel graph — the same reason the rest of it takes state rather than fetching it.
+ * @param logExport the "Export logs" card, next to the sync card because the failure a user wants
+ *   to report is usually the one the sync card just told them about.
  * @param onOpenDataPrivacy opens export, restore and account deletion (issue #78).
  */
 @Composable
@@ -140,6 +143,7 @@ public fun NotificationSettingsScreen(
     modifier: Modifier = Modifier,
     onOpenDataPrivacy: () -> Unit = {},
     syncStatus: @Composable () -> Unit = {},
+    logExport: @Composable () -> Unit = {},
     account: @Composable () -> Unit = {},
 ) {
     state.rationale?.let { key ->
@@ -174,6 +178,10 @@ public fun NotificationSettingsScreen(
 
                 item(key = "settings-sync-status") {
                     Box(Modifier.animateItem()) { syncStatus() }
+                }
+
+                item(key = "settings-log-export") {
+                    Box(Modifier.animateItem()) { logExport() }
                 }
 
                 if (state.notificationsBlocked) {
