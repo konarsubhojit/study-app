@@ -34,6 +34,16 @@ public data class SyncStatusUiState(
 
     /** True when nothing is waiting to be sent and the last attempt did not fail. */
     val isUpToDate: Boolean get() = status.isUpToDate
+
+    /**
+     * True when changes are waiting but no sync pass has ever finished — neither a success nor a
+     * failure was recorded.
+     *
+     * A pass with something queued always records one or the other, so this is the one state in
+     * which sync has not *run* rather than run with nothing to do: a signed-out device, or a worker
+     * that could never be constructed. Without it both look like an ordinary queue waiting its turn.
+     */
+    val hasNeverRun: Boolean get() = status.pendingCount > 0 && status.lastAttemptAt == null
 }
 
 public sealed interface SyncStatusUiEvent : UiEvent {

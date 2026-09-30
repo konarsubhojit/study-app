@@ -76,6 +76,17 @@ public class AndroidApplicationConventionPlugin : Plugin<Project> {
                     matchingFallbacks += "release"
                     isDebuggable = true
                     signingConfig = buildTypes.getByName("debug").signingConfig
+                    // The instrumented test APK resolves shared libraries from this (shrunk) app and
+                    // is itself R8-processed, so each side needs test-only rules. Both files are
+                    // optional for the same reason as above, and neither ever reaches `release`.
+                    val appUnderTestRules = file("proguard-rules-releaseTest.pro")
+                    if (appUnderTestRules.exists()) {
+                        proguardFiles(appUnderTestRules)
+                    }
+                    val testApkRules = file("proguard-rules-androidTest.pro")
+                    if (testApkRules.exists()) {
+                        testProguardFiles(testApkRules)
+                    }
                 }
                 testBuildType = "releaseTest"
             }

@@ -58,6 +58,36 @@ class SyncStatusViewModelTest {
         }
 
     @Test
+    fun `changes waiting with no recorded attempt read as sync never having run`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel()
+
+            statusRepository.status.value = SyncStatus(pendingCount = 2)
+            advanceUntilIdle()
+
+            viewModel.state.test {
+                assertTrue(
+                    awaitItem().hasNeverRun,
+                    "a queue no run has ever touched must not look like one waiting its turn",
+                )
+            }
+        }
+
+    @Test
+    fun `any recorded attempt, or nothing to send, is not a sync that never ran`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel()
+
+            viewModel.state.test {
+                assertFalse(awaitItem().hasNeverRun, "an empty queue has nothing a run could have sent")
+
+                statusRepository.status.value =
+                    SyncStatus(pendingCount = 2, lastError = "server is down", lastAttemptAt = LAST_SUCCESS)
+                assertFalse(awaitItem().hasNeverRun, "a failed attempt is a run, and says so on its own")
+            }
+        }
+
+    @Test
     fun `sync now asks for a run the user is waiting on`() =
         runTest(mainDispatcher.dispatcher) {
             val viewModel = viewModel()

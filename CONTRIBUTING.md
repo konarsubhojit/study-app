@@ -175,7 +175,11 @@ instrumented tests — including `ProductionReleaseSmokeInstrumentedTest` — ag
 `productionReleaseTest` build type: `isMinifyEnabled`/`isShrinkResources` copied from `release`, but
 `isDebuggable = true` so the instrumentation runner can attach to it. That smoke test launches the
 app, reads settings from DataStore, and navigates to the task list, history and timer, then scans
-logcat for the exception types a keep-rule gap produces.
+logcat for the exception types a keep-rule gap produces. `WorkerFactoryInstrumentedTest` runs in the
+same suite: it scans the installed APK's dex for every `ListenableWorker` in `dev.studyflow` and
+constructs each one through the `WorkerFactory` WorkManager is actually configured with, so a new
+worker is covered automatically, and a missing `@HiltWorker` binding (which WorkManager otherwise
+only logs as `Could not instantiate`) fails the build.
 
 This catches a keep-rule gap that only shrinking exposes — a reflectively-used class or member R8
 removed entirely, which throws `ClassNotFoundException`/`NoSuchMethodError`. It does **not** catch a

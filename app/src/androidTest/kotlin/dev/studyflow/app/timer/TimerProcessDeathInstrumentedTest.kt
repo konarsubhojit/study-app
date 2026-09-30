@@ -2,7 +2,6 @@ package dev.studyflow.app.timer
 
 import android.content.Context
 import android.content.Intent
-import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.provider.Settings
 import androidx.core.content.ContextCompat
@@ -30,16 +29,17 @@ import kotlin.time.Instant
 @RunWith(AndroidJUnit4::class)
 class TimerProcessDeathInstrumentedTest {
     @Test
-    fun forceStopAndRelaunchReplayTheLogAndRestartTheService() =
+    fun relaunchAfterProcessDeathReplaysTheLogAndRestartsTheService() =
         runBlocking {
-            val instrumentation = InstrumentationRegistry.getInstrumentation()
-            val context = instrumentation.targetContext
+            val context = InstrumentationRegistry.getInstrumentation().targetContext
             context.deleteDatabase(StudyFlowDatabase.NAME)
+            // The seed is what a process that died mid-session leaves behind: an open `Start` in
+            // the event log, 30 seconds old, and nothing in memory. The target process is not
+            // force-stopped here — instrumentation runs *inside* it, so `am force-stop` killed the
+            // test runner itself ("Process crashed") before any assertion. Everything asserted
+            // below is read back through a fresh database connection and repository, exactly as
+            // a relaunched process would rebuild it.
             seedRunningSession(context)
-
-            closeQuietly(
-                instrumentation.uiAutomation.executeShellCommand("am force-stop ${context.packageName}"),
-            )
             launchApp(context)
             ContextCompat.startForegroundService(context, TimerForegroundService.refreshIntent(context))
 
@@ -97,11 +97,6 @@ class TimerProcessDeathInstrumentedTest {
             uptime = uptime - duration,
             wallClock = wallClock - duration,
         )
-
-    private fun closeQuietly(descriptor: ParcelFileDescriptor) {
-        descriptor.close()
-        SystemClock.sleep(500)
-    }
 
     private companion object {
         const val DEVICE_ID = "instrumented-device"

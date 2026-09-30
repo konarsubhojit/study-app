@@ -24,6 +24,12 @@ public class HiltConventionPlugin : Plugin<Project> {
                 pluginManager.apply("com.google.dagger.hilt.android")
                 dependencies {
                     add("implementation", libs.findLibrary("hilt-android").get())
+                    // `@HiltWorker` is processed by androidx's compiler, not Dagger's. Without it
+                    // no worker binding is generated, `HiltWorkerFactory` is handed an empty map
+                    // and WorkManager falls back to a reflective `(Context, WorkerParameters)`
+                    // constructor no `@AssistedInject` worker has — in every build type, silently.
+                    // Applied to every Android Hilt module so a new worker anywhere is covered.
+                    add("ksp", libs.findLibrary("androidx-hilt-compiler").get())
                 }
             }
         }
