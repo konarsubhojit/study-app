@@ -9,6 +9,7 @@ import dev.studyflow.core.datastore.userSettingsStore
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.testing.data.FakeMaterialRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
@@ -27,6 +28,7 @@ import kotlin.time.Instant
 class WorkManagerMaterialUploadCoordinatorTest {
     private val context = RuntimeEnvironment.getApplication()
     private val materialRepository = FakeMaterialRepository()
+    private val requestedSyncs = mutableListOf<SyncTrigger>()
     private lateinit var workManager: WorkManager
     private lateinit var coordinator: WorkManagerMaterialUploadCoordinator
 
@@ -36,7 +38,13 @@ class WorkManagerMaterialUploadCoordinatorTest {
         WorkManagerTestInitHelper.initializeTestWorkManager(context, configuration)
         workManager = WorkManager.getInstance(context)
         coordinator =
-            WorkManagerMaterialUploadCoordinator(context, materialRepository, context.userSettingsStore(), workManager)
+            WorkManagerMaterialUploadCoordinator(
+                context,
+                materialRepository,
+                context.userSettingsStore(),
+                { trigger -> requestedSyncs += trigger },
+                workManager,
+            )
     }
 
     @Test
@@ -80,6 +88,7 @@ class WorkManagerMaterialUploadCoordinatorTest {
             val duplicate = materialRepository.observeById("duplicate").first()
             assertEquals(SyncState.Synced, duplicate?.sync)
             assertEquals("materials/$HASH_1", duplicate?.remoteKey)
+            assertEquals(listOf(SyncTrigger.OUTBOUND), requestedSyncs)
         }
 
     @Test

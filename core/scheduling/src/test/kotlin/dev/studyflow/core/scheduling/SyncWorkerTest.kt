@@ -50,9 +50,14 @@ class SyncWorkerTest {
     @Test
     fun `a finished pass succeeds`() =
         runBlocking {
-            val worker = worker(FailingTransport(failure = null))
+            val logger = RecordingAppLogger()
+            val worker = worker(FailingTransport(failure = null), logger = logger)
 
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
+            assertEquals(
+                listOf("code=RecordSync pushed=0 pulled=0 cursorAdvanced=false"),
+                logger.diagnosticsWith(DiagnosticCode.RecordSync),
+            )
         }
 
     @Test

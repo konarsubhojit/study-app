@@ -13,6 +13,8 @@ import dev.studyflow.core.datastore.UserSettingsStore
 import dev.studyflow.core.datastore.proto.SyncMode
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
+import dev.studyflow.core.domain.sync.SyncScheduler
+import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.model.SyncState
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
@@ -33,6 +35,7 @@ public class WorkManagerMaterialUploadCoordinator(
     private val context: Context,
     private val materialRepository: MaterialRepository,
     private val settingsStore: UserSettingsStore,
+    private val syncScheduler: SyncScheduler,
     private val workManager: WorkManager = WorkManager.getInstance(context),
 ) : MaterialUploadCoordinator {
     override suspend fun enqueueUpload(materialId: String) {
@@ -69,6 +72,7 @@ public class WorkManagerMaterialUploadCoordinator(
         val existingSynced = materialRepository.findByContentHash(material.contentHash)
         if (existingSynced != null && existingSynced.id != materialId && existingSynced.sync == SyncState.Synced) {
             materialRepository.save(material.copy(sync = SyncState.Synced, remoteKey = existingSynced.remoteKey))
+            syncScheduler.requestSync(SyncTrigger.OUTBOUND)
             return true
         }
         return false

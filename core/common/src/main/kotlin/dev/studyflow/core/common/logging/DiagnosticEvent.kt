@@ -1,5 +1,7 @@
 package dev.studyflow.core.common.logging
 
+import java.util.UUID
+
 /**
  * A structured, non-PII diagnostic that survives release sanitisation.
  *
@@ -69,6 +71,18 @@ public enum class DiagnosticCode(
     /** One inbound row was unreadable and was dropped so the cursor could move past it. */
     SyncInboundRecordDropped(LogLevel.Warning, TAG_SYNC),
 
+    /** A material upload stage started, completed or failed. */
+    MaterialUpload(LogLevel.Info, TAG_MATERIALS),
+
+    /** A material download stage started, completed or failed. */
+    MaterialDownload(LogLevel.Info, TAG_MATERIALS),
+
+    /** A record-stream sync pass and its cursor progress. */
+    RecordSync(LogLevel.Info, TAG_SYNC),
+
+    /** Exact-alarm scheduling degraded to inexact delivery. */
+    ReminderDegraded(LogLevel.Warning, TAG_REMINDERS),
+
     /** Reminder reconciliation found nothing wrong. */
     ReminderIntegrityOk(LogLevel.Info, TAG_REMINDERS),
 
@@ -96,11 +110,25 @@ public enum class DiagnosticKey(
     EntityType("entityType"),
     Pushed("pushed"),
     Applied("applied"),
+    Pulled("pulled"),
+    CursorAdvanced("cursorAdvanced"),
     Count("count"),
+    Outcome("outcome"),
+    Part("part"),
+    PartCount("partCount"),
+    MaterialId("materialId"),
+    ReminderId("reminderId"),
+    Subsystem("subsystem"),
     Scheduled("scheduled"),
     NotScheduled("notScheduled"),
     Overdue("overdue"),
     Degraded("degraded"),
+}
+
+/** Closed subsystem names for exact-alarm degradation events. */
+public enum class ReminderDegradationSubsystem {
+    REMINDER_SCHEDULING,
+    TIMER_INTERVAL,
 }
 
 /**
@@ -137,6 +165,13 @@ public class DiagnosticFields internal constructor() {
 
     public fun put(
         key: DiagnosticKey,
+        value: UUID,
+    ) {
+        entries += key to value.toString()
+    }
+
+    public fun put(
+        key: DiagnosticKey,
         value: Enum<*>,
     ) {
         entries += key to value.name
@@ -160,6 +195,24 @@ public fun diagnosticEvent(
     fields: DiagnosticFields.() -> Unit = {},
 ): DiagnosticEvent = DiagnosticEvent(code, DiagnosticFields().apply(fields).build())
 
+/** Logs an exact-alarm fallback using only closed values and an optional opaque reminder UUID. */
+public fun AppLogger.reminderDegraded(
+    degradation: Enum<*>,
+    subsystem: ReminderDegradationSubsystem,
+    reminderId: UUID? = null,
+    throwable: Throwable? = null,
+) {
+    diagnostic(
+        diagnosticEvent(DiagnosticCode.ReminderDegraded) {
+            put(DiagnosticKey.Degraded, degradation)
+            put(DiagnosticKey.Subsystem, subsystem)
+            reminderId?.let { put(DiagnosticKey.ReminderId, it) }
+        },
+        throwable,
+    )
+}
+
 private const val TAG_SYNC = "Sync"
 private const val TAG_REMINDERS = "ReminderIntegrity"
+private const val TAG_MATERIALS = "Materials"
 private const val TAG_LOGS = "Logs"

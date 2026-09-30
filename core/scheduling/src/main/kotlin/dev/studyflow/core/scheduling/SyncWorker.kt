@@ -104,6 +104,13 @@ public class SyncWorker
                 }
 
                 is SyncOutcome.Synced -> {
+                    logger.diagnostic(
+                        diagnosticEvent(DiagnosticCode.RecordSync) {
+                            put(DiagnosticKey.Pushed, outcome.recordsPushed)
+                            put(DiagnosticKey.Pulled, outcome.recordsPulled)
+                            put(DiagnosticKey.CursorAdvanced, outcome.recordCursorAdvanced)
+                        },
+                    )
                     if (outcome.applied > 0) remoteChangesListener.onRemoteChangesApplied()
                     Result.success()
                 }

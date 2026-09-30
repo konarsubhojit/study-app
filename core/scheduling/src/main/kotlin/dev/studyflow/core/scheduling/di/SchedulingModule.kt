@@ -94,7 +94,8 @@ public object SchedulingModule {
     @Singleton
     public fun reminderPlatformScheduler(
         @ApplicationContext context: Context,
-    ): ReminderPlatformScheduler = AndroidReminderPlatformScheduler(context)
+        logger: AppLogger,
+    ): ReminderPlatformScheduler = AndroidReminderPlatformScheduler(context, logger = logger)
 
     @Provides
     @Singleton
@@ -251,7 +252,9 @@ public object SchedulingModule {
         @ApplicationContext context: Context,
         materialRepository: MaterialRepository,
         settingsStore: UserSettingsStore,
-    ): MaterialUploadCoordinator = WorkManagerMaterialUploadCoordinator(context, materialRepository, settingsStore)
+        syncScheduler: SyncScheduler,
+    ): MaterialUploadCoordinator =
+        WorkManagerMaterialUploadCoordinator(context, materialRepository, settingsStore, syncScheduler)
 
     @Provides
     @Singleton

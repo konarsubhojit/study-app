@@ -1,12 +1,12 @@
 package dev.studyflow.core.scheduling
 
 import android.content.Context
-import android.util.Log
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
+import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.domain.materials.DownloadProgressStore
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.storage.ObjectStore
@@ -24,11 +24,12 @@ public class MaterialDownloadWorker
         private val downloadProgressStore: DownloadProgressStore,
         private val objectStore: ObjectStore,
         private val transport: DownloadTransport,
+        private val logger: AppLogger,
     ) : CoroutineWorker(context, parameters) {
         override suspend fun doWork(): Result {
             val materialId = inputData.getString(EXTRA_DOWNLOAD_MATERIAL_ID)
             if (materialId.isNullOrBlank()) {
-                Log.w(TAG, "Download work is missing its material id; dropping it")
+                logger.warning(TAG, "Download work is missing its material id; dropping it")
                 return Result.failure()
             }
 
@@ -37,6 +38,7 @@ public class MaterialDownloadWorker
                     materialRepository = materialRepository,
                     downloadProgressStore = downloadProgressStore,
                     objectStore = objectStore,
+                    logger = logger,
                     destinationPath = { material ->
                         val cacheDirectory = File(applicationContext.filesDir, MATERIALS_DIRECTORY_NAME)
                         File(cacheDirectory, materialDownloadCacheFileName(material)).absolutePath

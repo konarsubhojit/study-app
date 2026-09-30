@@ -15,9 +15,12 @@ import dev.studyflow.app.navigation.StudyFlowDeepLinks
 import dev.studyflow.app.navigation.TimerRoute
 import dev.studyflow.core.common.coroutines.ApplicationScope
 import dev.studyflow.core.common.logging.AppLogger
+import dev.studyflow.core.common.logging.ReminderDegradationSubsystem
+import dev.studyflow.core.common.logging.reminderDegraded
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.datastore.FocusTimerConfig
 import dev.studyflow.core.datastore.FocusTimerSettings
+import dev.studyflow.core.domain.reminder.ReminderDegradation
 import dev.studyflow.core.domain.session.SessionCommandResult
 import dev.studyflow.core.domain.session.SessionRepository
 import dev.studyflow.core.domain.timer.TimerCommand
@@ -334,7 +337,11 @@ internal class TimerIntervalCoordinator
                     )
                 },
                 onExactAlarmDenied = { denied ->
-                    logger.warning(TAG, "Exact timer interval alarm denied; falling back to inexact", denied)
+                    logger.reminderDegraded(
+                        degradation = ReminderDegradation.EXACT_ALARMS_DENIED,
+                        subsystem = ReminderDegradationSubsystem.TIMER_INTERVAL,
+                        throwable = denied,
+                    )
                     alarmManager.cancel(operation)
                 },
                 scheduleInexact = {

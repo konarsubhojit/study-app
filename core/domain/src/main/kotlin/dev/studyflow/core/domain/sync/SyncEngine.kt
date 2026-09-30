@@ -49,12 +49,15 @@ public class SyncEngine(
                 if (trigger == SyncTrigger.OUTBOUND && outbound.pushed == 0) {
                     SyncOutcome.Idle
                 } else {
-                    applyDelta(pushed = outbound.pushed)
+                    applyDelta(pushed = outbound.pushed, recordsPushed = outbound.recordsPushed)
                 }
             }
         }
 
-    private suspend fun applyDelta(pushed: Int): SyncOutcome =
+    private suspend fun applyDelta(
+        pushed: Int,
+        recordsPushed: Int,
+    ): SyncOutcome =
         when (val inbound = readDelta()) {
             is PullOutcome.Failed -> {
                 fail(inbound.failure, SyncStage.PULL)
@@ -62,16 +65,23 @@ public class SyncEngine(
 
             is PullOutcome.Pulled -> {
                 store.recordSuccess(clock.now())
-                SyncOutcome.Synced(pushed = pushed, applied = inbound.applied)
+                SyncOutcome.Synced(
+                    pushed = pushed,
+                    applied = inbound.applied,
+                    recordsPushed = recordsPushed,
+                    recordsPulled = inbound.received,
+                    recordCursorAdvanced = inbound.cursorAdvanced,
+                )
             }
         }
 
     @Suppress("ReturnCount") // Each stream's failure ends the drain before the batch is acknowledged.
     private suspend fun drainQueue(): DrainOutcome {
         var pushed = 0
+        var recordsPushed = 0
         while (true) {
             val batch = store.pending(batchSize)
-            if (batch.isEmpty()) return DrainOutcome.Drained(pushed)
+            if (batch.isEmpty()) return DrainOutcome.Drained(pushed, recordsPushed)
 
             val sessions =
                 batch
@@ -93,6 +103,7 @@ public class SyncEngine(
                 val result = transport.pushDocuments(documents)
                 if (result is SyncResult.Failure) return DrainOutcome.Failed(result.failure)
                 pushed += documents.size
+                recordsPushed += documents.size
             }
             // Acknowledged by sequence: a mutation that re-queued one of these entities while the
             // batch was in flight holds a newer sequence and stays pending.
@@ -107,7 +118,9 @@ public class SyncEngine(
                 cursor = store::cursor,
                 pull = transport::pull,
                 apply = store::applyPage,
-                describe = { page -> PageShape(page.changes.isEmpty(), page.nextCursor, page.hasMore) },
+                describe = { page ->
+                    PageShape(page.changes.isEmpty(), page.nextCursor, page.hasMore, page.changes.size)
+                },
             )
         if (sessions is PullOutcome.Failed) return sessions
         val documents =
@@ -115,10 +128,18 @@ public class SyncEngine(
                 cursor = store::documentCursor,
                 pull = transport::pullDocuments,
                 apply = { page -> store.applyDocumentPage(page, clock.now()) },
-                describe = { page -> PageShape(page.changes.isEmpty(), page.nextCursor, page.hasMore) },
+                describe = { page ->
+                    PageShape(page.changes.isEmpty(), page.nextCursor, page.hasMore, page.changes.size)
+                },
             )
         if (documents is PullOutcome.Failed) return documents
-        return PullOutcome.Pulled((sessions as PullOutcome.Pulled).applied + (documents as PullOutcome.Pulled).applied)
+        val sessionPull = sessions as PullOutcome.Pulled
+        val documentPull = documents as PullOutcome.Pulled
+        return PullOutcome.Pulled(
+            applied = sessionPull.applied + documentPull.applied,
+            received = documentPull.received,
+            cursorAdvanced = documentPull.cursorAdvanced,
+        )
     }
 
     private suspend fun <P> readStream(
@@ -128,6 +149,8 @@ public class SyncEngine(
         describe: (P) -> PageShape,
     ): PullOutcome {
         var applied = 0
+        var received = 0
+        var cursorAdvanced = false
         var pagesLeft = maxPagesPerRun
         var moreToRead = true
         while (moreToRead && pagesLeft-- > 0) {
@@ -138,6 +161,8 @@ public class SyncEngine(
                     is SyncResult.Success -> result.value
                 }
             val shape = describe(page)
+            received += shape.count
+            cursorAdvanced = cursorAdvanced || (shape.nextCursor != null && shape.nextCursor != from)
 
             // Nothing changed: no rows to merge and the same cursor to resume from, so there is
             // nothing worth opening a transaction for.
@@ -149,13 +174,14 @@ public class SyncEngine(
             // radio, open indefinitely; the next run resumes from the cursor.
             moreToRead = !unchanged && shape.hasMore
         }
-        return PullOutcome.Pulled(applied)
+        return PullOutcome.Pulled(applied, received, cursorAdvanced)
     }
 
     private data class PageShape(
         val empty: Boolean,
         val nextCursor: String?,
         val hasMore: Boolean,
+        val count: Int,
     )
 
     private suspend fun fail(
@@ -169,6 +195,7 @@ public class SyncEngine(
     private sealed interface DrainOutcome {
         data class Drained(
             val pushed: Int,
+            val recordsPushed: Int,
         ) : DrainOutcome
 
         data class Failed(
@@ -179,6 +206,8 @@ public class SyncEngine(
     private sealed interface PullOutcome {
         data class Pulled(
             val applied: Int,
+            val received: Int = 0,
+            val cursorAdvanced: Boolean = false,
         ) : PullOutcome
 
         data class Failed(

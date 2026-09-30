@@ -3,11 +3,13 @@ package dev.studyflow.feature.settings
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.app.AlarmManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.media.RingtoneManager
 import android.os.Build
+import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -78,6 +80,7 @@ public fun NotificationSettingsRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val activity = LocalActivity.current
+    var exactAlarmsDenied by remember { mutableStateOf(false) }
     val permissionLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { _ ->
             viewModel.onEvent(
@@ -96,6 +99,9 @@ public fun NotificationSettingsRoute(
         }
 
     LifecycleResumeEffect(activity) {
+        exactAlarmsDenied =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                !context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
         viewModel.onEvent(NotificationSettingsUiEvent.Refresh(activity.shouldExplainNotifications()))
         onPauseOrDispose {}
     }
@@ -120,7 +126,16 @@ public fun NotificationSettingsRoute(
 
     NotificationSettingsScreen(
         state = state,
+        exactAlarmsDenied = exactAlarmsDenied,
         onEvent = viewModel::onEvent,
+        onOpenExactAlarmSettings = {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                context.start(
+                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                        .setData("package:${context.packageName}".toUri()),
+                )
+            }
+        },
         modifier = modifier,
         onOpenDataPrivacy = onOpenDataPrivacy,
         syncStatus = { SyncStatusRoute() },
@@ -141,6 +156,8 @@ public fun NotificationSettingsScreen(
     state: NotificationSettingsUiState,
     onEvent: (NotificationSettingsUiEvent) -> Unit,
     modifier: Modifier = Modifier,
+    exactAlarmsDenied: Boolean = false,
+    onOpenExactAlarmSettings: () -> Unit = {},
     onOpenDataPrivacy: () -> Unit = {},
     syncStatus: @Composable () -> Unit = {},
     logExport: @Composable () -> Unit = {},
@@ -188,6 +205,14 @@ public fun NotificationSettingsScreen(
                     item(key = "blocked-notifications") {
                         Box(Modifier.animateItem()) {
                             BlockedCard(state = state, onEvent = onEvent)
+                        }
+                    }
+                }
+
+                if (exactAlarmsDenied) {
+                    item(key = "exact-alarm-degradation") {
+                        Box(Modifier.animateItem()) {
+                            ExactAlarmDegradationCard(onOpenExactAlarmSettings)
                         }
                     }
                 }
@@ -422,6 +447,25 @@ private fun BatteryDiagnosticsCard(
                 TextButton(onClick = { onEvent(NotificationSettingsUiEvent.OpenBatterySettings) }) {
                     Text(text = "Open battery settings")
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ExactAlarmDegradationCard(onOpenSettings: () -> Unit) {
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text(text = "Reminders may be less precise", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "Allow exact alarms to receive reminders closer to their scheduled time.",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            TextButton(onClick = onOpenSettings) {
+                Text(text = "Open exact alarm settings")
             }
         }
     }

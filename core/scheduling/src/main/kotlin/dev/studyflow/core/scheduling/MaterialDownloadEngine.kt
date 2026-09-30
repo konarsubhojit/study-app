@@ -1,5 +1,7 @@
 package dev.studyflow.core.scheduling
 
+import dev.studyflow.core.common.logging.AppLogger
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.domain.materials.DownloadProgress
 import dev.studyflow.core.domain.materials.DownloadProgressStore
 import dev.studyflow.core.domain.materials.MaterialRepository
@@ -40,71 +42,98 @@ public class MaterialDownloadEngine(
     private val objectStore: ObjectStore,
     private val destinationPath: (Material) -> String,
     private val transport: DownloadTransport,
+    private val logger: AppLogger? = null,
 ) {
     public suspend fun download(materialId: String): DownloadOutcome {
+        var stage = MaterialTransferStage.PLAN
         val material = materialRepository.observeByIdOnce(materialId)
-        earlyOutcome(material)?.let { return it }
-        checkNotNull(material)
-        val verifiedRemoteKey = requireNotNull(material.remoteKey) { "remoteKey was validated as non-blank above" }
-
+        if (material == null) {
+            log(materialId, stage, MaterialTransferOutcome.FAILURE, retryable = false)
+            return DownloadOutcome.MaterialMissing
+        }
+        material.localPath?.let { localPath ->
+            log(materialId, MaterialTransferStage.VERIFY, MaterialTransferOutcome.SKIPPED, retryable = false)
+            return DownloadOutcome.Cached(localPath)
+        }
+        val remoteKey = material.remoteKey?.takeIf(String::isNotBlank)
+        if (remoteKey == null) {
+            log(materialId, stage, MaterialTransferOutcome.FAILURE, retryable = false)
+            return DownloadOutcome.Permanent("material has no remote object to download")
+        }
         return try {
-            downloadAndPersist(materialId, material, verifiedRemoteKey)
+            log(materialId, stage, MaterialTransferOutcome.STARTED, retryable = true)
+            log(materialId, stage, MaterialTransferOutcome.SUCCESS, retryable = false)
+            stage = MaterialTransferStage.INIT
+            log(materialId, stage, MaterialTransferOutcome.STARTED, retryable = true)
+            val url = objectStore.getDownloadUrl(ObjectKey(remoteKey))
+            log(materialId, stage, MaterialTransferOutcome.SUCCESS, retryable = false)
+
+            val progress = downloadProgressStore.progress(materialId)
+            val startAt = progress?.downloadedBytes ?: 0L
+            val totalBytes = progress?.totalBytes ?: material.sizeBytes
+            val localPath = destinationPath(material)
+            stage = MaterialTransferStage.PART
+            log(materialId, stage, MaterialTransferOutcome.STARTED, retryable = true)
+            val result =
+                transport.download(
+                    request =
+                        DownloadRequest(
+                            url = url,
+                            localPath = localPath,
+                            rangeStart = startAt,
+                            expectedTotalBytes = totalBytes,
+                        ),
+                ) { downloadedBytes, reportedTotalBytes ->
+                    downloadProgressStore.save(
+                        DownloadProgress(
+                            materialId = materialId,
+                            downloadedBytes = downloadedBytes,
+                            totalBytes = reportedTotalBytes ?: totalBytes,
+                        ),
+                    )
+                }
+            log(materialId, stage, MaterialTransferOutcome.SUCCESS, retryable = false)
+            stage = MaterialTransferStage.COMPLETE
+            log(materialId, stage, MaterialTransferOutcome.SUCCESS, retryable = false)
+            stage = MaterialTransferStage.VERIFY
+            log(materialId, stage, MaterialTransferOutcome.STARTED, retryable = true)
+            if (result.downloadedBytes != material.sizeBytes) {
+                log(materialId, stage, MaterialTransferOutcome.FAILURE, retryable = false)
+                return DownloadOutcome.Permanent(
+                    "downloaded ${result.downloadedBytes} bytes but expected ${material.sizeBytes}",
+                )
+            }
+            log(materialId, stage, MaterialTransferOutcome.SUCCESS, retryable = false)
+            materialRepository.save(material.copy(localPath = localPath))
+            downloadProgressStore.clear(materialId)
+            DownloadOutcome.Cached(localPath)
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: ObjectStoreException) {
             val reason = exception.message ?: exception::class.simpleName.orEmpty()
+            log(materialId, stage, MaterialTransferOutcome.FAILURE, exception.retryable, throwable = exception)
             if (exception.retryable) DownloadOutcome.Retryable(reason) else DownloadOutcome.Permanent(reason)
         } catch (exception: IOException) {
+            log(materialId, stage, MaterialTransferOutcome.FAILURE, retryable = true, throwable = exception)
             DownloadOutcome.Retryable("download interrupted: ${exception.message}")
         }
     }
 
-    /** Returns a terminal outcome when the material is missing or already resolved, else null. */
-    private fun earlyOutcome(material: Material?): DownloadOutcome? {
-        val cachedLocalPath = material?.localPath
-        return when {
-            material == null -> DownloadOutcome.MaterialMissing
-            cachedLocalPath != null -> DownloadOutcome.Cached(cachedLocalPath)
-            material.remoteKey.isNullOrBlank() -> DownloadOutcome.Permanent("material has no remote object to download")
-            else -> null
-        }
-    }
-
-    private suspend fun downloadAndPersist(
+    private fun log(
         materialId: String,
-        material: Material,
-        remoteKey: String,
-    ): DownloadOutcome {
-        val progress = downloadProgressStore.progress(materialId)
-        val startAt = progress?.downloadedBytes ?: 0L
-        val totalBytes = progress?.totalBytes ?: material.sizeBytes
-        val url = objectStore.getDownloadUrl(ObjectKey(remoteKey))
-        val localPath = destinationPath(material)
-        val result =
-            transport.download(
-                request =
-                    DownloadRequest(
-                        url = url,
-                        localPath = localPath,
-                        rangeStart = startAt,
-                        expectedTotalBytes = totalBytes,
-                    ),
-            ) { downloadedBytes, reportedTotalBytes ->
-                downloadProgressStore.save(
-                    DownloadProgress(
-                        materialId = materialId,
-                        downloadedBytes = downloadedBytes,
-                        totalBytes = reportedTotalBytes ?: totalBytes,
-                    ),
-                )
-            }
-        val completedBytes = result.downloadedBytes
-        if (completedBytes != material.sizeBytes) {
-            return DownloadOutcome.Permanent("downloaded $completedBytes bytes but expected ${material.sizeBytes}")
-        }
-        materialRepository.save(material.copy(localPath = localPath))
-        downloadProgressStore.clear(materialId)
-        return DownloadOutcome.Cached(localPath)
+        stage: MaterialTransferStage,
+        outcome: MaterialTransferOutcome,
+        retryable: Boolean,
+        throwable: Throwable? = null,
+    ) {
+        logger?.materialTransfer(
+            code = DiagnosticCode.MaterialDownload,
+            materialId = materialId,
+            stage = stage,
+            outcome = outcome,
+            retryable = retryable,
+            throwable = throwable,
+        )
     }
 }
 

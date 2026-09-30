@@ -2,6 +2,7 @@ package dev.studyflow.core.scheduling
 
 import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.domain.sync.SyncResult
+import dev.studyflow.core.domain.sync.SyncMaterialRecord
 import dev.studyflow.core.domain.sync.SyncSessionRecord
 import dev.studyflow.core.domain.sync.SyncTaskRecord
 import dev.studyflow.core.model.BootId
@@ -9,6 +10,7 @@ import dev.studyflow.core.model.SessionElapsed
 import dev.studyflow.core.model.SessionEvent
 import dev.studyflow.core.model.SessionEventType
 import dev.studyflow.core.model.SessionStatus
+import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.TimeAnchor
 import dev.studyflow.core.network.model.SyncDeltaDto
@@ -16,6 +18,7 @@ import dev.studyflow.core.network.model.SyncRecordDeltaDto
 import dev.studyflow.core.network.model.SyncSessionDto
 import dev.studyflow.core.network.model.SyncSessionEventDto
 import dev.studyflow.core.testing.data.testStudyTask
+import dev.studyflow.core.testing.data.testMaterial
 import dev.studyflow.core.testing.logging.RecordingAppLogger
 import dev.studyflow.core.testing.network.FakeStudyFlowBackend
 import io.ktor.http.HttpStatusCode
@@ -162,6 +165,21 @@ class ApiSyncTransportTest {
                 listOf("code=SyncInboundRecordDropped throwable=IllegalArgumentException"),
                 logger.diagnosticsWith(DiagnosticCode.SyncInboundRecordDropped),
             )
+        }
+
+    @Test
+    fun `an uploaded material is posted to the record endpoint`() =
+        runTest {
+            val material =
+                testMaterial(id = "material-1")
+                    .copy(sync = SyncState.Synced, remoteKey = "materials/object-key")
+
+            transport().pushDocuments(listOf(SyncMaterialRecord(material, deviceId = "device-a")))
+
+            val pushed = backend.pushedRecordChanges.single().changes.single()
+            assertEquals("material", pushed.entityType)
+            assertEquals("material-1", pushed.id)
+            assertEquals("device-a", pushed.deviceId)
         }
 
     @Test
