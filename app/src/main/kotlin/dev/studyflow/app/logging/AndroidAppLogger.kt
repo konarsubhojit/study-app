@@ -19,7 +19,10 @@ import javax.inject.Inject
  * release tree would discard the only diagnosis a release build has.
  *
  * The buffer receives the release form in every build type, so an exported log is the same
- * document whether it came from a developer's handset or a user's.
+ * document whether it came from a developer's handset or a user's — but only when that form says
+ * something. A scrubbed message with no throwable reduces to its own level, and since the call
+ * sites that matter log a [DiagnosticEvent] beside their free text, buffering it would spend half
+ * the ring on `level=Warning` lines that restate the diagnostic above them.
  */
 class AndroidAppLogger
     @Inject
@@ -33,10 +36,11 @@ class AndroidAppLogger
             throwable: Throwable?,
         ) {
             Timber.tag(tag).log(level.priority, throwable, message)
+            if (throwable == null) return
             buffer.record(
                 level = level,
                 tag = LogSanitizer.RELEASE_TAG,
-                message = LogSanitizer.scrubReleaseMessage(level, throwable?.javaClass?.simpleName),
+                message = LogSanitizer.scrubReleaseMessage(level, throwable.javaClass.simpleName),
             )
         }
 
