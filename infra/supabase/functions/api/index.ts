@@ -102,6 +102,23 @@ class ApiError extends Error {
     }
 }
 
+/**
+ * A non-OK answer from a service this function called on the caller's behalf.
+ *
+ * Carrying the upstream status is what keeps a constraint violation from being reported as a
+ * server outage: a bare `Error` here would reach the catch-all and become a retryable 503, which
+ * the client then retries forever against a request that can never succeed.
+ */
+class UpstreamError extends Error {
+    constructor(
+        readonly service: string,
+        readonly status: number,
+    ) {
+        super(`${service} request failed (${status})`);
+        this.name = "UpstreamError";
+    }
+}
+
 const env = (name: string): string => {
     const value = Deno.env.get(name);
     if (!value) throw new Error(`Missing required server setting: ${name}`);
@@ -223,7 +240,7 @@ async function database(path: string, init: RequestInit = {}): Promise<Response>
 
 async function databaseJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await database(path, init);
-    if (!response.ok) throw new Error(`Database request failed (${response.status})`);
+    if (!response.ok) throw new UpstreamError("Database", response.status);
     const text = await response.text();
     return (text ? JSON.parse(text) : undefined) as T;
 }
@@ -237,10 +254,14 @@ async function userId(request: Request): Promise<string> {
         headers: { apikey: serviceKey, authorization },
     });
     if (!response.ok) {
-        if (response.status === 401 || response.status === 404) {
+        // GoTrue answers an expired access token with 403 `bad_jwt`, not 401. Both are the caller's
+        // credential being refused, never a server fault, and the client keys its token refresh off
+        // this status: reporting anything but 401 makes a signed-in device retry with the same
+        // expired token until someone signs out by hand.
+        if (response.status === 401 || response.status === 403 || response.status === 404) {
             throw new ApiError(401, "authentication_required", "Your session has expired.");
         }
-        throw new Error(`Auth verification failed (${response.status})`);
+        throw new UpstreamError("Auth verification", response.status);
     }
     const user = await response.json();
     if (typeof user.id !== "string") throw new ApiError(401, "authentication_required", "Invalid session.");
@@ -264,7 +285,7 @@ async function deletedToken(request: Request): Promise<boolean> {
         headers: { apikey: serviceKey, authorization: "Bearer " + serviceKey },
     });
     if (response.status === 404) return true;
-    if (!response.ok) throw new Error(`Auth lookup failed (${response.status})`);
+    if (!response.ok) throw new UpstreamError("Auth lookup", response.status);
     return false;
 }
 
@@ -320,7 +341,7 @@ async function deleteAccount(request: Request, owner?: string): Promise<Response
         headers: { apikey: serviceKey, authorization: "Bearer " + serviceKey },
     });
     if (response.status === 404) return json(404, { code: "account_not_found", message: "Account already deleted." });
-    if (!response.ok) throw new Error(`Auth deletion failed (${response.status})`);
+    if (!response.ok) throw new UpstreamError("Auth deletion", response.status);
     return json(200, { acceptedAt: new Date().toISOString(), retentionWindowDays: backupRetentionDays });
 }
 
@@ -802,7 +823,7 @@ async function authTokenGrant(grantType: string, payload: Json): Promise<Json> {
         body: JSON.stringify(payload),
     });
     if (!response.ok) {
-        if (response.status >= 500) throw new Error(`GoTrue token grant failed (${response.status})`);
+        if (response.status >= 500) throw new UpstreamError("GoTrue token grant", response.status);
         throw new ApiError(401, "invalid_credentials", "The supplied credentials could not be verified.");
     }
     return translateTokens(await response.json() as GotrueTokens);
@@ -1224,7 +1245,8 @@ export async function handleRequest(request: Request): Promise<Response> {
         const response = await dispatch(request);
         status = response.status;
         return withTrace(response, requestId);
-    } catch (error) {
+    } catch (caught) {
+        const error = caught instanceof UpstreamError ? upstreamApiError(caught) ?? caught : caught;
         if (error instanceof ApiError) {
             status = error.status;
             errorCode = error.code;
@@ -1235,7 +1257,15 @@ export async function handleRequest(request: Request): Promise<Response> {
             }), requestId);
         }
         errorCode = "api_unavailable";
-        console.error(error instanceof Error ? `api_unavailable:${error.name}` : "api_unavailable");
+        // The message is developer-authored ("Database request failed (409)"), so it names the
+        // fault without carrying user data; the name alone was true of every unexpected failure in
+        // this function and identified none of them. Stack traces, bodies, tokens and headers stay
+        // out: they are the parts that can carry a credential or a user's content.
+        console.error(
+            error instanceof Error
+                ? `api_unavailable operation=${operation} name=${error.name} message=${error.message}`
+                : `api_unavailable operation=${operation}`,
+        );
         return withTrace(json(503, { code: "api_unavailable", message: "The API is temporarily unavailable." }), requestId);
     } finally {
         recordObservabilityAfterResponse({
@@ -1247,6 +1277,21 @@ export async function handleRequest(request: Request): Promise<Response> {
             egressBytes: 0,
         });
     }
+}
+
+/**
+ * How an upstream refusal is reported to the client.
+ *
+ * A 4xx means the upstream understood the request and rejected *it*: another identical attempt
+ * cannot succeed, so it must not arrive as the retryable 503 that means "we are having a bad
+ * moment". A 5xx or a transport failure is exactly that bad moment and is left to the catch-all.
+ */
+function upstreamApiError(error: UpstreamError): ApiError | undefined {
+    if (error.status < 400 || error.status >= 500) return undefined;
+    if (error.status === 409) {
+        return new ApiError(409, "conflict", "This change conflicts with the stored data.");
+    }
+    return new ApiError(400, "invalid_request", "The request could not be processed.");
 }
 
 if (import.meta.main) Deno.serve(handleRequest);
