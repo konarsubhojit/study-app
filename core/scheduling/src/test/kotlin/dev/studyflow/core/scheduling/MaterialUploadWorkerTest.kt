@@ -5,9 +5,13 @@ import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.testing.data.FakeMaterialRepository
 import dev.studyflow.core.testing.data.FakeUploadProgressStore
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import kotlin.time.Instant
 
@@ -47,5 +51,46 @@ class MaterialUploadWorkerTest {
             assertEquals(UploadOutcome.Synced, outcome)
             assertEquals(listOf(1), store.uploadedPartNumbers)
             assertEquals(SyncState.Synced, repository.observeById(materialId).first()?.sync)
+        }
+
+    @Test
+    fun `other foreground promotion failures do not block the upload`() =
+        runTest {
+            var workStarted = false
+            var promotionFailure: Exception? = null
+
+            val result =
+                runAfterForegroundPromotion(
+                    promoteToForeground = { throw UnsupportedOperationException("foreground unavailable") },
+                    onPromotionUnavailable = { promotionFailure = it },
+                    work = {
+                        workStarted = true
+                        "uploaded"
+                    },
+                )
+
+            assertEquals("uploaded", result)
+            assertTrue(workStarted)
+            assertTrue(promotionFailure is UnsupportedOperationException)
+        }
+
+    @Test
+    fun `foreground promotion cancellation is propagated without starting the upload`() =
+        runTest {
+            var workStarted = false
+            var cancellation: CancellationException? = null
+
+            try {
+                runAfterForegroundPromotion(
+                    promoteToForeground = { throw CancellationException("worker stopped") },
+                    onPromotionUnavailable = {},
+                    work = { workStarted = true },
+                )
+            } catch (failure: CancellationException) {
+                cancellation = failure
+            }
+
+            assertNotNull(cancellation)
+            assertFalse(workStarted)
         }
 }

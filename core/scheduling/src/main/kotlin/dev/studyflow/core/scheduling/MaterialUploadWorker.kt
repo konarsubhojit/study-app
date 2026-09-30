@@ -22,6 +22,7 @@ import dev.studyflow.core.notifications.StudyFlowNotificationChannel
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.storage.ObjectStore
+import kotlinx.coroutines.CancellationException
 
 /** The material id an upload work request carries in its input data. */
 public const val EXTRA_UPLOAD_MATERIAL_ID: String = "dev.studyflow.core.scheduling.UPLOAD_MATERIAL_ID"
@@ -36,9 +37,9 @@ internal suspend fun <T> runAfterForegroundPromotion(
 ): T {
     try {
         promoteToForeground()
-    } catch (failure: SecurityException) {
-        onPromotionUnavailable(failure)
-    } catch (failure: IllegalStateException) {
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (failure: Exception) {
         onPromotionUnavailable(failure)
     }
     return work()
