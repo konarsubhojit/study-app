@@ -283,8 +283,15 @@ function stoppedSession(overrides: Record<string, unknown> = {}): Record<string,
     };
 }
 
-type Recorded = { rpc: Record<string, unknown>[]; telemetry: Record<string, unknown>[] };
+function pushSessionsRequest(payload: Record<string, unknown> = { deviceId: "device-a", changes: [] }): Request {
+    return new Request("https://example.test/v1/sync/sessions", {
+        method: "POST",
+        headers: authorized,
+        body: JSON.stringify(payload),
+    });
+}
 
+type Recorded = { rpc: Record<string, unknown>[]; telemetry: Record<string, unknown>[] };
 function syncBackend(rpcName: string, rpcResult: (body: Record<string, unknown>) => unknown, recorded: Recorded) {
     return (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -327,6 +334,105 @@ Deno.test("sync endpoints reject unauthenticated calls before touching the datab
             }
         }
     });
+});
+
+// A GoTrue rejection of the caller's token is the caller's problem, never a server outage: the
+// client refreshes on 401 and treats 503 as "try again later", so a misreported status is the
+// difference between a device that recovers and one that retries an expired token forever.
+Deno.test("an expired access token is reported as 401 whether GoTrue answers 401 or 403", async () => {
+    for (const [upstreamStatus, upstreamBody] of [
+        [401, { error_code: "bad_jwt", msg: "invalid claims" }],
+        [403, { error_code: "bad_jwt", msg: "token has invalid claims: token is expired" }],
+        [404, { msg: "user not found" }],
+    ] as const) {
+        await withFetch((input) => {
+            const url = String(input);
+            if (url.endsWith("/auth/v1/user")) return jsonResponse(upstreamStatus, upstreamBody);
+            if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+            throw new Error(`unexpected fetch ${url} for upstream ${upstreamStatus}`);
+        }, async () => {
+            const response = await handleRequest(pushSessionsRequest());
+            const body = await response.json();
+            if (response.status !== 401 || body.code !== "authentication_required") {
+                throw new Error(`GoTrue ${upstreamStatus} became ${response.status} ${body.code}`);
+            }
+        });
+    }
+});
+
+Deno.test("a GoTrue outage still reports an unavailable API", async () => {
+    await withFetch((input) => {
+        const url = String(input);
+        if (url.endsWith("/auth/v1/user")) return jsonResponse(503, { msg: "gateway down" });
+        if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+        throw new Error(`unexpected fetch ${url}`);
+    }, async () => {
+        const response = await handleRequest(pushSessionsRequest());
+        const body = await response.json();
+        if (response.status !== 503 || body.code !== "api_unavailable") {
+            throw new Error(`a GoTrue 503 became ${response.status} ${body.code}`);
+        }
+    });
+});
+
+Deno.test("a database refusal of the caller's request is not a retryable outage", async () => {
+    for (const [upstreamStatus, expectedStatus, expectedCode] of [
+        [400, 400, "invalid_request"],
+        [403, 400, "invalid_request"],
+        [409, 409, "conflict"],
+        [500, 503, "api_unavailable"],
+        [502, 503, "api_unavailable"],
+    ] as const) {
+        await withFetch((input) => {
+            const url = String(input);
+            if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: ALICE });
+            if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+            if (url.includes("/rest/v1/rpc/sync_push_study_sessions")) {
+                return jsonResponse(upstreamStatus, { message: "upstream said no" });
+            }
+            throw new Error(`unexpected fetch ${url}`);
+        }, async () => {
+            const response = await handleRequest(pushSessionsRequest({
+                deviceId: "device-a",
+                changes: [stoppedSession()],
+            }));
+            const body = await response.json();
+            if (response.status !== expectedStatus || body.code !== expectedCode) {
+                throw new Error(`database ${upstreamStatus} became ${response.status} ${body.code}`);
+            }
+        });
+    }
+});
+
+Deno.test("an unexpected failure is logged with its message and operation, and nothing else", async () => {
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    try {
+        await withFetch((input) => {
+            const url = String(input);
+            if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: ALICE });
+            if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+            if (url.includes("/rest/v1/rpc/sync_push_study_sessions")) return jsonResponse(500, { message: "boom" });
+            throw new Error(`unexpected fetch ${url}`);
+        }, async () => {
+            const response = await handleRequest(pushSessionsRequest({
+                deviceId: "device-a",
+                changes: [stoppedSession()],
+            }));
+            if (response.status !== 503) throw new Error("an upstream 500 was not reported as unavailable");
+        });
+    } finally {
+        console.error = original;
+    }
+    const line = lines.find((entry) => entry.startsWith("api_unavailable"));
+    if (!line) throw new Error("no api_unavailable line was logged");
+    for (const expected of ["operation=pushSessionChanges", "name=UpstreamError", "message=Database request failed (500)"]) {
+        if (!line.includes(expected)) throw new Error(`log line "${line}" is missing ${expected}`);
+    }
+    if (line.includes("valid-test-token") || line.includes("Bearer") || line.includes("    at ")) {
+        throw new Error(`log line "${line}" carried a credential or a stack trace`);
+    }
 });
 
 Deno.test("sync cursors round-trip opaquely and reject anything the server did not issue", () => {

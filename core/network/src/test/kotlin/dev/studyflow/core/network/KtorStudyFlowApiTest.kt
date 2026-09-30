@@ -8,9 +8,16 @@ import dev.studyflow.core.network.error.UserFacingMessage
 import dev.studyflow.core.network.model.PasskeyRegistrationRequestDto
 import dev.studyflow.core.network.model.SignInCredentialDto
 import dev.studyflow.core.network.model.StudySessionDto
+import dev.studyflow.core.network.model.SyncPushRequestDto
+import dev.studyflow.core.network.model.SyncRecordPushRequestDto
+import dev.studyflow.core.network.model.SyncSessionDto
 import dev.studyflow.core.network.version.ClientVersion
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
@@ -347,4 +354,110 @@ class KtorStudyFlowApiTest {
             assertInstanceOf(ApiError.Server::class.java, error)
             assertEquals(UserFacingMessage.ServerProblem, error?.message)
         }
+    /**
+     * The unattended case behind issue #191: an access token expires while the sync worker is
+     * pushing, so nobody is watching a screen to sign in again. The refresh has to happen inside
+     * the same call, and the pushed batch has to go out again unchanged, or the queue is retried
+     * forever with a credential that can never be accepted.
+     */
+    @Test
+    fun `an expired token during a background push is refreshed and the same batch is retried`() =
+        runTest {
+            val store = InMemoryTokenStore(AuthTokens("expired", "refresh"))
+            val refreshes = AtomicInteger()
+            val bodies = mutableListOf<String>()
+            val api =
+                MockBackend.api(
+                    tokenStore = store,
+                    tokenRefresher = {
+                        refreshes.incrementAndGet()
+                        AuthTokens("fresh", "refresh-2")
+                    },
+                ) { request ->
+                    bodies += request.body.toByteArray().decodeToString()
+                    if (request.headers["Authorization"]?.endsWith("fresh") == true) {
+                        json("""{"acceptedIds":["session-1"],"rejectedIds":[]}""")
+                    } else {
+                        json("""{"code":"authentication_required","message":"expired"}""", HttpStatusCode.Unauthorized)
+                    }
+                }
+
+            val result = api.pushSessionChanges(pushRequest())
+
+            assertEquals(listOf("session-1"), result.valueOrNull()?.acceptedIds)
+            assertEquals(1, refreshes.get())
+            assertEquals("fresh", store.tokens()?.accessToken)
+            assertEquals(2, bodies.size, "the push is sent again after the refresh")
+            assertEquals(bodies.first(), bodies.last(), "the retried batch is the one that was queued")
+        }
+
+    @Test
+    fun `a background push whose refresh token is spent fails permanently instead of looping`() =
+        runTest {
+            val store = InMemoryTokenStore(AuthTokens("expired", "spent"))
+            val attempts = AtomicInteger()
+            val api =
+                MockBackend.api(tokenStore = store, tokenRefresher = { null }) {
+                    attempts.incrementAndGet()
+                    json("""{"code":"authentication_required","message":"expired"}""", HttpStatusCode.Unauthorized)
+                }
+
+            val error = api.pushSessionChanges(pushRequest()).errorOrNull()
+
+            assertInstanceOf(ApiError.Unauthorized::class.java, error)
+            assertEquals(UserFacingMessage.SignInRequired, error?.message)
+            assertEquals(null, store.tokens(), "a spent session is dropped so the user is asked to sign in")
+            assertEquals(1, attempts.get(), "an unauthorised push is not retried")
+        }
+
+    @Test
+    fun `two pushes meeting the same expired token refresh it once`() =
+        runTest {
+            val store = InMemoryTokenStore(AuthTokens("expired", "refresh"))
+            val refreshes = AtomicInteger()
+            val api =
+                MockBackend.api(
+                    tokenStore = store,
+                    tokenRefresher = {
+                        refreshes.incrementAndGet()
+                        AuthTokens("fresh", "refresh-2")
+                    },
+                ) { request ->
+                    if (request.headers["Authorization"]?.endsWith("fresh") == true) {
+                        json("""{"acceptedIds":[],"rejectedIds":[]}""")
+                    } else {
+                        json("""{"code":"authentication_required","message":"expired"}""", HttpStatusCode.Unauthorized)
+                    }
+                }
+
+            val results =
+                coroutineScope {
+                    listOf(
+                        async(Dispatchers.Default) { api.pushSessionChanges(pushRequest()) },
+                        async(Dispatchers.Default) {
+                            api.pushRecordChanges(SyncRecordPushRequestDto(deviceId = "device-a", changes = emptyList()))
+                        },
+                    ).awaitAll()
+                }
+
+            assertTrue(results.all { it.valueOrNull() != null }, "both pushes completed: $results")
+            assertEquals(1, refreshes.get(), "a second 401 reuses the refreshed session rather than starting a storm")
+        }
+
+    private fun pushRequest(): SyncPushRequestDto =
+        SyncPushRequestDto(
+            deviceId = "device-a",
+            changes =
+                listOf(
+                    SyncSessionDto(
+                        id = "session-1",
+                        deviceId = "device-a",
+                        updatedAtIso = "2026-03-01T10:00:00Z",
+                        startedAtIso = "2026-03-01T09:00:00Z",
+                        endedAtIso = "2026-03-01T09:30:00Z",
+                        status = "STOPPED",
+                        countedMillis = 1_800_000,
+                    ),
+                ),
+        )
 }
