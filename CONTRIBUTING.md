@@ -284,6 +284,12 @@ Baselines are never a place to hide a new finding:
 - Keep dependency and plugin versions in `gradle/libs.versions.toml`.
 - Apply convention plugins rather than copying build configuration between modules.
 - Keep public APIs explicit and compiler-warning free.
+- Log a failure a production build must be able to explain with
+  `AppLogger.diagnostic(diagnosticEvent(DiagnosticCode.…) { … })`, not with free text: a release
+  build discards free-text messages so they cannot leak a document name or an email address, and a
+  structured event survives because its codes, keys and values are all enums. Add a
+  `DiagnosticCode` or `DiagnosticKey` when you need one. See
+  [the logging guide](docs/logging.md).
 - Write unit tests for business rules and UI or screenshot tests for user-visible behavior where
   applicable.
 - Record non-obvious, durable decisions in `docs/adr/`. Copy

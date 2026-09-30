@@ -61,7 +61,12 @@ public class ReminderIntegrityCoordinator(
                 overdueCount = overdue.size,
                 degradedCount = scheduled.count { it.plan.isDegraded },
             )
-        val code = if (report.hasAnomaly) DiagnosticCode.ReminderIntegrityAnomaly else DiagnosticCode.ReminderIntegrityOk
+        val code =
+            if (report.hasAnomaly) {
+                DiagnosticCode.ReminderIntegrityAnomaly
+            } else {
+                DiagnosticCode.ReminderIntegrityOk
+            }
         logger.diagnostic(
             diagnosticEvent(code) {
                 put(DiagnosticKey.Scheduled, report.scheduledCount)
@@ -73,10 +78,6 @@ public class ReminderIntegrityCoordinator(
             },
         )
         return report
-    }
-
-    private companion object {
-        const val TAG = "ReminderIntegrity"
     }
 }
 

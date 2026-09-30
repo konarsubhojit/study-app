@@ -98,7 +98,9 @@ public class LogExporter(
             )
         } catch (cancellation: CancellationException) {
             throw cancellation
-        } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
+        } catch (
+            @Suppress("TooGenericExceptionCaught") failure: Throwable,
+        ) {
             DomainResult.Failure(failure.toDomainError())
         }
     }
@@ -138,7 +140,9 @@ internal fun assembleLogExport(
         appendLine("entries: ${entries.size}")
         appendLine()
         entries.forEach { entry ->
-            appendLine("${entry.at.toLocalDateTime(zone)} ${entry.level.name.uppercase()} ${entry.tag}: ${entry.message}")
+            appendLine(
+                "${entry.at.toLocalDateTime(zone)} ${entry.level.name.uppercase()} ${entry.tag}: ${entry.message}",
+            )
         }
     }
 

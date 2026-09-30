@@ -75,7 +75,11 @@ class LogExporterTest {
 
             exporter().export()
 
-            val body = writer.written.single().second.substringAfter("\n\n")
+            val body =
+                writer.written
+                    .single()
+                    .second
+                    .substringAfter("\n\n")
             assertEquals(
                 listOf(
                     "2026-09-30T18:00 WARNING StudyFlow: level=Warning throwable=IllegalStateException",
@@ -121,7 +125,10 @@ class LogExporterTest {
 
             assertEquals(listOf("code=LogsExported count=1"), recording.diagnosticsWith(DiagnosticCode.LogsExported))
             assertFalse(
-                writer.written.single().second.contains("LogsExported"),
+                writer.written
+                    .single()
+                    .second
+                    .contains("LogsExported"),
                 "the export must not describe itself",
             )
         }
@@ -136,7 +143,11 @@ class LogExporterTest {
         ): LogExportOutcome.Exported {
             failure?.let { throw it }
             written += fileName to content
-            return LogExportOutcome.Exported(fileName = fileName, shareUri = "content://downloads/1", inDownloads = true)
+            return LogExportOutcome.Exported(
+                fileName = fileName,
+                shareUri = "content://downloads/1",
+                inDownloads = true,
+            )
         }
     }
 

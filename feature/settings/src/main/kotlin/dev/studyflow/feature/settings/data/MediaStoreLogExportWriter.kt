@@ -2,8 +2,10 @@ package dev.studyflow.feature.settings.data
 
 import android.content.ContentValues
 import android.content.Context
+import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import androidx.core.content.FileProvider
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.domain.result.StorageException
@@ -40,6 +42,7 @@ public class MediaStoreLogExportWriter(
             }
         }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun writeToDownloads(
         fileName: String,
         content: String,
@@ -55,19 +58,30 @@ public class MediaStoreLogExportWriter(
             resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, pending)
                 ?: throw StorageException("Downloads rejected the new file")
 
-        // Published only once the bytes are there: a reader that opened the pending entry would
-        // otherwise see a truncated log and report the wrong thing.
-        try {
-            resolver.openOutputStream(uri)?.use { stream ->
-                stream.write(content.toByteArray())
-            } ?: throw StorageException("Downloads returned no stream")
-            resolver.update(uri, ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }, null, null)
-        } catch (failure: Throwable) {
-            resolver.delete(uri, null, null)
-            throw failure
-        }
+        // A half-written entry is worse than no entry, so anything that goes wrong takes the
+        // placeholder down with it rather than leaving a truncated log in the user's Downloads.
+        runCatching { publish(uri, content) }
+            .onFailure { resolver.delete(uri, null, null) }
+            .getOrThrow()
 
         return LogExportOutcome.Exported(fileName = fileName, shareUri = uri.toString(), inDownloads = true)
+    }
+
+    /**
+     * Writes the bytes and only then clears `IS_PENDING`: a reader that opened the entry earlier
+     * would otherwise see a truncated log and report the wrong thing.
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun publish(
+        uri: Uri,
+        content: String,
+    ) {
+        val resolver = context.contentResolver
+        resolver.openOutputStream(uri)?.use { stream ->
+            stream.write(content.toByteArray())
+        } ?: throw StorageException("Downloads returned no stream")
+        val published = ContentValues().apply { put(MediaStore.Downloads.IS_PENDING, 0) }
+        resolver.update(uri, published, null, null)
     }
 
     private fun writeToAppStorage(

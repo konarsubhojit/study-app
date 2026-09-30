@@ -108,8 +108,13 @@ internal fun LogExportMessage.text(): String =
             }
         }
 
-        LogExportMessage.Empty -> "There is nothing to export yet."
-        is LogExportMessage.Failed -> "The logs could not be saved. ${error.reason()}"
+        LogExportMessage.Empty -> {
+            "There is nothing to export yet."
+        }
+
+        is LogExportMessage.Failed -> {
+            "The logs could not be saved. ${error.reason()}"
+        }
     }
 
 /**

@@ -82,7 +82,9 @@ public class SyncWorker
                     syncEngine.sync(trigger)
                 } catch (cancellation: CancellationException) {
                     throw cancellation
-                } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
+                } catch (
+                    @Suppress("TooGenericExceptionCaught") failure: Throwable,
+                ) {
                     // A pass that threw is a bug, not a transport fault, and WorkManager would
                     // otherwise report only that the worker stopped. Naming the type is the whole
                     // difference between a diagnosable report and "it retried after three

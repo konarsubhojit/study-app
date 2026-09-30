@@ -69,7 +69,10 @@ public class LogExportViewModel
 
         override fun onEvent(event: LogExportUiEvent) {
             when (event) {
-                LogExportUiEvent.ExportRequested -> export()
+                LogExportUiEvent.ExportRequested -> {
+                    export()
+                }
+
                 LogExportUiEvent.ShareRequested -> {
                     mutableState.value.shareUri?.let { uri -> emitEffect(LogExportUiEffect.ShareFile(uri)) }
                 }
@@ -92,7 +95,10 @@ public class LogExportViewModel
             when (this) {
                 is DomainResult.Success -> {
                     when (val outcome = value) {
-                        LogExportOutcome.Empty -> LogExportUiState(message = LogExportMessage.Empty)
+                        LogExportOutcome.Empty -> {
+                            LogExportUiState(message = LogExportMessage.Empty)
+                        }
+
                         is LogExportOutcome.Exported -> {
                             LogExportUiState(
                                 message =
@@ -106,6 +112,8 @@ public class LogExportViewModel
                     }
                 }
 
-                is DomainResult.Failure -> LogExportUiState(message = LogExportMessage.Failed(error))
+                is DomainResult.Failure -> {
+                    LogExportUiState(message = LogExportMessage.Failed(error))
+                }
             }
     }

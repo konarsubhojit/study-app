@@ -37,7 +37,10 @@ class LogExportViewModelTest {
             advanceUntilIdle()
 
             val state = viewModel.state.value
-            assertEquals(LogExportMessage.Exported("studyflow-logs-2026-09-30-184329.txt", inDownloads = true), state.message)
+            assertEquals(
+                LogExportMessage.Exported("studyflow-logs-2026-09-30-184329.txt", inDownloads = true),
+                state.message,
+            )
             assertEquals("content://downloads/1", state.shareUri)
         }
 
@@ -105,7 +108,11 @@ class LogExportViewModelTest {
             content: String,
         ): LogExportOutcome.Exported {
             failure?.let { throw it }
-            return LogExportOutcome.Exported(fileName = fileName, shareUri = "content://downloads/1", inDownloads = true)
+            return LogExportOutcome.Exported(
+                fileName = fileName,
+                shareUri = "content://downloads/1",
+                inDownloads = true,
+            )
         }
     }
 
