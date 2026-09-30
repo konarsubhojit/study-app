@@ -196,4 +196,6 @@ dependencies {
     // ProductionReleaseSmokeInstrumentedTest reads logcat directly rather than through Espresso,
     // so it works the same way against a black-box, minified `productionReleaseTest` install.
     androidTestImplementation(libs.androidx.test.uiautomator)
+    // WorkerFactoryInstrumentedTest builds real `WorkerParameters` to construct every worker.
+    androidTestImplementation(libs.androidx.work.testing)
 }

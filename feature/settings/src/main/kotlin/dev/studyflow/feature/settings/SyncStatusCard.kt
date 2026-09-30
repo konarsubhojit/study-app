@@ -79,9 +79,15 @@ private fun SyncStatusUiState.pendingSummary(): String =
         else -> "$pendingCount changes waiting to be sent."
     }
 
-private fun SyncStatusUiState.lastSuccessSummary(): String =
-    lastSuccessAt?.let { "Last successful sync: ${it.toLocalLabel()}" }
-        ?: "This device has not synced yet."
+internal fun SyncStatusUiState.lastSuccessSummary(): String {
+    val lastSuccess = lastSuccessAt
+    return when {
+        lastSuccess != null -> "Last successful sync: ${lastSuccess.toLocalLabel()}"
+        hasNeverRun -> "Sync has not run on this device yet, so nothing has been sent."
+        status.lastAttemptAt != null -> "This device has not synced successfully yet."
+        else -> "This device has not synced yet."
+    }
+}
 
 private fun Instant.toLocalLabel(): String {
     val local = toLocalDateTime(TimeZone.currentSystemDefault())

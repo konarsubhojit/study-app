@@ -31,6 +31,15 @@ jobs:
         with:
           cache-read-only: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/master' }}
 
+      # `ubuntu-latest` exposes /dev/kvm but not to the runner user, and the x86_64 managed device
+      # refuses to boot without it ("x86_64 emulation currently requires hardware acceleration!"),
+      # which failed this job before a single instrumented test ran.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       # Includes :app:pixel6Api34ProductionReleaseTestAndroidTest, which runs every instrumented
       # test in :app (timer process-death coverage and the minified-release smoke test) against
       # `productionReleaseTest` — the `productionRelease` variant with only `isDebuggable` flipped

@@ -60,7 +60,12 @@ public class SyncWorker
                     runCatching { SyncTrigger.valueOf(name) }.getOrNull()
                 } ?: SyncTrigger.SCHEDULED
 
-            if (tokenStore.authState.value != AuthState.SignedIn) return Result.success()
+            if (tokenStore.authState.value != AuthState.SignedIn) {
+                // Not a failure the user caused, so nothing is recorded for the UI — but a bug
+                // report's logcat must still be able to tell "skipped" from "ran and was idle".
+                logger.info(TAG, "Sync skipped: no signed-in account")
+                return Result.success()
+            }
 
             return when (val outcome = syncEngine.sync(trigger)) {
                 SyncOutcome.Idle -> {

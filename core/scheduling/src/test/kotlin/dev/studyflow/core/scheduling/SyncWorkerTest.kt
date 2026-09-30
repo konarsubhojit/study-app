@@ -5,6 +5,7 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.workDataOf
+import dev.studyflow.core.common.logging.LogLevel
 import dev.studyflow.core.domain.sync.SyncDocument
 import dev.studyflow.core.domain.sync.SyncDocumentPage
 import dev.studyflow.core.domain.sync.SyncEngine
@@ -82,10 +83,13 @@ class SyncWorkerTest {
     fun `a local-only user never reaches the network`() =
         runBlocking {
             val transport = FailingTransport(SyncFailure("must not be called", retryable = false))
-            val worker = worker(transport, signedIn = false)
+            val logger = RecordingAppLogger()
+            val worker = worker(transport, signedIn = false, logger = logger)
 
             assertEquals(ListenableWorker.Result.success(), worker.doWork())
             assertEquals(0, transport.calls)
+            // Nothing reaches the store, so this line is the only trace that the run was skipped.
+            assertEquals(listOf("Sync skipped: no signed-in account"), logger.messageTextsAt(LogLevel.Info))
         }
 
     @Test
@@ -106,6 +110,7 @@ class SyncWorkerTest {
         trigger: SyncTrigger = SyncTrigger.SCHEDULED,
         signedIn: Boolean = true,
         store: SyncStore = EmptyStore(),
+        logger: RecordingAppLogger = RecordingAppLogger(),
     ): SyncWorker {
         val engine = SyncEngine(store = store, transport = transport, clock = { NOW })
         val tokenStore = InMemoryTokenStore(if (signedIn) AuthTokens("access", "refresh") else null)
@@ -125,7 +130,7 @@ class SyncWorkerTest {
                             engine,
                             tokenStore,
                             listener,
-                            RecordingAppLogger(),
+                            logger,
                         )
                 },
             ).build()

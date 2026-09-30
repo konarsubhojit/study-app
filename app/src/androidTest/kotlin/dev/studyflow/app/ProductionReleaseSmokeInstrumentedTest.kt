@@ -7,6 +7,7 @@ import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.UiDevice
 import org.junit.Assert.assertFalse
@@ -47,17 +48,21 @@ class ProductionReleaseSmokeInstrumentedTest {
         composeRule.onNodeWithText("Today").assertIsDisplayed()
 
         // Settings reads `UserSettingsStore`, the protobuf-lite DataStore path that originally
-        // crashed with `RuntimeException: Field theme_ for ea6 not found`.
-        composeRule.onNodeWithText("Settings").performClick()
+        // crashed with `RuntimeException: Field theme_ for ea6 not found`. It is the home top
+        // bar's icon action rather than a navigation-bar destination.
+        composeRule.onNodeWithContentDescription("Settings").performClick()
         composeRule.onNodeWithText("Notifications").assertIsDisplayed()
+        Espresso.pressBack()
+
+        // History is backed by `SessionDao`'s `PagingSource` (Room); home's focus-time card
+        // opens it.
+        composeRule.onNodeWithText("Focus time").performClick()
+        composeRule.onNodeWithText("History").assertIsDisplayed()
+        Espresso.pressBack()
 
         // The task list is backed by `StudyTaskDao`'s `PagingSource` (Room).
         composeRule.onNodeWithText("Tasks").performClick()
         composeRule.onNodeWithText("Add a task").assertIsDisplayed()
-
-        // History is backed by `SessionDao`'s `PagingSource` (Room).
-        composeRule.onNodeWithText("History").performClick()
-        composeRule.onNodeWithText("History").assertIsDisplayed()
 
         // Starting and stopping a session round-trips `TimerForegroundService` and the
         // `SessionEvent` log a `SyncWorker`/`ReminderDeliveryWorker` (`@HiltWorker`, resolved by
@@ -90,7 +95,14 @@ class ProductionReleaseSmokeInstrumentedTest {
                 "NoSuchFieldError",
                 "NoSuchMethodError",
             )
-        val ownPackageLines = log.lineSequence().filter { context.packageName in it }.toList()
+        // `ScanningTestLoader` is androidx.test's own classpath scan probing for the legacy
+        // JUnit 3 `android.test.*` runner classes; its `ClassNotFoundException`s are expected and
+        // only mention the package because the scanned APK's install path contains it.
+        val ownPackageLines =
+            log
+                .lineSequence()
+                .filter { context.packageName in it && "ScanningTestLoader" !in it }
+                .toList()
 
         crashPatterns.forEach { pattern ->
             assertFalse(
