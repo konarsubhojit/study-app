@@ -9,6 +9,18 @@ public interface AppLogger {
         throwable: Throwable? = null,
     )
 
+    /**
+     * Logs a structured [DiagnosticEvent], which survives release sanitisation.
+     *
+     * Deliberately not a default that delegates to [log]: a free-text message is scrubbed away in
+     * release builds, so an implementation that quietly routed diagnostics through it would
+     * reintroduce the very blindness this exists to fix.
+     */
+    public fun diagnostic(
+        event: DiagnosticEvent,
+        throwable: Throwable? = null,
+    )
+
     public fun debug(
         tag: String,
         message: String,

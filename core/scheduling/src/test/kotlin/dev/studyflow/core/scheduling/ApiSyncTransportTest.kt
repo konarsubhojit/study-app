@@ -1,5 +1,6 @@
 package dev.studyflow.core.scheduling
 
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.domain.sync.SyncResult
 import dev.studyflow.core.domain.sync.SyncSessionRecord
 import dev.studyflow.core.domain.sync.SyncTaskRecord
@@ -124,6 +125,12 @@ class ApiSyncTransportTest {
             assertEquals(listOf(SESSION_ID), page.changes.map { it.session.id })
             assertEquals("cursor-2", page.nextCursor)
             assertTrue(logger.messages.any { it.message.contains("broken") })
+            // The free-text line is scrubbed away in release; the structured one is what makes a
+            // silent drop visible in a build a user is running.
+            assertEquals(
+                listOf("code=SyncInboundRecordDropped entityType=SESSION throwable=IllegalArgumentException"),
+                logger.diagnosticsWith(DiagnosticCode.SyncInboundRecordDropped),
+            )
         }
 
     @Test
@@ -151,6 +158,10 @@ class ApiSyncTransportTest {
             assertEquals(listOf(SyncTaskRecord(task, deviceId = "device-a")), page.changes)
             assertEquals("r1:2", page.nextCursor)
             assertTrue(logger.messages.any { it.message.contains("unknown") })
+            assertEquals(
+                listOf("code=SyncInboundRecordDropped throwable=IllegalArgumentException"),
+                logger.diagnosticsWith(DiagnosticCode.SyncInboundRecordDropped),
+            )
         }
 
     @Test

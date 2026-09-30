@@ -1,12 +1,16 @@
 package dev.studyflow.core.scheduling
 
 import dev.studyflow.core.common.logging.AppLogger
+import dev.studyflow.core.common.logging.DiagnosticCode
+import dev.studyflow.core.common.logging.DiagnosticKey
+import dev.studyflow.core.common.logging.diagnosticEvent
 import dev.studyflow.core.common.time.DeviceIdProvider
 import dev.studyflow.core.domain.sync.SyncDocument
 import dev.studyflow.core.domain.sync.SyncDocumentCodec
 import dev.studyflow.core.domain.sync.SyncDocumentPage
 import dev.studyflow.core.domain.sync.SyncEntityType
 import dev.studyflow.core.domain.sync.SyncFailure
+import dev.studyflow.core.domain.sync.SyncFailureReason
 import dev.studyflow.core.domain.sync.SyncPage
 import dev.studyflow.core.domain.sync.SyncPushAck
 import dev.studyflow.core.domain.sync.SyncResult
@@ -130,6 +134,14 @@ public class ApiSyncTransport(
             )
         }.onFailure { error ->
             logger.warning(TAG, "Dropping unreadable inbound $entityType $id: ${error.message}")
+            logger.diagnostic(
+                diagnosticEvent(DiagnosticCode.SyncInboundRecordDropped) {
+                    WIRE_TYPES.entries.firstOrNull { it.value == entityType }?.key?.let { type ->
+                        put(DiagnosticKey.EntityType, type)
+                    }
+                },
+                error,
+            )
         }.getOrNull()
 
     private fun SyncEntityType.wireName(): String =
@@ -172,6 +184,12 @@ public class ApiSyncTransport(
             )
         }.onFailure { error ->
             logger.warning(TAG, "Dropping unreadable inbound session $id: ${error.message}")
+            logger.diagnostic(
+                diagnosticEvent(DiagnosticCode.SyncInboundRecordDropped) {
+                    put(DiagnosticKey.EntityType, SyncEntityType.SESSION)
+                },
+                error,
+            )
         }.getOrNull()
 
     /**
@@ -215,7 +233,7 @@ public class ApiSyncTransport(
             is ApiError.Timeout,
             is ApiError.RateLimited,
             is ApiError.Server,
-            -> SyncFailure(message = message.defaultText, retryable = true)
+            -> SyncFailure(message = message.defaultText, retryable = true, reason = syncFailureReason())
 
             is ApiError.Unauthorized,
             is ApiError.Forbidden,
@@ -224,7 +242,30 @@ public class ApiSyncTransport(
             is ApiError.UpgradeRequired,
             is ApiError.Malformed,
             is ApiError.Unexpected,
-            -> SyncFailure(message = message.defaultText, retryable = false)
+            -> SyncFailure(message = message.defaultText, retryable = false, reason = syncFailureReason())
+        }
+
+    /**
+     * The loggable half of a failure.
+     *
+     * [UserFacingMessage][dev.studyflow.core.network.error.UserFacingMessage] copy is what the
+     * settings card may show and carries no status code by design (ADR 0014); this enum is what a
+     * bug report needs, and being a closed set it cannot smuggle a URL or an exception message
+     * into a release log.
+     */
+    private fun ApiError.syncFailureReason(): SyncFailureReason =
+        when (this) {
+            is ApiError.Offline -> SyncFailureReason.OFFLINE
+            is ApiError.Timeout -> SyncFailureReason.TIMEOUT
+            is ApiError.Unauthorized -> SyncFailureReason.UNAUTHORIZED
+            is ApiError.Forbidden -> SyncFailureReason.FORBIDDEN
+            is ApiError.NotFound -> SyncFailureReason.NOT_FOUND
+            is ApiError.Conflict -> SyncFailureReason.CONFLICT
+            is ApiError.RateLimited -> SyncFailureReason.RATE_LIMITED
+            is ApiError.Server -> SyncFailureReason.SERVER
+            is ApiError.UpgradeRequired -> SyncFailureReason.UPGRADE_REQUIRED
+            is ApiError.Malformed -> SyncFailureReason.MALFORMED
+            is ApiError.Unexpected -> SyncFailureReason.UNEXPECTED
         }
 
     private fun SyncSessionRecord.asSessionDto(): SyncSessionDto =

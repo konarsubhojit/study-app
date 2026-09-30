@@ -39,7 +39,7 @@ public class SyncEngine(
     public suspend fun sync(trigger: SyncTrigger): SyncOutcome =
         when (val outbound = drainQueue()) {
             is DrainOutcome.Failed -> {
-                fail(outbound.failure)
+                fail(outbound.failure, SyncStage.PUSH)
             }
 
             is DrainOutcome.Drained -> {
@@ -57,7 +57,7 @@ public class SyncEngine(
     private suspend fun applyDelta(pushed: Int): SyncOutcome =
         when (val inbound = readDelta()) {
             is PullOutcome.Failed -> {
-                fail(inbound.failure)
+                fail(inbound.failure, SyncStage.PULL)
             }
 
             is PullOutcome.Pulled -> {
@@ -158,9 +158,12 @@ public class SyncEngine(
         val hasMore: Boolean,
     )
 
-    private suspend fun fail(failure: SyncFailure): SyncOutcome {
+    private suspend fun fail(
+        failure: SyncFailure,
+        stage: SyncStage,
+    ): SyncOutcome {
         store.recordFailure(failure, clock.now())
-        return SyncOutcome.Failed(failure)
+        return SyncOutcome.Failed(failure, stage)
     }
 
     private sealed interface DrainOutcome {

@@ -117,12 +117,49 @@ public data class SyncPage(
     val hasMore: Boolean,
 )
 
-/** A failed sync attempt, in the two terms the caller can act on. */
+/** A failed sync attempt, in the terms the caller can act on. */
 public data class SyncFailure(
     val message: String,
     /** `false` for a failure another attempt cannot fix, such as a rejected payload. */
     val retryable: Boolean = true,
+    /**
+     * Why it failed, as a closed set safe to log in a release build.
+     *
+     * [message] is user-facing copy and is discarded by the release log sanitiser; this is the
+     * part a bug report needs, and it is an enum precisely so it can never carry an exception's
+     * text or a URL.
+     */
+    val reason: SyncFailureReason = SyncFailureReason.UNEXPECTED,
 )
+
+/** The cause of a [SyncFailure], transport-neutral and free of anything user-specific. */
+public enum class SyncFailureReason {
+    /** The request never left the device: no connectivity, DNS failure, refused connection. */
+    OFFLINE,
+    TIMEOUT,
+
+    /** Credentials missing, expired beyond refresh, or rejected — a failure before any useful work. */
+    UNAUTHORIZED,
+    FORBIDDEN,
+    NOT_FOUND,
+    CONFLICT,
+    RATE_LIMITED,
+    SERVER,
+    UPGRADE_REQUIRED,
+
+    /** The answer could not be read as the protocol this version speaks. */
+    MALFORMED,
+    UNEXPECTED,
+}
+
+/** The half of a sync pass a failure happened in. */
+public enum class SyncStage {
+    /** Draining the outbound queue. */
+    PUSH,
+
+    /** Reading the inbound delta. */
+    PULL,
+}
 
 /** What the server did with a pushed batch. */
 public data class SyncPushAck(
@@ -169,6 +206,8 @@ public sealed interface SyncOutcome {
 
     public data class Failed(
         val failure: SyncFailure,
+        /** Which half of the pass failed, so a log can say whether anything was sent. */
+        val stage: SyncStage = SyncStage.PUSH,
     ) : SyncOutcome
 }
 

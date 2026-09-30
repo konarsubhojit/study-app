@@ -1,5 +1,6 @@
 package dev.studyflow.core.scheduling
 
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.domain.reminder.ReminderPlan
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
@@ -61,7 +62,10 @@ class ReminderIntegrityCoordinatorTest {
             assertEquals(listOf("reminder-late:late"), deliveries)
             assertEquals(1, report.overdueCount)
             assertTrue(report.hasAnomaly)
-            assertEquals(listOf("reminder_integrity_anomaly"), logger.messages.map { it.message.substringBefore(' ') })
+            assertEquals(
+                listOf("code=ReminderIntegrityAnomaly scheduled=1 notScheduled=0 overdue=1 degraded=0"),
+                logger.diagnosticsWith(DiagnosticCode.ReminderIntegrityAnomaly),
+            )
         }
 
     @Test

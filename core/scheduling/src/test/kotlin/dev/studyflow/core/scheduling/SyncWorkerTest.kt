@@ -5,11 +5,13 @@ import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import androidx.work.testing.TestListenableWorkerBuilder
 import androidx.work.workDataOf
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.common.logging.LogLevel
 import dev.studyflow.core.domain.sync.SyncDocument
 import dev.studyflow.core.domain.sync.SyncDocumentPage
 import dev.studyflow.core.domain.sync.SyncEngine
 import dev.studyflow.core.domain.sync.SyncFailure
+import dev.studyflow.core.domain.sync.SyncFailureReason
 import dev.studyflow.core.domain.sync.SyncPage
 import dev.studyflow.core.domain.sync.SyncPushAck
 import dev.studyflow.core.domain.sync.SyncQueueItem
@@ -90,6 +92,45 @@ class SyncWorkerTest {
             assertEquals(0, transport.calls)
             // Nothing reaches the store, so this line is the only trace that the run was skipped.
             assertEquals(listOf("Sync skipped: no signed-in account"), logger.messageTextsAt(LogLevel.Info))
+            // …and the free-text line is scrubbed away in release, so the structured one is what a
+            // bug report actually shows: skipped before any network call, and why.
+            assertEquals(
+                listOf("code=SyncSkippedSignedOut trigger=SCHEDULED"),
+                logger.diagnosticsWith(DiagnosticCode.SyncSkippedSignedOut),
+            )
+        }
+
+    @Test
+    fun `a failed run names its stage and cause in a release-safe diagnostic`() =
+        runBlocking {
+            val logger = RecordingAppLogger()
+            val failure =
+                SyncFailure(
+                    message = "You're offline. StudyFlow will sync as soon as you're back.",
+                    retryable = true,
+                    reason = SyncFailureReason.OFFLINE,
+                )
+
+            worker(FailingTransport(failure), logger = logger).doWork()
+
+            assertEquals(
+                listOf("code=SyncFailed trigger=SCHEDULED stage=PULL reason=OFFLINE retryable=true"),
+                logger.diagnosticsWith(DiagnosticCode.SyncFailed),
+            )
+        }
+
+    @Test
+    fun `a pass that throws is reported as a crash rather than vanishing into WorkManager`() =
+        runBlocking {
+            val logger = RecordingAppLogger()
+            val worker = worker(ThrowingTransport(), logger = logger)
+
+            runCatching { worker.doWork() }
+
+            assertEquals(
+                listOf("code=SyncCrashed trigger=SCHEDULED throwable=IllegalStateException"),
+                logger.diagnosticsWith(DiagnosticCode.SyncCrashed),
+            )
         }
 
     @Test
@@ -208,6 +249,23 @@ class SyncWorkerTest {
             return failure?.let { SyncResult.Failure(it) }
                 ?: SyncResult.Success(SyncDocumentPage(changes = emptyList(), nextCursor = null, hasMore = false))
         }
+    }
+
+    /** A transport that breaks rather than failing politely, as a bug in a mapper would. */
+    private class ThrowingTransport : SyncTransport {
+        override suspend fun push(records: List<SyncSessionRecord>): SyncResult<SyncPushAck> = error("boom")
+
+        override suspend fun pull(
+            cursor: String?,
+            limit: Int,
+        ): SyncResult<SyncPage> = error("boom")
+
+        override suspend fun pushDocuments(documents: List<SyncDocument>): SyncResult<SyncPushAck> = error("boom")
+
+        override suspend fun pullDocuments(
+            cursor: String?,
+            limit: Int,
+        ): SyncResult<SyncDocumentPage> = error("boom")
     }
 
     private companion object {

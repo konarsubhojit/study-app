@@ -7,11 +7,15 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.studyflow.core.common.logging.AppLogger
+import dev.studyflow.core.common.logging.DiagnosticCode
+import dev.studyflow.core.common.logging.DiagnosticKey
+import dev.studyflow.core.common.logging.diagnosticEvent
 import dev.studyflow.core.domain.sync.SyncEngine
 import dev.studyflow.core.domain.sync.SyncOutcome
 import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.network.auth.AuthState
 import dev.studyflow.core.network.auth.TokenStore
+import kotlinx.coroutines.CancellationException
 
 /** The trigger a sync work request carries in its input data, as a [SyncTrigger] name. */
 public const val EXTRA_SYNC_TRIGGER: String = "dev.studyflow.core.scheduling.SYNC_TRIGGER"
@@ -62,12 +66,37 @@ public class SyncWorker
 
             if (tokenStore.authState.value != AuthState.SignedIn) {
                 // Not a failure the user caused, so nothing is recorded for the UI — but a bug
-                // report's logcat must still be able to tell "skipped" from "ran and was idle".
+                // report must still be able to tell "skipped before any network call" from "ran
+                // and was idle", which is the difference a queue that never empties hinges on.
+                logger.diagnostic(
+                    diagnosticEvent(DiagnosticCode.SyncSkippedSignedOut) {
+                        put(DiagnosticKey.Trigger, trigger)
+                    },
+                )
                 logger.info(TAG, "Sync skipped: no signed-in account")
                 return Result.success()
             }
 
-            return when (val outcome = syncEngine.sync(trigger)) {
+            val outcome =
+                try {
+                    syncEngine.sync(trigger)
+                } catch (cancellation: CancellationException) {
+                    throw cancellation
+                } catch (@Suppress("TooGenericExceptionCaught") failure: Throwable) {
+                    // A pass that threw is a bug, not a transport fault, and WorkManager would
+                    // otherwise report only that the worker stopped. Naming the type is the whole
+                    // difference between a diagnosable report and "it retried after three
+                    // milliseconds".
+                    logger.diagnostic(
+                        diagnosticEvent(DiagnosticCode.SyncCrashed) {
+                            put(DiagnosticKey.Trigger, trigger)
+                        },
+                        failure,
+                    )
+                    throw failure
+                }
+
+            return when (outcome) {
                 SyncOutcome.Idle -> {
                     Result.success()
                 }
@@ -78,6 +107,14 @@ public class SyncWorker
                 }
 
                 is SyncOutcome.Failed -> {
+                    logger.diagnostic(
+                        diagnosticEvent(DiagnosticCode.SyncFailed) {
+                            put(DiagnosticKey.Trigger, trigger)
+                            put(DiagnosticKey.Stage, outcome.stage)
+                            put(DiagnosticKey.Reason, outcome.failure.reason)
+                            put(DiagnosticKey.Retryable, outcome.failure.retryable)
+                        },
+                    )
                     logger.warning(TAG, "Sync failed: ${outcome.failure.message}")
                     if (outcome.failure.retryable) Result.retry() else Result.failure()
                 }
