@@ -141,8 +141,8 @@ public class AndroidReminderPlatformScheduler(
         onExactAlarmDenied(denied)
         val reminderId =
             runCatching { UUID.fromString(plan.reminderId) }
-            .getOrNull()
-            ?.takeIf { it.toString().equals(plan.reminderId, ignoreCase = true) }
+                .getOrNull()
+                ?.takeIf { it.toString().equals(plan.reminderId, ignoreCase = true) }
         logger?.reminderDegraded(
             degradation = ReminderDegradation.EXACT_ALARMS_DENIED,
             subsystem = ReminderDegradationSubsystem.REMINDER_SCHEDULING,

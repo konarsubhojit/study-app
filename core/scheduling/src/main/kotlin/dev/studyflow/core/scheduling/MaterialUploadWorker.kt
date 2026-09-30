@@ -39,7 +39,9 @@ internal suspend fun <T> runAfterForegroundPromotion(
         promoteToForeground()
     } catch (cancellation: CancellationException) {
         throw cancellation
-    } catch (failure: Exception) {
+    } catch (
+        @Suppress("TooGenericExceptionCaught") failure: Exception,
+    ) {
         onPromotionUnavailable(failure)
     }
     return work()
@@ -98,7 +100,14 @@ public class MaterialUploadWorker
                     },
                     work = { engine.upload(materialId) },
                 )
-            return when (outcome) {
+            return handleOutcome(materialId, outcome)
+        }
+
+        private suspend fun handleOutcome(
+            materialId: String,
+            outcome: UploadOutcome,
+        ): Result =
+            when (outcome) {
                 UploadOutcome.Synced -> {
                     syncScheduler.requestSync(SyncTrigger.OUTBOUND)
                     notifier.cancel(materialUploadNotificationId(materialId))
@@ -134,7 +143,6 @@ public class MaterialUploadWorker
                     Result.failure()
                 }
             }
-        }
 
         private suspend fun setForegroundSafely(
             materialId: String,

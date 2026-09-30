@@ -6,10 +6,10 @@ import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
 import dev.studyflow.core.datastore.userSettingsStore
+import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
-import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.testing.data.FakeMaterialRepository
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking

@@ -23,27 +23,31 @@ internal enum class MaterialTransferOutcome {
     MISMATCH,
 }
 
+internal data class MaterialTransferDetails(
+    val stage: MaterialTransferStage,
+    val outcome: MaterialTransferOutcome,
+    val retryable: Boolean,
+    val part: Int? = null,
+    val partCount: Int? = null,
+)
+
 internal fun AppLogger.materialTransfer(
     code: DiagnosticCode,
     materialId: String,
-    stage: MaterialTransferStage,
-    outcome: MaterialTransferOutcome,
-    retryable: Boolean,
-    part: Int? = null,
-    partCount: Int? = null,
+    details: MaterialTransferDetails,
     throwable: Throwable? = null,
 ) {
     diagnostic(
         diagnosticEvent(code) {
-            put(DiagnosticKey.Stage, stage)
-            put(DiagnosticKey.Outcome, outcome)
-            put(DiagnosticKey.Retryable, retryable)
+            put(DiagnosticKey.Stage, details.stage)
+            put(DiagnosticKey.Outcome, details.outcome)
+            put(DiagnosticKey.Retryable, details.retryable)
             runCatching { UUID.fromString(materialId) }
                 .getOrNull()
                 ?.takeIf { it.toString().equals(materialId, ignoreCase = true) }
                 ?.let { put(DiagnosticKey.MaterialId, it) }
-            part?.let { put(DiagnosticKey.Part, it) }
-            partCount?.let { put(DiagnosticKey.PartCount, it) }
+            details.part?.let { put(DiagnosticKey.Part, it) }
+            details.partCount?.let { put(DiagnosticKey.PartCount, it) }
         },
         throwable,
     )

@@ -60,27 +60,37 @@ public class MaterialUploadEngine(
     private val logger: AppLogger? = null,
 ) {
     public suspend fun upload(materialId: String): UploadOutcome {
+        val material =
+            materialRepository.observeById(materialId).first()
+        return when {
+            material == null -> {
+                log(materialId, MaterialTransferStage.PLAN, MaterialTransferOutcome.FAILURE, retryable = false)
+                UploadOutcome.MaterialMissing
+            }
+
+            // Already synced — most likely a second run queued before the first one's success was
+            // observed. Nothing to resend, and re-uploading would waste the user's data for no reason.
+            material.sync == SyncState.Synced -> {
+                log(materialId, MaterialTransferStage.VERIFY, MaterialTransferOutcome.SKIPPED, retryable = false)
+                UploadOutcome.Synced
+            }
+
+            else -> {
+                uploadMaterial(material)
+            }
+        }
+    }
+
+    private suspend fun uploadMaterial(material: Material): UploadOutcome {
         var stage = MaterialTransferStage.PLAN
         var partNumber: Int? = null
         var partCount: Int? = null
-        val material =
-            materialRepository.observeById(materialId).first()
-                ?: return UploadOutcome.MaterialMissing.also {
-                    log(materialId, stage, MaterialTransferOutcome.FAILURE, retryable = false)
-                }
-
-        // Already synced — most likely a second run queued before the first one's success was
-        // observed. Nothing to resend, and re-uploading would waste the user's data for no reason.
-        if (material.sync == SyncState.Synced) {
-            log(materialId, MaterialTransferStage.VERIFY, MaterialTransferOutcome.SKIPPED, retryable = false)
-            return UploadOutcome.Synced
-        }
 
         // The transfer rewrites the row as parts are acknowledged, so a failure has to be recorded
         // against the newest snapshot rather than the one this function started with.
         var latest = material
         return try {
-            log(materialId, stage, MaterialTransferOutcome.STARTED, retryable = true)
+            log(material.id, stage, MaterialTransferOutcome.STARTED, retryable = true)
             stage = MaterialTransferStage.VERIFY
             val linked = relinkIfAlreadyStored(material)
             if (linked != null) {
@@ -91,14 +101,14 @@ public class MaterialUploadEngine(
                     stage = transferStage
                     partNumber = part
                     partCount = count
-                    log(materialId, stage, MaterialTransferOutcome.STARTED, retryable = true, part, count)
+                    log(material.id, stage, MaterialTransferOutcome.STARTED, retryable = true, part, count)
                 }
             }
         } catch (exception: ObjectStoreException) {
             val reason = exception.message ?: exception::class.simpleName.orEmpty()
             latest.fail(reason, exception.retryable)
             log(
-                materialId,
+                material.id,
                 stage,
                 MaterialTransferOutcome.FAILURE,
                 exception.retryable,
@@ -112,7 +122,7 @@ public class MaterialUploadEngine(
             val reason = "local file unreadable: ${exception.message}"
             latest.fail(reason, retryable = false)
             log(
-                materialId,
+                material.id,
                 stage,
                 MaterialTransferOutcome.FAILURE,
                 retryable = false,
@@ -135,19 +145,24 @@ public class MaterialUploadEngine(
      */
     private suspend fun relinkIfAlreadyStored(material: Material): UploadOutcome? {
         val stored = objectStore.stat(ObjectKey.ofMaterial(material.contentHash))
-        if (stored == null) {
-            log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.NOT_FOUND, retryable = false)
-            return null
-        }
-        if (stored.sizeBytes != material.sizeBytes || stored.contentHash != material.contentHash) {
-            log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.MISMATCH, retryable = false)
-            return null
-        }
+        return when {
+            stored == null -> {
+                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.NOT_FOUND, retryable = false)
+                null
+            }
 
-        materialRepository.save(material.copy(sync = SyncState.Synced, remoteKey = stored.key.value))
-        uploadProgressStore.clear(material.id)
-        log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.SUCCESS, retryable = false)
-        return UploadOutcome.Synced
+            stored.sizeBytes != material.sizeBytes || stored.contentHash != material.contentHash -> {
+                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.MISMATCH, retryable = false)
+                null
+            }
+
+            else -> {
+                materialRepository.save(material.copy(sync = SyncState.Synced, remoteKey = stored.key.value))
+                uploadProgressStore.clear(material.id)
+                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.SUCCESS, retryable = false)
+                UploadOutcome.Synced
+            }
+        }
     }
 
     /**
@@ -156,7 +171,7 @@ public class MaterialUploadEngine(
      * @param onSnapshot receives every rewritten copy of the material, so a caller that has to
      *  record a failure does so against the latest row rather than a stale one.
      */
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "LongMethod") // Keep resumable part/complete/verify ordering visible in one pipeline.
     private suspend fun transfer(
         material: Material,
         onSnapshot: (Material) -> Unit,
@@ -253,11 +268,14 @@ public class MaterialUploadEngine(
         logger?.materialTransfer(
             code = DiagnosticCode.MaterialUpload,
             materialId = materialId,
-            stage = stage,
-            outcome = outcome,
-            retryable = retryable,
-            part = part,
-            partCount = partCount,
+            details =
+                MaterialTransferDetails(
+                    stage = stage,
+                    outcome = outcome,
+                    retryable = retryable,
+                    part = part,
+                    partCount = partCount,
+                ),
             throwable = throwable,
         )
     }
