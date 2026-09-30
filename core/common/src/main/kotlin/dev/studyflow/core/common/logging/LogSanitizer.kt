@@ -16,14 +16,23 @@ public object LogSanitizer {
             .replace(unixPath, "[path]")
             .replace(fileName, "[file]")
 
+    /**
+     * A throwable's class name with everything but letters, digits and underscores removed.
+     *
+     * A class name is written in this app's source, not by its user, but an anonymous or synthetic
+     * name can carry a file extension that looks like a document; stripping the punctuation is
+     * what keeps `Bad/FileException.kt` from reading as a file name.
+     */
+    public fun sanitizeThrowableType(throwableType: String?): String? =
+        throwableType
+            ?.replace(unsafeThrowableTypeCharacter, "")
+            ?.takeIf { it.isNotBlank() }
+
     public fun scrubReleaseMessage(
         level: LogLevel,
         throwableType: String? = null,
     ): String {
-        val safeThrowableType =
-            throwableType
-                ?.replace(unsafeThrowableTypeCharacter, "")
-                ?.takeIf { it.isNotBlank() }
+        val safeThrowableType = sanitizeThrowableType(throwableType)
 
         return listOfNotNull(
             "level=${level.name}",

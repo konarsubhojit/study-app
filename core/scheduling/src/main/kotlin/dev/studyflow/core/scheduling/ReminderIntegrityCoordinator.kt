@@ -10,6 +10,9 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dev.studyflow.core.common.logging.AppLogger
+import dev.studyflow.core.common.logging.DiagnosticCode
+import dev.studyflow.core.common.logging.DiagnosticKey
+import dev.studyflow.core.common.logging.diagnosticEvent
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.domain.tasks.TaskRepository
 import dev.studyflow.core.model.StudyTask
@@ -58,21 +61,23 @@ public class ReminderIntegrityCoordinator(
                 overdueCount = overdue.size,
                 degradedCount = scheduled.count { it.plan.isDegraded },
             )
-        if (report.hasAnomaly) {
-            logger.warning(
-                TAG,
-                "reminder_integrity_anomaly scheduled=${report.scheduledCount} " +
-                    "notScheduled=${report.notScheduledCount} overdue=${report.overdueCount} " +
-                    "degraded=${report.degradedCount}",
-            )
-        } else {
-            logger.info(TAG, "reminder_integrity_ok scheduled=${report.scheduledCount}")
-        }
+        val code =
+            if (report.hasAnomaly) {
+                DiagnosticCode.ReminderIntegrityAnomaly
+            } else {
+                DiagnosticCode.ReminderIntegrityOk
+            }
+        logger.diagnostic(
+            diagnosticEvent(code) {
+                put(DiagnosticKey.Scheduled, report.scheduledCount)
+                if (report.hasAnomaly) {
+                    put(DiagnosticKey.NotScheduled, report.notScheduledCount)
+                    put(DiagnosticKey.Overdue, report.overdueCount)
+                    put(DiagnosticKey.Degraded, report.degradedCount)
+                }
+            },
+        )
         return report
-    }
-
-    private companion object {
-        const val TAG = "ReminderIntegrity"
     }
 }
 

@@ -11,6 +11,9 @@ dependencies {
     // module never needs the generated protobuf `UserSettings` type on its own classpath.
     implementation(projects.core.datastore)
     implementation(libs.androidx.activity.compose)
+    // The log export writes through MediaStore and, before Android 10, shares through
+    // `FileProvider`; both come from androidx.core, which this module therefore names itself.
+    implementation(libs.androidx.core.ktx)
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.turbine)

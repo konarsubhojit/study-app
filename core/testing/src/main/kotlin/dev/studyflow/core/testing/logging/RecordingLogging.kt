@@ -2,6 +2,8 @@ package dev.studyflow.core.testing.logging
 
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.logging.CrashReporter
+import dev.studyflow.core.common.logging.DiagnosticCode
+import dev.studyflow.core.common.logging.DiagnosticEvent
 import dev.studyflow.core.common.logging.LogLevel
 
 /** One captured call to [AppLogger.log]. */
@@ -21,9 +23,19 @@ public data class LoggedMessage(
  */
 public class RecordingAppLogger : AppLogger {
     private val recorded = mutableListOf<LoggedMessage>()
+    private val recordedDiagnostics = mutableListOf<LoggedDiagnostic>()
 
     /** Everything logged so far, oldest first. */
     public val messages: List<LoggedMessage> get() = recorded.toList()
+
+    /**
+     * Structured diagnostics, oldest first, kept apart from free text.
+     *
+     * The two survive release builds differently — free text is scrubbed away, a diagnostic is
+     * not — so a test that means "this is diagnosable in production" has to be able to say which
+     * of the two it asserted on.
+     */
+    public val diagnostics: List<LoggedDiagnostic> get() = recordedDiagnostics.toList()
 
     override fun log(
         level: LogLevel,
@@ -34,14 +46,32 @@ public class RecordingAppLogger : AppLogger {
         recorded += LoggedMessage(level = level, tag = tag, message = message, throwable = throwable)
     }
 
+    override fun diagnostic(
+        event: DiagnosticEvent,
+        throwable: Throwable?,
+    ) {
+        recordedDiagnostics += LoggedDiagnostic(code = event.code, rendered = event.render(throwable))
+    }
+
+    /** The rendered lines of every diagnostic with [code], which is what release logcat shows. */
+    public fun diagnosticsWith(code: DiagnosticCode): List<String> =
+        recordedDiagnostics.filter { it.code == code }.map(LoggedDiagnostic::rendered)
+
     /** The message texts logged at [level], which is usually all a test cares about. */
     public fun messageTextsAt(level: LogLevel): List<String> = recorded.filter { it.level == level }.map { it.message }
 
     /** Forgets everything recorded so far. */
     public fun clear() {
         recorded.clear()
+        recordedDiagnostics.clear()
     }
 }
+
+/** One captured call to [AppLogger.diagnostic], with the line it would have written. */
+public data class LoggedDiagnostic(
+    val code: DiagnosticCode,
+    val rendered: String,
+)
 
 /**
  * A [CrashReporter] that records how it was configured and what it was handed.

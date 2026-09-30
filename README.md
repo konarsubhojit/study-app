@@ -144,6 +144,12 @@ original cached files. Importing it back merges rather than inserts: the same ar
 twice changes nothing, newer local edits survive, and a session that was running at export time
 comes back stopped rather than as a timer that has been counting for a week.
 
+Logs follow the same rule. A release build discards free-text log messages entirely — only a level
+and a sanitised throwable type reach logcat — so a document name or an email address cannot end up
+in a shared buffer; what survives instead is a closed set of structured diagnostic events whose
+codes, keys and values are enums. The recent ones are kept in a small in-memory ring buffer that
+settings can export to Downloads, and that sign-out clears.
+
 Deleting the account asks the server first — a local wipe would destroy the credentials the request
 is authenticated with — then clears the database, files, caches, thumbnails, settings, the
 active-timer anchor and, last, the tokens. Platform backup stays off, and the extraction rules
@@ -151,6 +157,7 @@ enumerate what must never be copied off the device.
 
 → [ADR 0013](docs/adr/0013-data-lifecycle.md) ·
 [Data lifecycle guide](docs/data-lifecycle.md) ·
+[Logging and diagnostics](docs/logging.md) ·
 [`DataArchive`](core/domain/src/main/kotlin/dev/studyflow/core/domain/lifecycle/DataArchive.kt) ·
 [`ArchiveMergePolicy`](core/domain/src/main/kotlin/dev/studyflow/core/domain/lifecycle/ArchiveMergePolicy.kt) ·
 [`AccountDeletionCoordinator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/lifecycle/AccountDeletion.kt)
