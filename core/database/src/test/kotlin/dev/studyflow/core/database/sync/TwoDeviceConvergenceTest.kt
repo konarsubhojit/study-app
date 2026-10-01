@@ -240,6 +240,40 @@ class TwoDeviceConvergenceTest {
         }
 
     @Test
+    fun `saving an uploaded material queues it and the drain pushes its record`() =
+        runBlocking {
+            val material =
+                testMaterial(id = "material-sync", sync = SyncState.Synced)
+                    .copy(remoteKey = "materials/material-sync")
+            deviceA.materials.save(material)
+
+            assertEquals(1, deviceA.pendingCount())
+
+            deviceA.sync(SyncTrigger.OUTBOUND)
+
+            assertEquals(1, server.pushes)
+            assertEquals(1, server.documentCount())
+            assertEquals(0, deviceA.pendingCount())
+        }
+
+    @Test
+    fun `a record pull cursor is persisted and sent on the next pull`() =
+        runBlocking {
+            deviceA.materials.save(
+                testMaterial(id = "cursor-material", sync = SyncState.Synced)
+                    .copy(remoteKey = "materials/cursor-material"),
+            )
+            deviceA.sync(SyncTrigger.OUTBOUND)
+            server.resetCounters()
+
+            deviceB.sync(SyncTrigger.SCHEDULED)
+            deviceB.sync(SyncTrigger.SCHEDULED)
+
+            assertEquals("1", deviceB.cursors().second)
+            assertEquals(listOf(null, "1"), server.requestedRecordCursors)
+        }
+
+    @Test
     fun `concurrent task edits converge on the later write, and deletes replicate`() =
         runBlocking {
             deviceA.tasks.save(task())
@@ -431,8 +465,11 @@ private class FakeSyncServer : SyncTransport {
         private set
     var recordPulls: Int = 0
         private set
+    val requestedRecordCursors = mutableListOf<String?>()
 
     fun recordCount(): Int = state.size
+
+    fun documentCount(): Int = documents.size
 
     fun record(id: String): SyncSessionRecord = requireNotNull(state[id]) { "no session $id on the server" }
 
@@ -440,6 +477,7 @@ private class FakeSyncServer : SyncTransport {
         pushes = 0
         pulls = 0
         recordPulls = 0
+        requestedRecordCursors.clear()
     }
 
     /** A deletion made by neither device — a browser tab, or another phone entirely. */
@@ -516,6 +554,7 @@ private class FakeSyncServer : SyncTransport {
         limit: Int,
     ): SyncResult<SyncDocumentPage> {
         recordPulls++
+        requestedRecordCursors += cursor
         val from = cursor?.toIntOrNull() ?: 0
         val page = documentLog.drop(from).take(limit)
         val next = from + page.size

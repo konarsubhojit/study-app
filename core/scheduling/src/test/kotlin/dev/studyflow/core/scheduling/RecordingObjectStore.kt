@@ -76,7 +76,7 @@ internal class RecordingObjectStore : ObjectStore {
                 key = session.key,
                 sizeBytes = session.sizeBytes,
                 contentType = "application/octet-stream",
-                contentHash = ContentHash(HASH),
+                contentHash = ContentHash(session.key.value.substringAfterLast('/')),
                 updatedAt = Instant.parse(FIXED_INSTANT),
             )
         }
@@ -128,6 +128,5 @@ internal class RecordingObjectStore : ObjectStore {
 
     private companion object {
         const val FIXED_INSTANT = "2026-01-01T00:00:00Z"
-        val HASH = "a".repeat(64)
     }
 }

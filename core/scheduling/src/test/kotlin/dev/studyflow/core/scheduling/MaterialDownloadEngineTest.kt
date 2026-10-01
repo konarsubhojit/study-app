@@ -1,5 +1,6 @@
 package dev.studyflow.core.scheduling
 
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.domain.materials.DownloadProgress
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
@@ -8,11 +9,13 @@ import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStoreException
 import dev.studyflow.core.testing.data.FakeDownloadProgressStore
 import dev.studyflow.core.testing.data.FakeMaterialRepository
+import dev.studyflow.core.testing.logging.RecordingAppLogger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.io.IOException
@@ -74,6 +77,36 @@ class MaterialDownloadEngineTest {
 
             assertInstanceOf(DownloadOutcome.Permanent::class.java, outcome)
             assertNull(materialRepository.observeById("m1").first()?.localPath)
+        }
+
+    @Test
+    fun `download diagnostics identify the failed transfer stage without file paths`() =
+        runBlocking {
+            val logger = RecordingAppLogger()
+            val materialId = "00000000-0000-0000-0000-000000000002"
+            materialRepository.save(material().copy(id = materialId))
+            transport.failAfterProgress = IOException("connection lost")
+            val diagnosticEngine =
+                MaterialDownloadEngine(
+                    materialRepository = materialRepository,
+                    downloadProgressStore = progressStore,
+                    objectStore = objectStore,
+                    destinationPath = { "/private/cache/${materialDownloadCacheFileName(it)}" },
+                    transport = transport,
+                    logger = logger,
+                )
+
+            assertInstanceOf(DownloadOutcome.Retryable::class.java, diagnosticEngine.download(materialId))
+            transport.failAfterProgress = null
+            assertInstanceOf(DownloadOutcome.Cached::class.java, diagnosticEngine.download(materialId))
+
+            val events = logger.diagnosticsWith(DiagnosticCode.MaterialDownload)
+            assertTrue(
+                events.any { "stage=PART outcome=FAILURE retryable=true materialId=$materialId" in it },
+            )
+            assertTrue(events.any { "stage=COMPLETE outcome=SUCCESS" in it })
+            assertTrue(events.any { "stage=VERIFY outcome=SUCCESS" in it })
+            assertTrue(events.none { "/private/cache/" in it || "lecture.pdf" in it })
         }
 
     private fun material(): Material =

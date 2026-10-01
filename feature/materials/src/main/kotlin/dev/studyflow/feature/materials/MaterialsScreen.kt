@@ -315,6 +315,21 @@ private fun MaterialGridCell(
                     ),
             )
             Text(text = formatSize(material.sizeBytes), style = MaterialTheme.typography.bodySmall)
+            when (material.sync) {
+                SyncState.Pending -> {
+                    Text(text = "Pending upload", style = MaterialTheme.typography.bodySmall)
+                }
+
+                is SyncState.Uploading -> {
+                    Text(text = "Uploading", style = MaterialTheme.typography.bodySmall)
+                }
+
+                is SyncState.Failed -> {
+                    Text(text = "Upload failed", style = MaterialTheme.typography.bodySmall)
+                }
+
+                SyncState.Synced -> Unit
+            }
             // A failed upload is the one sync state a tap on the cell cannot resolve — the user
             // needs an explicit way to ask for another attempt, not just to reopen the file
             // (issue #38). Every other sync state renders without it.

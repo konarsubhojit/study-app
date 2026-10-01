@@ -108,6 +108,24 @@ class KtorStudyFlowApiTest {
         }
 
     @Test
+    fun `record delta requests send the persisted opaque cursor`() =
+        runTest {
+            var cursor: String? = null
+            var limit: String? = null
+            val api =
+                MockBackend.api { request ->
+                    cursor = request.url.parameters["cursor"]
+                    limit = request.url.parameters["limit"]
+                    json("""{"changes":[],"nextCursor":"records-5","hasMore":false}""")
+                }
+
+            api.recordChanges(cursor = "records-4", limit = 50)
+
+            assertEquals("records-4", cursor)
+            assertEquals("50", limit)
+        }
+
+    @Test
     fun `every request carries the client version so the server can police its population`() =
         runTest {
             var header: String? = null

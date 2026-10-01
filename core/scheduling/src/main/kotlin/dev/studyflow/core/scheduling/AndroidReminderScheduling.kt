@@ -21,14 +21,19 @@ import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import dagger.hilt.android.EntryPointAccessors
+import dev.studyflow.core.common.logging.AppLogger
+import dev.studyflow.core.common.logging.ReminderDegradationSubsystem
+import dev.studyflow.core.common.logging.reminderDegraded
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.common.time.WallClock
+import dev.studyflow.core.domain.reminder.ReminderDegradation
 import dev.studyflow.core.domain.reminder.ReminderPlan
 import dev.studyflow.core.domain.reminder.SchedulingCapabilities
 import dev.studyflow.core.scheduling.di.SchedulingEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlin.math.max
 
@@ -76,6 +81,7 @@ public class AndroidReminderPlatformScheduler(
     },
     private val onExactAlarmDenied: (SecurityException) -> Unit = {},
     private val wallClock: WallClock = SystemWallClock,
+    private val logger: AppLogger? = null,
 ) : ReminderPlatformScheduler {
     override fun scheduleInexact(plan: ReminderPlan): PlatformScheduleOutcome {
         val request =
@@ -102,7 +108,7 @@ public class AndroidReminderPlatformScheduler(
                     operation(plan.reminderId, plan.taskId),
                 )
             },
-            onExactAlarmDenied = onExactAlarmDenied,
+            onExactAlarmDenied = { denied -> recordExactAlarmDenial(plan, denied) },
             cancel = { alarmManager.cancel(operation(plan.reminderId, plan.taskId)) },
             scheduleInexact = { scheduleInexact(plan) },
         )
@@ -118,7 +124,7 @@ public class AndroidReminderPlatformScheduler(
                     operation(plan.reminderId, plan.taskId),
                 )
             },
-            onExactAlarmDenied = onExactAlarmDenied,
+            onExactAlarmDenied = { denied -> recordExactAlarmDenial(plan, denied) },
             cancel = { alarmManager.cancel(operation(plan.reminderId, plan.taskId)) },
             scheduleInexact = { scheduleInexact(plan) },
         )
@@ -126,6 +132,23 @@ public class AndroidReminderPlatformScheduler(
     override fun cancel(reminderId: String) {
         alarmManager.cancel(operation(reminderId))
         workManager.cancelUniqueWork(workName(reminderId))
+    }
+
+    private fun recordExactAlarmDenial(
+        plan: ReminderPlan,
+        denied: SecurityException,
+    ) {
+        onExactAlarmDenied(denied)
+        val reminderId =
+            runCatching { UUID.fromString(plan.reminderId) }
+                .getOrNull()
+                ?.takeIf { it.toString().equals(plan.reminderId, ignoreCase = true) }
+        logger?.reminderDegraded(
+            degradation = ReminderDegradation.EXACT_ALARMS_DENIED,
+            subsystem = ReminderDegradationSubsystem.REMINDER_SCHEDULING,
+            reminderId = reminderId,
+            throwable = denied,
+        )
     }
 
     private fun delayMillis(plan: ReminderPlan): Long =

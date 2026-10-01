@@ -1,5 +1,6 @@
 package dev.studyflow.core.scheduling
 
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.domain.materials.CompletedUploadPart
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
@@ -8,6 +9,7 @@ import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStoreException
 import dev.studyflow.core.testing.data.FakeMaterialRepository
 import dev.studyflow.core.testing.data.FakeUploadProgressStore
+import dev.studyflow.core.testing.logging.RecordingAppLogger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -101,6 +103,38 @@ class MaterialUploadEngineTest {
             val updated = materialRepository.observeById("m1").first()
             assertEquals(SyncState.Synced, updated?.sync)
             assertEquals("materials/${contentHash.hex}", updated?.remoteKey)
+        }
+
+    @Test
+    fun `upload diagnostics identify every transfer stage and the failing part`() =
+        runBlocking {
+            val logger = RecordingAppLogger()
+            val materialId = "00000000-0000-0000-0000-000000000001"
+            materialRepository.save(material().copy(id = materialId))
+            objectStore.failNextUploadPart = ObjectStoreException.Transient("connection reset")
+            val diagnosticEngine =
+                MaterialUploadEngine(
+                    materialRepository = materialRepository,
+                    uploadProgressStore = uploadProgressStore,
+                    objectStore = objectStore,
+                    readPart = { _, part -> ByteArray(part.size.toInt()) },
+                    logger = logger,
+                )
+
+            assertInstanceOf(UploadOutcome.Retryable::class.java, diagnosticEngine.upload(materialId))
+            assertEquals(UploadOutcome.Synced, diagnosticEngine.upload(materialId))
+
+            val events = logger.diagnosticsWith(DiagnosticCode.MaterialUpload)
+            assertTrue(events.any { "stage=PLAN outcome=SUCCESS retryable=false materialId=$materialId" in it })
+            assertTrue(events.any { "stage=INIT outcome=SUCCESS retryable=false materialId=$materialId" in it })
+            assertTrue(
+                events.any {
+                    "stage=PART outcome=FAILURE retryable=true materialId=$materialId part=1 partCount=3" in it
+                },
+            )
+            assertTrue(events.any { "stage=COMPLETE outcome=SUCCESS" in it })
+            assertTrue(events.any { "stage=VERIFY outcome=SUCCESS" in it })
+            assertTrue(events.none { "lecture.mp4" in it || "/tmp/" in it })
         }
 
     @Test

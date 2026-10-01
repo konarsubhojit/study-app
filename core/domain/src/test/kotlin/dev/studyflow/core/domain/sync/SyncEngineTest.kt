@@ -1,8 +1,11 @@
 package dev.studyflow.core.domain.sync
 
 import dev.studyflow.core.common.time.Clock
+import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SessionStatus
 import dev.studyflow.core.model.StudyTask
+import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.testing.data.testMaterial
 import dev.studyflow.core.testing.data.testStudySession
 import dev.studyflow.core.testing.data.testStudyTask
 import kotlinx.coroutines.flow.Flow
@@ -205,10 +208,61 @@ class SyncEngineTest {
 
                 val outcome = engine().sync(SyncTrigger.OUTBOUND)
 
-                assertEquals(SyncOutcome.Synced(pushed = 2, applied = 0), outcome)
+                assertEquals(
+                    SyncOutcome.Synced(pushed = 2, applied = 0, recordsPushed = 1),
+                    outcome,
+                )
                 assertEquals(1, transport.pushes)
                 assertEquals(listOf(listOf("task-1")), transport.pushedDocuments)
                 assertTrue(store.queue.isEmpty(), "both entries are acknowledged")
+            }
+
+        @Test
+        fun `a queued uploaded material is sent through the record push`() =
+            runTest {
+                val material =
+                    testMaterial(id = "material-1")
+                        .copy(updatedAt = NOW, sync = SyncState.Synced, remoteKey = "materials/hash")
+                store.enqueueMaterial(material)
+
+                val outcome = engine().sync(SyncTrigger.OUTBOUND)
+
+                assertEquals(
+                    SyncOutcome.Synced(pushed = 1, applied = 0, recordsPushed = 1),
+                    outcome,
+                )
+                assertEquals(listOf(listOf("material-1")), transport.pushedDocuments)
+                assertTrue(store.queue.isEmpty())
+            }
+
+        @Test
+        fun `a record cursor returned by one pull is persisted and sent on the next pull`() =
+            runTest {
+                transport.documentPages =
+                    listOf(
+                        SyncDocumentPage(
+                            changes = listOf(SyncTaskRecord(testStudyTask(id = "task-9", updatedAt = NOW), "device-b")),
+                            nextCursor = "records-5",
+                            hasMore = false,
+                        ),
+                        SyncDocumentPage(changes = emptyList(), nextCursor = "records-5", hasMore = false),
+                    )
+
+                val first = engine().sync(SyncTrigger.SCHEDULED)
+                val second = engine().sync(SyncTrigger.SCHEDULED)
+
+                assertEquals(
+                    SyncOutcome.Synced(
+                        pushed = 0,
+                        applied = 1,
+                        recordsPulled = 1,
+                        recordCursorAdvanced = true,
+                    ),
+                    first,
+                )
+                assertEquals(SyncOutcome.Synced(pushed = 0, applied = 0), second)
+                assertEquals(listOf(null, "records-5"), transport.requestedDocumentCursors)
+                assertEquals("records-5", store.documentCursor)
             }
 
         @Test
@@ -239,7 +293,15 @@ class SyncEngineTest {
 
                 val outcome = engine().sync(SyncTrigger.SCHEDULED)
 
-                assertEquals(SyncOutcome.Synced(pushed = 0, applied = 1), outcome)
+                assertEquals(
+                    SyncOutcome.Synced(
+                        pushed = 0,
+                        applied = 1,
+                        recordsPulled = 1,
+                        recordCursorAdvanced = true,
+                    ),
+                    outcome,
+                )
                 assertEquals(listOf<String?>("records-4"), transport.requestedDocumentCursors)
                 assertEquals("records-5", store.documentCursor)
                 assertEquals(listOf(NOW), store.documentReceivedAt)
@@ -304,6 +366,20 @@ private class FakeSyncStore : SyncStore {
                 deviceId = "device-a",
             )
         documents[task.id] = SyncTaskRecord(task, "device-a")
+        status.value = status.value.copy(pendingCount = queue.size)
+    }
+
+    fun enqueueMaterial(material: Material) {
+        queue +=
+            SyncQueueItem(
+                sequence = nextSequence++,
+                entityType = SyncEntityType.MATERIAL,
+                entityId = material.id,
+                operation = SyncOperation.UPSERT,
+                updatedAt = material.updatedAt,
+                deviceId = "device-a",
+            )
+        documents[material.id] = SyncMaterialRecord(material, "device-a")
         status.value = status.value.copy(pendingCount = queue.size)
     }
 

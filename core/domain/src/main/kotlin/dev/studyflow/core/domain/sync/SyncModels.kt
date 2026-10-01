@@ -202,6 +202,9 @@ public sealed interface SyncOutcome {
     public data class Synced(
         val pushed: Int,
         val applied: Int,
+        val recordsPushed: Int = 0,
+        val recordsPulled: Int = 0,
+        val recordCursorAdvanced: Boolean = false,
     ) : SyncOutcome
 
     public data class Failed(
