@@ -74,6 +74,15 @@ public enum class DiagnosticCode(
     /** A material upload stage started, completed or failed. */
     MaterialUpload(LogLevel.Info, TAG_MATERIALS),
 
+    /**
+     * A material upload was handed to the platform scheduler, with the constraint it must satisfy.
+     *
+     * Emitted at enqueue time precisely because a constrained upload logs nothing else: work held
+     * `ENQUEUED` on an unmet constraint never runs, so without this line an export cannot tell
+     * "never enqueued" (a fault) from "enqueued and waiting for Wi-Fi" (working as asked).
+     */
+    MaterialUploadEnqueued(LogLevel.Info, TAG_MATERIALS),
+
     /** A material download stage started, completed or failed. */
     MaterialDownload(LogLevel.Info, TAG_MATERIALS),
 
@@ -117,6 +126,8 @@ public enum class DiagnosticKey(
     Part("part"),
     PartCount("partCount"),
     MaterialId("materialId"),
+    NetworkType("networkType"),
+    SyncMode("syncMode"),
     ReminderId("reminderId"),
     Subsystem("subsystem"),
     Scheduled("scheduled"),

@@ -6,6 +6,7 @@ import dev.studyflow.core.domain.materials.DownloadProgress
 import dev.studyflow.core.domain.materials.DownloadProgressStore
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.model.Material
+import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStore
 import dev.studyflow.core.storage.ObjectStoreException
@@ -106,6 +107,18 @@ public class MaterialDownloadEngine(
             }
         } catch (exception: CancellationException) {
             throw exception
+        } catch (exception: ObjectStoreException.NotFound) {
+            // The catalogue believes this material is stored and the store has never heard of it —
+            // the signature of a row written by a build that "uploaded" into memory. Nothing can be
+            // fetched, and this device has no local copy to re-upload, so the row stops claiming
+            // otherwise and becomes a failure the user can act on (re-attach or remove).
+            log(material.id, MaterialTransferStage.REPAIR, MaterialTransferOutcome.NOT_FOUND, retryable = false)
+            val reason = "the uploaded file is no longer in cloud storage"
+            materialRepository.save(
+                material.copy(sync = SyncState.Failed(reason, retryable = false), remoteKey = null),
+            )
+            downloadProgressStore.clear(material.id)
+            DownloadOutcome.Permanent(reason)
         } catch (exception: ObjectStoreException) {
             val reason = exception.message ?: exception::class.simpleName.orEmpty()
             log(material.id, stage, MaterialTransferOutcome.FAILURE, exception.retryable, throwable = exception)

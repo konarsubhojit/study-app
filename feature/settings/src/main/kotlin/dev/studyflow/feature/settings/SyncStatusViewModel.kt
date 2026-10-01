@@ -3,6 +3,8 @@ package dev.studyflow.feature.settings
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.studyflow.core.datastore.UploadNetwork
+import dev.studyflow.core.datastore.UploadNetworkSettings
 import dev.studyflow.core.domain.sync.SyncScheduler
 import dev.studyflow.core.domain.sync.SyncStatus
 import dev.studyflow.core.domain.sync.SyncStatusRepository
@@ -12,7 +14,7 @@ import dev.studyflow.core.ui.mvi.UiEffect
 import dev.studyflow.core.ui.mvi.UiEvent
 import dev.studyflow.core.ui.mvi.UiState
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.time.Instant
@@ -27,6 +29,13 @@ import kotlin.time.Instant
  */
 public data class SyncStatusUiState(
     val status: SyncStatus = SyncStatus(),
+    /**
+     * Which networks uploads may use.
+     *
+     * Surfaced here because it is the setting that parks a material's upload indefinitely: a user
+     * told "Waiting for Wi-Fi" in the catalogue needs somewhere to change the answer.
+     */
+    val uploadNetwork: UploadNetwork = UploadNetwork.WIFI_ONLY,
 ) : UiState {
     val pendingCount: Int get() = status.pendingCount
     val lastSuccessAt: Instant? get() = status.lastSuccessAt
@@ -49,6 +58,11 @@ public data class SyncStatusUiState(
 public sealed interface SyncStatusUiEvent : UiEvent {
     /** The user tapped "Sync now". */
     public data object SyncNow : SyncStatusUiEvent
+
+    /** The user chose which networks uploads may use. */
+    public data class SetUploadNetwork(
+        val network: UploadNetwork,
+    ) : SyncStatusUiEvent
 }
 
 /** No effects today; declared so the screen keeps the same MVI shape as its neighbours. */
@@ -61,20 +75,31 @@ public class SyncStatusViewModel
         savedStateHandle: SavedStateHandle,
         statusRepository: SyncStatusRepository,
         private val syncScheduler: SyncScheduler,
+        private val uploadNetworkSettings: UploadNetworkSettings,
     ) : MviViewModel<SyncStatusUiEvent, SyncStatusUiEffect>(savedStateHandle) {
         public val state: StateFlow<SyncStatusUiState> =
-            statusRepository
-                .observeStatus()
+            combine(
                 // The state is read straight from the store rather than mirrored in a local flag:
                 // the run happens in a worker, possibly in another process lifetime, so anything
                 // this ViewModel set by hand could outlive the run that finished it.
-                .map(::SyncStatusUiState)
-                .stateInViewModel(SyncStatusUiState())
+                statusRepository.observeStatus(),
+                uploadNetworkSettings.network,
+                ::SyncStatusUiState,
+            ).stateInViewModel(SyncStatusUiState())
 
         override fun onEvent(event: SyncStatusUiEvent) {
             when (event) {
                 SyncStatusUiEvent.SyncNow -> {
                     viewModelScope.launch {
+                        syncScheduler.requestSync(SyncTrigger.MANUAL)
+                    }
+                }
+
+                is SyncStatusUiEvent.SetUploadNetwork -> {
+                    viewModelScope.launch {
+                        uploadNetworkSettings.setNetwork(event.network)
+                        // A user who has just allowed mobile data is asking for the queue to move
+                        // now, not at the next scheduled pass.
                         syncScheduler.requestSync(SyncTrigger.MANUAL)
                     }
                 }

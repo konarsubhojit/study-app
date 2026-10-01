@@ -45,6 +45,9 @@ import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.scheduling.AndroidBootIdProvider
 import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import dev.studyflow.core.scheduling.AndroidReminderPlatformScheduler
+import dev.studyflow.core.scheduling.AndroidUploadConstraintStatus
+import dev.studyflow.core.scheduling.MaterialStorageAudit
+import dev.studyflow.core.scheduling.MaterialStorageReconciler
 import dev.studyflow.core.scheduling.AndroidSchedulingCapabilitiesProvider
 import dev.studyflow.core.scheduling.ApiSyncTransport
 import dev.studyflow.core.scheduling.DownloadTransport
@@ -63,6 +66,7 @@ import dev.studyflow.core.scheduling.WeeklySummaryScheduler
 import dev.studyflow.core.scheduling.WorkManagerMaterialDownloadCoordinator
 import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
 import dev.studyflow.core.scheduling.WorkManagerSyncCoordinator
+import dev.studyflow.core.storage.ObjectStore
 import kotlinx.coroutines.flow.first
 import javax.inject.Singleton
 
@@ -253,8 +257,32 @@ public object SchedulingModule {
         materialRepository: MaterialRepository,
         settingsStore: UserSettingsStore,
         syncScheduler: SyncScheduler,
+        logger: AppLogger,
     ): MaterialUploadCoordinator =
-        WorkManagerMaterialUploadCoordinator(context, materialRepository, settingsStore, syncScheduler)
+        WorkManagerMaterialUploadCoordinator(
+            context = context,
+            materialRepository = materialRepository,
+            settingsStore = settingsStore,
+            syncScheduler = syncScheduler,
+            workManager = WorkManager.getInstance(context),
+            constraintStatus = AndroidUploadConstraintStatus(context),
+            logger = logger,
+        )
+
+    @Provides
+    @Singleton
+    public fun materialStorageAudit(
+        materialRepository: MaterialRepository,
+        objectStore: ObjectStore,
+        uploadCoordinator: MaterialUploadCoordinator,
+        logger: AppLogger,
+    ): MaterialStorageAudit =
+        MaterialStorageReconciler(
+            materialRepository = materialRepository,
+            objectStore = objectStore,
+            uploadCoordinator = uploadCoordinator,
+            logger = logger,
+        )
 
     @Provides
     @Singleton

@@ -206,6 +206,7 @@ private fun MaterialsEntry(
     if (route.materialId == null) {
         MaterialsScreenRoute(
             sharedElementScope = sharedElementScope,
+            onOpenSyncSettings = { backStack.add(SettingsRoute) },
             onOpenMaterial = { materialId ->
                 if (backStack.lastOrNull() != MaterialsRoute(materialId)) {
                     backStack.add(MaterialsRoute(materialId))

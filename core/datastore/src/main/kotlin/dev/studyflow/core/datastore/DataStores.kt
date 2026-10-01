@@ -150,6 +150,49 @@ public class UserSettingsFocusTimerSettings(
 }
 
 /**
+ * How uploads and sync are allowed to use the network.
+ *
+ * Mirrors `settings.proto`'s `SyncMode` so a feature module can read and change the choice without
+ * the generated protobuf enum on its own classpath.
+ */
+public enum class UploadNetwork {
+    /** The default: nothing large leaves the device over a connection the user pays by the megabyte. */
+    WIFI_ONLY,
+    ANY_NETWORK,
+    MANUAL,
+}
+
+/** Reads and writes the sync mode a materials upload's network constraint is derived from. */
+public interface UploadNetworkSettings {
+    public val network: Flow<UploadNetwork>
+
+    public suspend fun setNetwork(network: UploadNetwork)
+}
+
+public class UserSettingsUploadNetworkSettings(
+    private val store: UserSettingsStore,
+) : UploadNetworkSettings {
+    override val network: Flow<UploadNetwork> =
+        store.data.map { settings ->
+            when (settings.syncMode) {
+                SyncMode.SYNC_MODE_WIFI_ONLY -> UploadNetwork.WIFI_ONLY
+                SyncMode.SYNC_MODE_ANY_NETWORK -> UploadNetwork.ANY_NETWORK
+                SyncMode.SYNC_MODE_MANUAL -> UploadNetwork.MANUAL
+            }
+        }
+
+    override suspend fun setNetwork(network: UploadNetwork) {
+        val mode =
+            when (network) {
+                UploadNetwork.WIFI_ONLY -> SyncMode.SYNC_MODE_WIFI_ONLY
+                UploadNetwork.ANY_NETWORK -> SyncMode.SYNC_MODE_ANY_NETWORK
+                UploadNetwork.MANUAL -> SyncMode.SYNC_MODE_MANUAL
+            }
+        store.update { syncMode = mode }
+    }
+}
+
+/**
  * Overall daily/weekly study targets (issue #73).
  *
  * @property dailyGoal `null` means no daily target is set — see `settings.proto`'s

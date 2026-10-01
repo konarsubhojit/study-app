@@ -12,7 +12,9 @@ import dev.studyflow.core.common.logging.LogBuffer
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.datastore.AlarmRingtoneSettings
 import dev.studyflow.core.datastore.UserSettingsAlarmRingtoneSettings
+import dev.studyflow.core.datastore.UploadNetworkSettings
 import dev.studyflow.core.datastore.UserSettingsStore
+import dev.studyflow.core.datastore.UserSettingsUploadNetworkSettings
 import dev.studyflow.feature.settings.AndroidBatteryDiagnosticsSource
 import dev.studyflow.feature.settings.BatteryDiagnosticsSource
 import dev.studyflow.feature.settings.LogExportEnvironment
@@ -35,6 +37,11 @@ public object SettingsModule {
     @Singleton
     public fun alarmRingtoneSettings(store: UserSettingsStore): AlarmRingtoneSettings =
         UserSettingsAlarmRingtoneSettings(store)
+
+    @Provides
+    @Singleton
+    public fun uploadNetworkSettings(store: UserSettingsStore): UploadNetworkSettings =
+        UserSettingsUploadNetworkSettings(store)
 
     @Provides
     @Singleton

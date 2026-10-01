@@ -7,11 +7,21 @@ import dev.studyflow.core.common.logging.diagnosticEvent
 import java.util.UUID
 
 internal enum class MaterialTransferStage {
+    /**
+     * The "has anyone already stored these bytes?" probe that runs before planning.
+     *
+     * Its own stage rather than `VERIFY`: a `VERIFY outcome=NOT_FOUND` line logged *before*
+     * `PLAN outcome=SUCCESS` read as a transfer verifying something it had not sent yet.
+     */
+    DEDUPE,
     PLAN,
     INIT,
     PART,
     COMPLETE,
     VERIFY,
+
+    /** A catalogue row said `Synced` but the store holds nothing; see `MaterialStorageReconciler`. */
+    REPAIR,
 }
 
 internal enum class MaterialTransferOutcome {

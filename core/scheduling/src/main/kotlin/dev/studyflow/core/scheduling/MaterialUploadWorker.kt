@@ -79,6 +79,14 @@ public class MaterialUploadWorker
                 return Result.failure()
             }
 
+            return MaterialUploadConcurrency.tryWithPermit { upload(materialId) }
+                ?: run {
+                    logger.info(TAG, "Upload is waiting for an earlier transfer to finish; retrying later")
+                    Result.retry()
+                }
+        }
+
+        private suspend fun upload(materialId: String): Result {
             val engine =
                 MaterialUploadEngine(
                     materialRepository = materialRepository,

@@ -56,6 +56,7 @@ public class SyncWorker
         private val syncEngine: SyncEngine,
         private val tokenStore: TokenStore,
         private val remoteChangesListener: RemoteChangesListener,
+        private val storageAudit: MaterialStorageAudit,
         private val logger: AppLogger,
     ) : CoroutineWorker(context, parameters) {
         override suspend fun doWork(): Result {
@@ -112,6 +113,10 @@ public class SyncWorker
                         },
                     )
                     if (outcome.applied > 0) remoteChangesListener.onRemoteChangesApplied()
+                    // A sync pass is the one moment this app is already talking to the backend
+                    // about materials, so it is where a row that claims to be stored is checked
+                    // against the store that is supposed to hold it (issue #193).
+                    storageAudit.verifyStoredMaterials()
                     Result.success()
                 }
 

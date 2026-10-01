@@ -48,6 +48,7 @@ import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementKeys
 import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementScope
 import dev.studyflow.core.designsystem.motion.studyFlowSharedElement
 import dev.studyflow.core.designsystem.theme.spacing
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailPlaceholder
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
@@ -67,6 +68,7 @@ import java.util.Locale
 public fun MaterialsRoute(
     modifier: Modifier = Modifier,
     onOpenMaterial: (String) -> Unit = {},
+    onOpenSyncSettings: () -> Unit = {},
     sharedElementScope: StudyFlowSharedElementScope? = null,
     viewModel: MaterialsViewModel = hiltViewModel(),
 ) {
@@ -84,10 +86,12 @@ public fun MaterialsRoute(
     // Read through a remembered snapshot, not the parameter itself: this effect is keyed on
     // `viewModel` alone so it is not restarted every time a caller passes a fresh lambda literal.
     val currentOnOpenMaterial by rememberUpdatedState(onOpenMaterial)
+    val currentOnOpenSyncSettings by rememberUpdatedState(onOpenSyncSettings)
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
                 is MaterialsUiEffect.NavigateToMaterial -> currentOnOpenMaterial(effect.materialId)
+                MaterialsUiEffect.NavigateToSyncSettings -> currentOnOpenSyncSettings()
             }
         }
     }
@@ -125,6 +129,13 @@ public fun MaterialsScreen(
             onPickDocuments = onPickDocuments,
         )
 
+        state.uploadWaitReason?.let { reason ->
+            UploadWaitingBanner(
+                reason = reason,
+                onOpenSyncSettings = { onEvent(MaterialsUiEvent.OpenSyncSettings) },
+            )
+        }
+
         if (state.results.isNotEmpty()) {
             ImportResultsBanner(
                 results = state.results,
@@ -152,9 +163,11 @@ public fun MaterialsScreen(
                 MaterialsDisplayState.Content -> {
                     MaterialsGrid(
                         catalog = state.catalog,
+                        waitReason = state.uploadWaitReason,
                         onLoadThumbnail = onLoadThumbnail,
                         onMaterialClick = { id -> onEvent(MaterialsUiEvent.ViewExisting(id)) },
                         onRetryUpload = { id -> onEvent(MaterialsUiEvent.RetryUpload(id)) },
+                        onRemoveMaterial = { id -> onEvent(MaterialsUiEvent.RemoveMaterial(id)) },
                         sharedElementScope = sharedElementScope,
                     )
                 }
@@ -247,12 +260,44 @@ private fun ImportResultRow(
     }
 }
 
+/**
+ * Says once, above the grid, why nothing is uploading, and offers the setting that changes it.
+ *
+ * Per-cell text alone would say "Waiting for Wi-Fi" a dozen times and still not tell the user
+ * where the decision was made.
+ */
+@Composable
+private fun UploadWaitingBanner(
+    reason: UploadWaitReason,
+    onOpenSyncSettings: () -> Unit,
+) {
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MaterialTheme.spacing.medium),
+    ) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
+        ) {
+            Text(text = MaterialsCopy.waiting(reason), style = MaterialTheme.typography.titleSmall)
+            Text(text = MaterialsCopy.waitingExplanation(reason), style = MaterialTheme.typography.bodyMedium)
+            if (reason == UploadWaitReason.WAITING_FOR_WIFI) {
+                TextButton(onClick = onOpenSyncSettings) { Text(text = "Change sync setting") }
+            }
+        }
+    }
+}
+
 @Composable
 private fun MaterialsGrid(
     catalog: List<Material>,
+    waitReason: UploadWaitReason?,
     onLoadThumbnail: suspend (Material) -> ImageBitmap?,
     onMaterialClick: (String) -> Unit,
     onRetryUpload: (String) -> Unit,
+    onRemoveMaterial: (String) -> Unit,
     sharedElementScope: StudyFlowSharedElementScope?,
 ) {
     // A grid of real thumbnails is the feature (issue #42): cells are sized adaptively so a phone
@@ -267,9 +312,11 @@ private fun MaterialsGrid(
         items(catalog, key = Material::id) { material ->
             MaterialGridCell(
                 material = material,
+                waitReason = waitReason,
                 onLoadThumbnail = onLoadThumbnail,
                 onClick = { onMaterialClick(material.id) },
                 onRetryUpload = { onRetryUpload(material.id) },
+                onRemoveMaterial = { onRemoveMaterial(material.id) },
                 modifier = Modifier.animateItem(),
                 sharedElementScope = sharedElementScope,
             )
@@ -280,9 +327,11 @@ private fun MaterialsGrid(
 @Composable
 private fun MaterialGridCell(
     material: Material,
+    waitReason: UploadWaitReason?,
     onLoadThumbnail: suspend (Material) -> ImageBitmap?,
     onClick: () -> Unit,
     onRetryUpload: () -> Unit,
+    onRemoveMaterial: () -> Unit,
     modifier: Modifier = Modifier,
     sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
@@ -317,7 +366,11 @@ private fun MaterialGridCell(
             Text(text = formatSize(material.sizeBytes), style = MaterialTheme.typography.bodySmall)
             when (material.sync) {
                 SyncState.Pending -> {
-                    Text(text = "Pending upload", style = MaterialTheme.typography.bodySmall)
+                    // "Waiting for Wi-Fi" is a different fact from "Pending upload": one is the
+                    // app doing exactly what it was told, the other is a queue nobody has reached
+                    // yet, and conflating them cost days of debugging (issue #193).
+                    val label = waitReason?.let(MaterialsCopy::waiting) ?: "Pending upload"
+                    Text(text = label, style = MaterialTheme.typography.bodySmall)
                 }
 
                 is SyncState.Uploading -> {
@@ -325,7 +378,8 @@ private fun MaterialGridCell(
                 }
 
                 is SyncState.Failed -> {
-                    Text(text = "Upload failed", style = MaterialTheme.typography.bodySmall)
+                    val label = if (material.isMissingSource) MaterialsCopy.MISSING_SOURCE else "Upload failed"
+                    Text(text = label, style = MaterialTheme.typography.bodySmall)
                 }
 
                 SyncState.Synced -> Unit
@@ -333,8 +387,16 @@ private fun MaterialGridCell(
             // A failed upload is the one sync state a tap on the cell cannot resolve — the user
             // needs an explicit way to ask for another attempt, not just to reopen the file
             // (issue #38). Every other sync state renders without it.
+            //
+            // Except one: a material with no local file and no stored object has nothing to resend,
+            // so offering "Retry" promises something that can never happen. It is offered removal
+            // instead, and the picker above re-attaches the file.
             if (material.sync is SyncState.Failed) {
-                TextButton(onClick = onRetryUpload) { Text(text = "Retry") }
+                if (material.isMissingSource) {
+                    TextButton(onClick = onRemoveMaterial) { Text(text = "Remove") }
+                } else {
+                    TextButton(onClick = onRetryUpload) { Text(text = "Retry") }
+                }
             }
         }
     }

@@ -69,10 +69,12 @@ public class MaterialUploadEngine(
             }
 
             // Already synced — most likely a second run queued before the first one's success was
-            // observed. Nothing to resend, and re-uploading would waste the user's data for no reason.
+            // observed. Nothing to resend, and re-uploading would waste the user's data for no
+            // reason, *provided* the object is really there: a build that uploaded into an
+            // in-process store left rows claiming `Synced` against bytes that never existed, so
+            // the claim is checked rather than trusted (issue #193).
             material.sync == SyncState.Synced -> {
-                log(materialId, MaterialTransferStage.VERIFY, MaterialTransferOutcome.SKIPPED, retryable = false)
-                UploadOutcome.Synced
+                verifySyncedMaterial(material)
             }
 
             else -> {
@@ -91,7 +93,7 @@ public class MaterialUploadEngine(
         var latest = material
         return try {
             log(material.id, stage, MaterialTransferOutcome.STARTED, retryable = true)
-            stage = MaterialTransferStage.VERIFY
+            stage = MaterialTransferStage.DEDUPE
             val linked = relinkIfAlreadyStored(material)
             if (linked != null) {
                 linked
@@ -135,6 +137,49 @@ public class MaterialUploadEngine(
     }
 
     /**
+     * Checks that a material the catalogue calls `Synced` really has bytes in the store.
+     *
+     * A row whose object is gone — never written by a build that "uploaded" into memory, or
+     * deleted since — would otherwise present a file that can never be fetched, on this device and
+     * on every other device the row syncs to. The honest repair is to stop claiming it is stored:
+     * a material that still has its local copy goes back to [SyncState.Pending] so this very run
+     * uploads it, and one that has neither copy becomes a non-retryable failure the user can
+     * re-attach or remove rather than retry forever.
+     */
+    private suspend fun verifySyncedMaterial(material: Material): UploadOutcome {
+        val key = material.remoteKey?.let(::ObjectKey) ?: ObjectKey.ofMaterial(material.contentHash)
+        val stored =
+            try {
+                objectStore.stat(key)
+            } catch (exception: ObjectStoreException) {
+                // The store could not answer; "still synced" is the safe reading of silence.
+                log(material.id, MaterialTransferStage.REPAIR, MaterialTransferOutcome.FAILURE, exception.retryable)
+                return if (exception.retryable) {
+                    UploadOutcome.Retryable(exception.message ?: exception::class.simpleName.orEmpty())
+                } else {
+                    UploadOutcome.Synced
+                }
+            }
+        if (stored != null) {
+            log(material.id, MaterialTransferStage.REPAIR, MaterialTransferOutcome.SKIPPED, retryable = false)
+            return UploadOutcome.Synced
+        }
+
+        log(material.id, MaterialTransferStage.REPAIR, MaterialTransferOutcome.NOT_FOUND, retryable = false)
+        uploadProgressStore.clear(material.id)
+        if (material.localPath == null) {
+            val reason = "the uploaded file is no longer in cloud storage"
+            materialRepository.save(
+                material.copy(sync = SyncState.Failed(reason, retryable = false), remoteKey = null),
+            )
+            return UploadOutcome.Permanent(reason)
+        }
+        val reset = material.copy(sync = SyncState.Pending, remoteKey = null)
+        materialRepository.save(reset)
+        return uploadMaterial(reset)
+    }
+
+    /**
      * Re-links [material] to bytes the store already holds, or `null` when they have to be sent.
      *
      * The key *is* the digest, so "has anyone already uploaded this file?" is one cheap `stat`
@@ -147,19 +192,19 @@ public class MaterialUploadEngine(
         val stored = objectStore.stat(ObjectKey.ofMaterial(material.contentHash))
         return when {
             stored == null -> {
-                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.NOT_FOUND, retryable = false)
+                log(material.id, MaterialTransferStage.DEDUPE, MaterialTransferOutcome.NOT_FOUND, retryable = false)
                 null
             }
 
             stored.sizeBytes != material.sizeBytes || stored.contentHash != material.contentHash -> {
-                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.MISMATCH, retryable = false)
+                log(material.id, MaterialTransferStage.DEDUPE, MaterialTransferOutcome.MISMATCH, retryable = false)
                 null
             }
 
             else -> {
                 materialRepository.save(material.copy(sync = SyncState.Synced, remoteKey = stored.key.value))
                 uploadProgressStore.clear(material.id)
-                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.SUCCESS, retryable = false)
+                log(material.id, MaterialTransferStage.DEDUPE, MaterialTransferOutcome.SUCCESS, retryable = false)
                 UploadOutcome.Synced
             }
         }
@@ -202,7 +247,6 @@ public class MaterialUploadEngine(
 
         if (!plan.isComplete(completed.keys)) {
             val remaining = plan.remaining(completed.keys)
-            onStage(MaterialTransferStage.PART, null, remaining.size)
             remaining.forEachIndexed { index, part ->
                 onStage(MaterialTransferStage.PART, part.number, plan.parts.size)
                 val signedPart =

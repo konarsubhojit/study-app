@@ -12,6 +12,7 @@ import dev.studyflow.core.domain.materials.MaterialImporter
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
 import dev.studyflow.core.domain.materials.ShareImportInbox
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailLoader
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
@@ -34,6 +35,13 @@ public data class MaterialsUiState(
     val loaded: Boolean = false,
     val isImporting: Boolean = false,
     val results: List<MaterialImportResult> = emptyList(),
+    /**
+     * Why queued uploads are not running, or `null` when nothing is holding them back.
+     *
+     * Without it a material whose upload is parked on an unmet constraint reads as "Pending
+     * upload" — indistinguishable from a broken pipeline, which is exactly how it was read.
+     */
+    val uploadWaitReason: UploadWaitReason? = null,
 ) : UiState
 
 /** One file's outcome from a picker, document, or share-sheet import. */
@@ -83,6 +91,14 @@ public sealed interface MaterialsUiEvent : UiEvent {
     public data class RetryUpload(
         val materialId: String,
     ) : MaterialsUiEvent
+
+    /** The user asked to remove a material whose file no longer exists anywhere. */
+    public data class RemoveMaterial(
+        val materialId: String,
+    ) : MaterialsUiEvent
+
+    /** The user asked to change how uploads use the network. */
+    public data object OpenSyncSettings : MaterialsUiEvent
 }
 
 public sealed interface MaterialsUiEffect : UiEffect {
@@ -93,6 +109,9 @@ public sealed interface MaterialsUiEffect : UiEffect {
     public data class NavigateToMaterial(
         val materialId: String,
     ) : MaterialsUiEffect
+
+    /** Asks the app shell to open settings, where the sync mode that parks uploads can be changed. */
+    public data object NavigateToSyncSettings : MaterialsUiEffect
 }
 
 @HiltViewModel
@@ -115,12 +134,14 @@ public class MaterialsViewModel
                 repository.observeAll(),
                 results,
                 importing,
-            ) { catalog, results, importing ->
+                uploadCoordinator.waitReason,
+            ) { catalog, results, importing, waitReason ->
                 MaterialsUiState(
                     catalog = catalog,
                     loaded = true,
                     isImporting = importing,
                     results = results,
+                    uploadWaitReason = waitReason,
                 )
             }.stateInViewModel(MaterialsUiState())
 
@@ -169,6 +190,17 @@ public class MaterialsViewModel
 
                 is MaterialsUiEvent.RetryUpload -> {
                     viewModelScope.launch { uploadCoordinator.retryUpload(event.materialId) }
+                }
+
+                is MaterialsUiEvent.RemoveMaterial -> {
+                    viewModelScope.launch {
+                        uploadCoordinator.cancelUpload(event.materialId)
+                        repository.delete(event.materialId)
+                    }
+                }
+
+                MaterialsUiEvent.OpenSyncSettings -> {
+                    emitEffect(MaterialsUiEffect.NavigateToSyncSettings)
                 }
             }
         }
