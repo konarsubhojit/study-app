@@ -44,14 +44,17 @@ internal object MaterialsCopy {
     /** The banner above the grid, which explains the wait once rather than once per material. */
     fun waitingExplanation(reason: UploadWaitReason): String =
         when (reason) {
-            UploadWaitReason.WAITING_FOR_WIFI ->
+            UploadWaitReason.WAITING_FOR_WIFI -> {
                 "Your files upload on Wi-Fi only, so they'll be sent as soon as you join a Wi-Fi network."
+            }
 
-            UploadWaitReason.WAITING_FOR_NETWORK ->
+            UploadWaitReason.WAITING_FOR_NETWORK -> {
                 "Your files will be sent as soon as this device is back online."
+            }
 
-            UploadWaitReason.WAITING_FOR_BATTERY ->
+            UploadWaitReason.WAITING_FOR_BATTERY -> {
                 "Your files will be sent once the battery is charged a little more."
+            }
         }
 
     /** A material with no copy left anywhere: retrying cannot help, so it is never offered. */

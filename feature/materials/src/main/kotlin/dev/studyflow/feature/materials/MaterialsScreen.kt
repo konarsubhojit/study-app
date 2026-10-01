@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
@@ -314,9 +315,12 @@ private fun MaterialsGrid(
                 material = material,
                 waitReason = waitReason,
                 onLoadThumbnail = onLoadThumbnail,
-                onClick = { onMaterialClick(material.id) },
-                onRetryUpload = { onRetryUpload(material.id) },
-                onRemoveMaterial = { onRemoveMaterial(material.id) },
+                actions =
+                    MaterialCellActions(
+                        onClick = { onMaterialClick(material.id) },
+                        onRetryUpload = { onRetryUpload(material.id) },
+                        onRemoveMaterial = { onRemoveMaterial(material.id) },
+                    ),
                 modifier = Modifier.animateItem(),
                 sharedElementScope = sharedElementScope,
             )
@@ -324,19 +328,25 @@ private fun MaterialsGrid(
     }
 }
 
+/** What a cell can do with its material, kept together so the cell takes one actions parameter. */
+@Immutable
+private data class MaterialCellActions(
+    val onClick: () -> Unit,
+    val onRetryUpload: () -> Unit,
+    val onRemoveMaterial: () -> Unit,
+)
+
 @Composable
 private fun MaterialGridCell(
     material: Material,
     waitReason: UploadWaitReason?,
     onLoadThumbnail: suspend (Material) -> ImageBitmap?,
-    onClick: () -> Unit,
-    onRetryUpload: () -> Unit,
-    onRemoveMaterial: () -> Unit,
+    actions: MaterialCellActions,
     modifier: Modifier = Modifier,
     sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
     Card(
-        onClick = onClick,
+        onClick = actions.onClick,
         modifier = modifier.fillMaxWidth(),
     ) {
         MaterialThumbnail(
@@ -364,25 +374,30 @@ private fun MaterialGridCell(
                     ),
             )
             Text(text = formatSize(material.sizeBytes), style = MaterialTheme.typography.bodySmall)
-            when (material.sync) {
-                SyncState.Pending -> {
+            // `null` for a stored material: its state is the absence of a transfer line.
+            val transferLabel =
+                when (material.sync) {
                     // "Waiting for Wi-Fi" is a different fact from "Pending upload": one is the
                     // app doing exactly what it was told, the other is a queue nobody has reached
                     // yet, and conflating them cost days of debugging (issue #193).
-                    val label = waitReason?.let(MaterialsCopy::waiting) ?: "Pending upload"
-                    Text(text = label, style = MaterialTheme.typography.bodySmall)
-                }
+                    SyncState.Pending -> {
+                        waitReason?.let(MaterialsCopy::waiting) ?: "Pending upload"
+                    }
 
-                is SyncState.Uploading -> {
-                    Text(text = "Uploading", style = MaterialTheme.typography.bodySmall)
-                }
+                    is SyncState.Uploading -> {
+                        "Uploading"
+                    }
 
-                is SyncState.Failed -> {
-                    val label = if (material.isMissingSource) MaterialsCopy.MISSING_SOURCE else "Upload failed"
-                    Text(text = label, style = MaterialTheme.typography.bodySmall)
-                }
+                    is SyncState.Failed -> {
+                        if (material.isMissingSource) MaterialsCopy.MISSING_SOURCE else "Upload failed"
+                    }
 
-                SyncState.Synced -> Unit
+                    SyncState.Synced -> {
+                        null
+                    }
+                }
+            transferLabel?.let { label ->
+                Text(text = label, style = MaterialTheme.typography.bodySmall)
             }
             // A failed upload is the one sync state a tap on the cell cannot resolve — the user
             // needs an explicit way to ask for another attempt, not just to reopen the file
@@ -393,9 +408,9 @@ private fun MaterialGridCell(
             // instead, and the picker above re-attaches the file.
             if (material.sync is SyncState.Failed) {
                 if (material.isMissingSource) {
-                    TextButton(onClick = onRemoveMaterial) { Text(text = "Remove") }
+                    TextButton(onClick = actions.onRemoveMaterial) { Text(text = "Remove") }
                 } else {
-                    TextButton(onClick = onRetryUpload) { Text(text = "Retry") }
+                    TextButton(onClick = actions.onRetryUpload) { Text(text = "Retry") }
                 }
             }
         }

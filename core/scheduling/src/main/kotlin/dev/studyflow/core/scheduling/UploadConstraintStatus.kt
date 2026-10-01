@@ -105,10 +105,26 @@ public class AndroidUploadConstraintStatus(
         )
     }
 
+    /**
+     * The starting value for the battery constraint, read from the sticky battery broadcast.
+     *
+     * The charge is compared against [LOW_BATTERY_FRACTION] rather than read from
+     * `EXTRA_BATTERY_LOW`, which only exists from API 28: the percentage is available on every
+     * supported level and is what the platform's own "low" threshold is derived from. A device
+     * that is charging is never low, matching `setRequiresBatteryNotLow`.
+     */
     private fun isBatteryLow(): Boolean {
-        val sticky =
-            context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-                ?: return false
-        return sticky.getBooleanExtra(BatteryManager.EXTRA_BATTERY_LOW, false)
+        val sticky = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED)) ?: return false
+        val status = sticky.getIntExtra(BatteryManager.EXTRA_STATUS, BatteryManager.BATTERY_STATUS_UNKNOWN)
+        val charging = status == BatteryManager.BATTERY_STATUS_CHARGING || status == BatteryManager.BATTERY_STATUS_FULL
+        val level = sticky.getIntExtra(BatteryManager.EXTRA_LEVEL, -1)
+        val scale = sticky.getIntExtra(BatteryManager.EXTRA_SCALE, -1)
+        val known = level >= 0 && scale > 0
+        return !charging && known && level.toFloat() / scale <= LOW_BATTERY_FRACTION
+    }
+
+    private companion object {
+        /** The platform's own low-battery warning level on a stock device. */
+        const val LOW_BATTERY_FRACTION = 0.15f
     }
 }

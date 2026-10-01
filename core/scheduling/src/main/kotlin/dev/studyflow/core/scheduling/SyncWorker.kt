@@ -99,7 +99,14 @@ public class SyncWorker
                     throw failure
                 }
 
-            return when (outcome) {
+            return resultFor(trigger, outcome)
+        }
+
+        private suspend fun resultFor(
+            trigger: SyncTrigger,
+            outcome: SyncOutcome,
+        ): Result =
+            when (outcome) {
                 SyncOutcome.Idle -> {
                     Result.success()
                 }
@@ -133,7 +140,6 @@ public class SyncWorker
                     if (outcome.failure.retryable) Result.retry() else Result.failure()
                 }
             }
-        }
 
         private companion object {
             const val TAG = "SyncWorker"

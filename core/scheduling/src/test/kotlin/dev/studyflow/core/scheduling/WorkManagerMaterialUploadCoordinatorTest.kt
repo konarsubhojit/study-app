@@ -1,11 +1,12 @@
 package dev.studyflow.core.scheduling
 
 import androidx.work.Configuration
+import androidx.work.NetworkType
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
-import androidx.work.NetworkType
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.datastore.proto.SyncMode
 import dev.studyflow.core.datastore.userSettingsStore
 import dev.studyflow.core.domain.materials.UploadWaitReason
@@ -13,7 +14,6 @@ import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
-import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.testing.data.FakeMaterialRepository
 import dev.studyflow.core.testing.logging.RecordingAppLogger
 import kotlinx.coroutines.flow.Flow
@@ -39,7 +39,8 @@ class WorkManagerMaterialUploadCoordinatorTest {
     private lateinit var workManager: WorkManager
     private lateinit var coordinator: WorkManagerMaterialUploadCoordinator
     private val logger = RecordingAppLogger()
-    private val constraints = MutableStateFlow(UploadConstraints(connected = true, unmetered = true, batteryLow = false))
+    private val constraints =
+        MutableStateFlow(UploadConstraints(connected = true, unmetered = true, batteryLow = false))
     private val constraintStatus = UploadConstraintStatus { constraints }
 
     @Before
@@ -166,8 +167,14 @@ class WorkManagerMaterialUploadCoordinatorTest {
     fun `the Wi-Fi-only default is the only mode that demands an unmetered network`() {
         // Stated rather than assumed: every other mode uploads on whatever connection exists, so
         // this is the one setting that can park a material indefinitely.
-        assertEquals(NetworkType.UNMETERED, WorkManagerMaterialUploadCoordinator.networkTypeFor(SyncMode.SYNC_MODE_WIFI_ONLY))
-        assertEquals(NetworkType.CONNECTED, WorkManagerMaterialUploadCoordinator.networkTypeFor(SyncMode.SYNC_MODE_ANY_NETWORK))
+        assertEquals(
+            NetworkType.UNMETERED,
+            WorkManagerMaterialUploadCoordinator.networkTypeFor(SyncMode.SYNC_MODE_WIFI_ONLY),
+        )
+        assertEquals(
+            NetworkType.CONNECTED,
+            WorkManagerMaterialUploadCoordinator.networkTypeFor(SyncMode.SYNC_MODE_ANY_NETWORK),
+        )
     }
 
     private fun material(

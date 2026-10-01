@@ -104,6 +104,9 @@ public class PresignedObjectStore(
         }
 
     /** A freshly signed copy of [part] in the same upload, or `AccessDenied` if none can be had. */
+    // ThrowsCount: each throw names a different reason a URL cannot be renewed, and a caller
+    // reading the message is the only way to tell them apart.
+    @Suppress("ThrowsCount")
     private suspend fun renew(
         session: UploadSession,
         part: SignedPart,

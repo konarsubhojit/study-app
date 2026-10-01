@@ -71,6 +71,7 @@ public class WorkManagerMaterialUploadCoordinator(
         ) { queued, syncMode, constraints ->
             if (queued) waitReasonFor(syncMode, constraints) else null
         }.distinctUntilChanged()
+
     override suspend fun enqueueUpload(materialId: String) {
         if (adoptExistingUploadIfAny(materialId)) return
         // `KEEP`: a second call for a material already queued or running (a duplicate share intent,
@@ -191,11 +192,21 @@ public class WorkManagerMaterialUploadCoordinator(
             constraints: UploadConstraints,
         ): UploadWaitReason? =
             when {
-                !constraints.connected -> UploadWaitReason.WAITING_FOR_NETWORK
-                networkTypeFor(syncMode) == NetworkType.UNMETERED && !constraints.unmetered ->
+                !constraints.connected -> {
+                    UploadWaitReason.WAITING_FOR_NETWORK
+                }
+
+                networkTypeFor(syncMode) == NetworkType.UNMETERED && !constraints.unmetered -> {
                     UploadWaitReason.WAITING_FOR_WIFI
-                constraints.batteryLow -> UploadWaitReason.WAITING_FOR_BATTERY
-                else -> null
+                }
+
+                constraints.batteryLow -> {
+                    UploadWaitReason.WAITING_FOR_BATTERY
+                }
+
+                else -> {
+                    null
+                }
             }
     }
 }

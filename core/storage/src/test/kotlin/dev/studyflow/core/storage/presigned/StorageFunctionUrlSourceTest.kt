@@ -13,17 +13,17 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.MockRequestHandleScope
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.HttpRequestData
 import io.ktor.client.request.HttpResponseData
 import io.ktor.client.request.header
-import io.ktor.client.plugins.defaultRequest
 import io.ktor.http.ContentType
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.content.OutgoingContent
-import io.ktor.http.headersOf
 import io.ktor.http.contentType
+import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -62,7 +62,12 @@ class StorageFunctionUrlSourceTest {
             assertEquals("application/pdf", body?.string("contentType"))
             assertEquals(request.sizeBytes.toString(), body?.get("sizeBytes")?.jsonPrimitive?.content)
             assertFalse(body.toString().contains("materials/"), "the server derives the key from the user")
-            val checksums = body?.get("partChecksums")?.jsonArray?.map { it.jsonPrimitive.content }.orEmpty()
+            val checksums =
+                body
+                    ?.get("partChecksums")
+                    ?.jsonArray
+                    ?.map { it.jsonPrimitive.content }
+                    .orEmpty()
             assertEquals(2, checksums.size)
             checksums.forEach { assertTrue(SHA256_BASE64.matches(it), it) }
             assertEquals(PartChecksums.sha256Base64(payload.copyOfRange(0, PART)), checksums[0])
@@ -114,7 +119,8 @@ class StorageFunctionUrlSourceTest {
                         respondJson(initResponse(request.sizeBytes))
                     } else {
                         respondJson(
-                            """{"contentHash":"${request.contentHash.hex}","contentType":"application/pdf","sizeBytes":${PAYLOAD.size}}""",
+                            """{"contentHash":"${request.contentHash.hex}",""" +
+                                """"contentType":"application/pdf","sizeBytes":${PAYLOAD.size}}""",
                         )
                     }
                 }
@@ -124,7 +130,15 @@ class StorageFunctionUrlSourceTest {
 
             val body = requests.last().second
             assertEquals("upload-1", body?.string("uploadId"))
-            assertEquals("etag-1", body?.get("parts")?.jsonArray?.single()?.jsonObject?.string("etag"))
+            assertEquals(
+                "etag-1",
+                body
+                    ?.get("parts")
+                    ?.jsonArray
+                    ?.single()
+                    ?.jsonObject
+                    ?.string("etag"),
+            )
             assertEquals(request.key, stored.key)
             assertEquals(request.contentHash, stored.contentHash)
         }
@@ -144,7 +158,8 @@ class StorageFunctionUrlSourceTest {
             val source =
                 source {
                     respondJson(
-                        """{"contentHash":"${HASH.hex}","contentType":"image/png","sizeBytes":12,"updatedAt":"2026-03-01T09:00:00+00:00"}""",
+                        """{"contentHash":"${HASH.hex}","contentType":"image/png","sizeBytes":12,""" +
+                            """"updatedAt":"2026-03-01T09:00:00+00:00"}""",
                     )
                 }
 
@@ -260,7 +275,8 @@ class StorageFunctionUrlSourceTest {
 
                     else -> {
                         respondJson(
-                            """{"contentHash":"${request.contentHash.hex}","contentType":"application/pdf","sizeBytes":${PAYLOAD.size}}""",
+                            """{"contentHash":"${request.contentHash.hex}",""" +
+                                """"contentType":"application/pdf","sizeBytes":${PAYLOAD.size}}""",
                         )
                     }
                 }
@@ -344,7 +360,8 @@ class StorageFunctionUrlSourceTest {
                     val size = minOf(PART.toLong(), sizeBytes - offset)
                     """{"number":${index + 1},"offset":$offset,"size":$size,""" +
                         """"url":"$PART_URL&n=${index + 1}&X-Amz-Signature=$signature",""" +
-                        """"expiresAt":"2026-03-01T09:10:00.000Z","requiredHeaders":{"x-amz-checksum-sha256":"$CHECKSUM"}}"""
+                        """"expiresAt":"2026-03-01T09:10:00.000Z",""" +
+                        """"requiredHeaders":{"x-amz-checksum-sha256":"$CHECKSUM"}}"""
                 }
             return """{"uploadId":"upload-1","expiresAt":"2026-03-02T09:00:00.000+00:00","parts":[$parts]}"""
         }

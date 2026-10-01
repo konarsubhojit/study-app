@@ -7,11 +7,11 @@ import dev.studyflow.core.domain.materials.ImportContentMetadata
 import dev.studyflow.core.domain.materials.ImportContentReader
 import dev.studyflow.core.domain.materials.MaterialImporter
 import dev.studyflow.core.domain.materials.ShareImportInbox
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailLoader
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.coroutines.TestDispatcherProvider
 import dev.studyflow.core.testing.data.FakeMaterialRepository
-import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.testing.data.FakeMaterialUploadCoordinator
 import dev.studyflow.core.testing.data.FakeThumbnailCache
 import dev.studyflow.core.testing.data.FakeThumbnailRenderer
@@ -209,7 +209,11 @@ class MaterialsViewModelTest {
             advanceUntilIdle()
 
             assertEquals(listOf(materialId), uploadCoordinator.cancelled)
-            assertTrue(viewModel.state.value.catalog.isEmpty(), "a removed material must leave the catalogue")
+            assertTrue(
+                viewModel.state.value.catalog
+                    .isEmpty(),
+                "a removed material must leave the catalogue",
+            )
         }
 
     private fun viewModel(reader: ImportContentReader): MaterialsViewModel {
