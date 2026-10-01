@@ -35,11 +35,27 @@ public value class ObjectKey(
 
     override fun toString(): String = value
 
+    /**
+     * The content hash this key addresses, when it is a material key (`materials/<sha256>`).
+     *
+     * The `storage` Edge Function never sees an [ObjectKey]: it derives its own key as
+     * `<owner>/<sha256>` from the authenticated user, so the client sends only the digest and needs
+     * no owner id to address anything.
+     */
+    public val materialContentHash: ContentHash?
+        get() =
+            value
+                .removePrefix(MATERIAL_PREFIX)
+                .takeIf { value.startsWith(MATERIAL_PREFIX) && HASH.matches(it) }
+                ?.let(::ContentHash)
+
     public companion object {
         private const val MAX_LENGTH = 1024
+        private const val MATERIAL_PREFIX = "materials/"
+        private val HASH = Regex("[0-9a-f]{64}")
 
         /** The content-addressed key of a material's original bytes. */
-        public fun ofMaterial(contentHash: ContentHash): ObjectKey = ObjectKey("materials/${contentHash.hex}")
+        public fun ofMaterial(contentHash: ContentHash): ObjectKey = ObjectKey("$MATERIAL_PREFIX${contentHash.hex}")
 
         /**
          * The content-addressed key of a server-rendered thumbnail (issue #42).
@@ -91,12 +107,18 @@ public data class PresignedUrl(
  * [contentHash] is not optional: the digest is computed before the first byte is sent, it *is* the
  * key, and it is what turns "did this arrive intact?" into a comparison rather than a hope
  * (ADR 0005).
+ *
+ * @property partChecksums base64 SHA-256 of each planned part, in part order (see
+ *   [PartChecksums]). A provider that verifies parts as they arrive — the `storage` Edge Function
+ *   signs every part URL with its checksum — needs these *before* it signs anything; a store that
+ *   does not verify parts ignores them. Empty when the caller did not compute them.
  */
 public data class UploadRequest(
     val key: ObjectKey,
     val sizeBytes: Long,
     val contentType: String,
     val contentHash: ContentHash,
+    val partChecksums: List<String> = emptyList(),
 ) {
     init {
         require(sizeBytes >= 0) { "UploadRequest.sizeBytes must not be negative, was $sizeBytes" }
@@ -109,12 +131,14 @@ public data class UploadRequest(
             contentHash: ContentHash,
             sizeBytes: Long,
             contentType: String,
+            partChecksums: List<String> = emptyList(),
         ): UploadRequest =
             UploadRequest(
                 key = ObjectKey.ofMaterial(contentHash),
                 sizeBytes = sizeBytes,
                 contentType = contentType,
                 contentHash = contentHash,
+                partChecksums = partChecksums,
             )
     }
 }

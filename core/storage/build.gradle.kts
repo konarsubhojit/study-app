@@ -1,6 +1,5 @@
 plugins {
     id("studyflow.jvm.library")
-    id("studyflow.hilt")
 }
 
 dependencies {
@@ -10,9 +9,9 @@ dependencies {
     // this module signs those parts rather than re-deriving them (issue #36).
     api(projects.core.domain)
     api(libs.ktor.client.core)
-    // `@Module`/`@InstallIn` without the Android runtime: the provider choice is wired here rather
-    // than in `:app`, so swapping adapters touches no other module (issue #36).
-    implementation(libs.hilt.core)
+    // The storage Edge Function's bodies are a handful of fields read and written as JSON trees,
+    // so the source works over any client, with or without content negotiation installed.
+    implementation(libs.kotlinx.serialization.json)
 
     testImplementation(projects.core.testing)
     testImplementation(libs.ktor.client.mock)

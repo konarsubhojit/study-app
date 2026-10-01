@@ -45,3 +45,18 @@ public enum class ImportFailureReason {
     /** The import was cancelled before it finished. */
     CANCELLED,
 }
+
+/** What happened when [MaterialImporter.reattach] tried to give a material its bytes back. */
+public sealed interface ReattachOutcome {
+    /** The file matched the material's digest; it has a local copy again and is pending upload. */
+    public data object Reattached : ReattachOutcome
+
+    /** The file is not the one this material was created from; nothing was changed. */
+    public data object Mismatch : ReattachOutcome
+
+    /** The file could not be read. */
+    public data object Failed : ReattachOutcome
+
+    /** The material no longer exists. */
+    public data object MaterialMissing : ReattachOutcome
+}

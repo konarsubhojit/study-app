@@ -8,7 +8,8 @@ const settings = {
 };
 Object.entries(settings).forEach(([name, value]) => Deno.env.set(name, value));
 
-const { objectKey, observabilityLogLine, requestTraceId, validateUpload } = await import("./index.ts");
+const { objectKey, observabilityLogLine, observabilityPayload, requestTraceId, statResponse, validateUpload } =
+    await import("./index.ts");
 
 const checksum = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
@@ -93,6 +94,36 @@ Deno.test("observability logs do not contain user content or presigned urls", ()
     if (event.event !== "storage_request") throw new Error("wrong event name");
     if ("url" in event || "object_key" in event || "user_id" in event) throw new Error("unsafe field logged");
     if (line.includes("https://") || line.includes("alice")) throw new Error("unsafe value logged");
+});
+
+Deno.test("stat reports the stored object without its owner-scoped key", () => {
+    const hash = "b".repeat(64);
+    const result = statResponse({
+        id: "upload-1",
+        user_id: "alice",
+        object_key: objectKey("alice", hash),
+        provider_upload_id: null,
+        content_hash: hash,
+        content_type: "application/pdf",
+        size_bytes: 12,
+        part_checksums: [checksum],
+        state: "ready",
+        completed_at: "2026-03-01T09:00:00+00:00",
+    });
+    if (result.contentHash !== hash || result.contentType !== "application/pdf" || result.sizeBytes !== 12) {
+        throw new Error("stored object was not reported");
+    }
+    if (result.updatedAt !== "2026-03-01T09:00:00+00:00") throw new Error("completion time was not reported");
+    if (JSON.stringify(result).includes("alice")) throw new Error("owner leaked into the response");
+});
+
+Deno.test("operations newer than the observability table are recorded as unknown but logged by name", () => {
+    const event = { requestId: "trace-1", operation: "stat", status: 404, durationMs: 3, errorCode: "object_not_found" };
+    if (observabilityPayload(event).operation !== "unknown") throw new Error("stat would violate the check constraint");
+    if (JSON.parse(observabilityLogLine(event)).operation !== "stat") throw new Error("stat was not named in the log");
+    if (observabilityPayload({ ...event, operation: "delete" }).operation !== "delete") {
+        throw new Error("a recorded operation was renamed");
+    }
 });
 
 function assertApiError(block: () => unknown, code: string): void {

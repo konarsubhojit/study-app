@@ -65,6 +65,13 @@ public data class Material(
 
     /** Coarse category used to choose a previewer and an icon. */
     public val kind: MaterialKind get() = MaterialKind.of(mimeType, displayName)
+
+    /**
+     * True when no copy of the bytes is known to exist: nothing staged on this device, and no
+     * verified remote object. Retrying cannot help — the user has to re-attach the file or remove
+     * the entry.
+     */
+    public val isMissingSource: Boolean get() = localPath == null && sync is SyncState.Failed
 }
 
 /** A normalized tag available for material filtering and many-to-many assignment. */

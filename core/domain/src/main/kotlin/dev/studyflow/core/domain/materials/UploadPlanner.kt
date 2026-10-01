@@ -92,10 +92,16 @@ public data class MultipartLimits(
     public companion object {
         private const val MIB = 1024L * 1024L
 
-        /** The limits shared by S3, R2 and MinIO, which is what the BFF will sit in front of. */
+        /**
+         * The limits shared by S3, R2 and MinIO, which is what the BFF sits in front of.
+         *
+         * The floor is the BFF's own part size: for every file it accepts (at most
+         * [CloudStorageLimits.MAX_SIZE_BYTES]) this yields exactly the `ceil(size / 8 MiB)` parts the
+         * `storage` function signs, so the plan here and the session it returns always line up.
+         */
         public val S3_COMPATIBLE: MultipartLimits =
             MultipartLimits(
-                minPartSizeBytes = 8 * MIB,
+                minPartSizeBytes = CloudStorageLimits.PART_SIZE_BYTES,
                 maxPartSizeBytes = 512 * MIB,
                 maxParts = 10_000,
             )

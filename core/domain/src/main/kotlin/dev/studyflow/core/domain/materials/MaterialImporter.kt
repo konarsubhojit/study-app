@@ -8,6 +8,7 @@ import dev.studyflow.core.model.MaterialKind
 import dev.studyflow.core.model.SyncState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
@@ -81,6 +82,54 @@ public class MaterialImporter(
                 ImportOutcome.Failed(ImportFailureReason.UNREADABLE, displayName)
             } finally {
                 if (!success) destination.delete()
+            }
+        }
+
+    /**
+     * Gives [materialId] its bytes back from [uri], for a material whose staged copy is gone and
+     * whose upload therefore cannot be retried.
+     *
+     * The file is accepted only if it hashes to the material's own [ContentHash]: the catalogue
+     * row, its remote key and anything already synced about it all name that digest, so a
+     * *different* file must be imported as a new material rather than silently swapped in. On a
+     * match the material returns to [SyncState.Pending] with a fresh local copy, ready to upload.
+     */
+    public suspend fun reattach(
+        materialId: String,
+        uri: String,
+    ): ReattachOutcome =
+        withContext(dispatcherProvider.io) {
+            val material =
+                repository.observeById(materialId).first()
+                    ?: return@withContext ReattachOutcome.MaterialMissing
+            val directory = destinationDirectory().apply { mkdirs() }
+            val staging = File(directory, "${material.id}$REATTACH_SUFFIX")
+            val destination = File(directory, material.id)
+            var adopted = false
+            try {
+                val copy = copyAndDigest(uri, staging, material.kind)
+                if (ContentHash(copy.digestBytes.toHex()) != material.contentHash) {
+                    ReattachOutcome.Mismatch
+                } else {
+                    destination.delete()
+                    if (!staging.renameTo(destination)) throw IOException("could not stage the re-attached file")
+                    adopted = true
+                    repository.save(
+                        material.copy(localPath = destination.toURI().toString(), sync = SyncState.Pending),
+                    )
+                    ReattachOutcome.Reattached
+                }
+            } catch (_: ImportPolicyViolation) {
+                // Larger than the material it claims to be, so it cannot hash to the same digest.
+                ReattachOutcome.Mismatch
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: IOException) {
+                ReattachOutcome.Failed
+            } catch (_: SecurityException) {
+                ReattachOutcome.Failed
+            } finally {
+                if (!adopted) staging.delete()
             }
         }
 
@@ -305,6 +354,7 @@ public class MaterialImporter(
         const val COPY_BUFFER_BYTES = 64 * 1024
         const val GENERIC_MIME = "application/octet-stream"
         const val SHORT_ID_LENGTH = 8
+        const val REATTACH_SUFFIX = ".reattach"
 
         val EXTENSION_MIME_FALLBACK: Map<String, String> =
             mapOf(

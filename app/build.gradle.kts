@@ -36,6 +36,17 @@ val apiBaseUrl: String =
         .gradleProperty("studyflow.apiBaseUrl")
         .getOrElse(supabaseProjectRef?.let { "https://$it.supabase.co/functions/v1/api" } ?: defaultApiBaseUrl)
 
+// Material bytes are signed for by the `storage` Edge Function (infra/supabase/functions/storage),
+// a sibling of `api` on the same project, and resolved the same way: an explicit override for a
+// local stack, else the deployed function for the configured project ref, else the undeployed
+// custom domain. The app only ever holds this URL and the user's JWT — never a storage credential.
+//   ./gradlew installProductionDebug -Pstudyflow.storageBaseUrl=http://10.0.2.2:54321/functions/v1/storage
+val defaultStorageBaseUrl = "https://storage.studyflow.dev"
+val storageBaseUrl: String =
+    providers
+        .gradleProperty("studyflow.storageBaseUrl")
+        .getOrElse(supabaseProjectRef?.let { "https://$it.supabase.co/functions/v1/storage" } ?: defaultStorageBaseUrl)
+
 // The Google *Web application* OAuth client id, which is a public identifier and ships in the APK
 // by design: Credential Manager needs it to ask for an ID token, and the server needs the same
 // value in its GOOGLE_SERVER_CLIENT_ID secret to validate that token's audience. Do not "harden" it
@@ -125,6 +136,7 @@ extensions.configure<ApplicationExtension> {
         create("production") {
             dimension = "backend"
             buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
+            buildConfigField("String", "STORAGE_BASE_URL", "\"$storageBaseUrl\"")
             buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         }
         // The mock flavour is served entirely by `FakeStudyFlowBackend` and performs no network
