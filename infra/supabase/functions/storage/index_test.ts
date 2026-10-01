@@ -8,8 +8,16 @@ const settings = {
 };
 Object.entries(settings).forEach(([name, value]) => Deno.env.set(name, value));
 
-const { objectKey, observabilityLogLine, observabilityPayload, requestTraceId, statResponse, validateUpload } =
-    await import("./index.ts");
+const {
+    handleRequest,
+    objectKey,
+    observabilityLogLine,
+    observabilityPayload,
+    requestTraceId,
+    statResponse,
+    unavailableLogLine,
+    validateUpload,
+} = await import("./index.ts");
 
 const checksum = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
 
@@ -125,6 +133,103 @@ Deno.test("operations newer than the observability table are recorded as unknown
         throw new Error("a recorded operation was renamed");
     }
 });
+
+const OWNER = "00000000-0000-4000-8000-000000000001";
+const TOKEN = "valid-test-token";
+
+Deno.test("a database refusal inside a storage operation is a client error, not a retryable outage", async () => {
+    for (const [upstreamStatus, expectedStatus, expectedCode] of [
+        [400, 400, "invalid_request"],
+        [403, 400, "invalid_request"],
+        [409, 409, "conflict"],
+        [500, 503, "storage_unavailable"],
+        [502, 503, "storage_unavailable"],
+    ] as const) {
+        await withFetch(storageBackend(upstreamStatus), async () => {
+            const response = await handleRequest(statRequest());
+            const body = await response.json();
+            if (response.status !== expectedStatus || body.code !== expectedCode) {
+                throw new Error(`database ${upstreamStatus} became ${response.status} ${body.code}`);
+            }
+        });
+    }
+});
+
+Deno.test("an unexpected storage failure is logged with its message and operation, and nothing else", async () => {
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    try {
+        await withFetch(storageBackend(500), async () => {
+            const response = await handleRequest(statRequest());
+            await response.body?.cancel();
+            if (response.status !== 503) throw new Error("an upstream 500 was not reported as unavailable");
+        });
+    } finally {
+        console.error = original;
+    }
+    const line = lines.find((entry) => entry.startsWith("storage_unavailable"));
+    if (!line) throw new Error("no storage_unavailable line was logged");
+    for (const expected of ["operation=stat", "name=UpstreamError", "message=Database request failed (500)"]) {
+        if (!line.includes(expected)) throw new Error(`log line "${line}" is missing ${expected}`);
+    }
+    if (line.includes(TOKEN) || line.includes("Bearer") || line.includes("    at ") || line.includes(OWNER)) {
+        throw new Error(`log line "${line}" carried a credential, an owner id or a stack trace`);
+    }
+});
+
+Deno.test("the catch-all log line redacts a signed URL quoted in an error message", () => {
+    const signed = "https://bucket.example/materials/abc?X-Amz-Signature=deadbeef&X-Amz-Credential=AKIA";
+    const line = unavailableLogLine("initUpload", new Error(`PUT ${signed} failed`));
+    if (!line.includes("operation=initUpload") || !line.includes("message=PUT <url> failed")) {
+        throw new Error(`log line "${line}" lost its operation or message`);
+    }
+    if (line.includes("X-Amz") || line.includes("bucket.example") || line.includes("AKIA")) {
+        throw new Error(`log line "${line}" leaked the signed URL`);
+    }
+    if (unavailableLogLine("stat", "not an error") !== "storage_unavailable operation=stat") {
+        throw new Error("a non-Error value was not logged by operation alone");
+    }
+});
+
+function statRequest(): Request {
+    return new Request("https://edge.test/functions/v1/storage/stat", {
+        method: "POST",
+        headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+        body: JSON.stringify({ contentHash: "c".repeat(64) }),
+    });
+}
+
+/** Auth and rate limiting succeed; the `storage_uploads` lookup answers [uploadsStatus]. */
+function storageBackend(uploadsStatus: number): (input: RequestInfo | URL) => Response {
+    return (input) => {
+        const url = String(input);
+        if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: OWNER });
+        if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+        if (url.includes("/rest/v1/rpc/storage_consume_rate_limit")) return jsonResponse(200, null);
+        if (url.includes("/rest/v1/storage_uploads")) return jsonResponse(uploadsStatus, { message: "upstream said no" });
+        throw new Error(`unexpected fetch ${url}`);
+    };
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+    return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+async function withFetch(
+    replacement: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> | Response,
+    block: () => Promise<void>,
+): Promise<void> {
+    const original = globalThis.fetch;
+    globalThis.fetch = replacement as typeof fetch;
+    try {
+        await block();
+        // Observability is written after the response; let it land on the stub, not the network.
+        await new Promise((resolve) => setTimeout(resolve, 0));
+    } finally {
+        globalThis.fetch = original;
+    }
+}
 
 function assertApiError(block: () => unknown, code: string): void {
     try {
