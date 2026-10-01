@@ -1,5 +1,6 @@
 package dev.studyflow.core.storage.presigned
 
+import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.domain.materials.UploadPlanner
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.storage.ObjectKey
@@ -190,10 +191,81 @@ class PresignedObjectStoreTest {
             assertTrue(source.calls.isEmpty())
         }
 
+    @Test
+    fun `a URL refused as expired is re-signed once and the part sent again`() =
+        runTest {
+            val source = FakeUrlSource()
+            val urls = mutableListOf<String>()
+            val store =
+                store(source) { request ->
+                    urls += request.url.toString()
+                    if (urls.size == 1) {
+                        respondError(HttpStatusCode.Forbidden)
+                    } else {
+                        respond("", HttpStatusCode.OK, etag("\"renewed\""))
+                    }
+                }
+            val session = store.initUpload(REQUEST)
+            source.partUrl = RENEWED_URL
+
+            val uploaded = store.uploadPart(session, session.parts.single(), PAYLOAD)
+
+            assertEquals(listOf(PART_URL, RENEWED_URL), urls)
+            assertEquals("renewed", uploaded.etag)
+            assertEquals(listOf("createUpload", "createUpload"), source.calls)
+        }
+
+    @Test
+    fun `a URL already past its expiry is re-signed before any bytes are sent`() =
+        runTest {
+            val source = FakeUrlSource()
+            val urls = mutableListOf<String>()
+            val store =
+                store(source, clock = { EXPIRY }) { request ->
+                    urls += request.url.toString()
+                    respond("", HttpStatusCode.OK)
+                }
+            val session = store.initUpload(REQUEST)
+            source.partUrl = RENEWED_URL
+
+            store.uploadPart(session, session.parts.single(), PAYLOAD)
+
+            assertEquals(listOf(RENEWED_URL), urls)
+        }
+
+    @Test
+    fun `renewal that opens a different upload is refused rather than mixing parts`() =
+        runTest {
+            val source = FakeUrlSource()
+            val store = store(source) { respondError(HttpStatusCode.Forbidden) }
+            val session = store.initUpload(REQUEST)
+            source.uploadId = "upload-2"
+
+            val failure =
+                assertFailsWith<ObjectStoreException.AccessDenied> {
+                    store.uploadPart(session, session.parts.single(), PAYLOAD)
+                }
+
+            assertFalse(failure.retryable)
+        }
+
+    @Test
+    fun `a session this store did not open cannot be renewed`() =
+        runTest {
+            val source = FakeUrlSource()
+            val store = store(source) { respondError(HttpStatusCode.Forbidden) }
+            val session = source.createUpload(REQUEST)
+
+            assertFailsWith<ObjectStoreException.AccessDenied> {
+                store.uploadPart(session, session.parts.single(), PAYLOAD)
+            }
+        }
+
     private fun store(
         source: FakeUrlSource = FakeUrlSource(),
+        clock: Clock = Clock { NOW },
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
-    ): PresignedObjectStore = PresignedObjectStore(HttpClient(MockEngine(handler)), source)
+    ): PresignedObjectStore = PresignedObjectStore(HttpClient(MockEngine(handler)), source, clock)
 
     private fun etag(value: String): Headers = Headers.build { append(HttpHeaders.ETag, value) }
 
@@ -201,15 +273,17 @@ class PresignedObjectStoreTest {
     private class FakeUrlSource : PresignedUrlSource {
         val calls = mutableListOf<String>()
         var downloadTtl: Duration? = null
+        var partUrl: String = PART_URL
+        var uploadId: String = "upload-1"
 
         override suspend fun createUpload(request: UploadRequest): UploadSession {
             calls += "createUpload"
             return UploadSession.of(
                 key = request.key,
-                uploadId = "upload-1",
+                uploadId = uploadId,
                 plan = UploadPlanner.plan(request.sizeBytes, request.contentHash),
                 expiresAt = EXPIRY,
-            ) { PresignedUrl(PART_URL, EXPIRY) }
+            ) { PresignedUrl(partUrl, EXPIRY) }
         }
 
         override suspend fun finishUpload(
@@ -248,6 +322,8 @@ class PresignedObjectStoreTest {
     private companion object {
         const val SIGNATURE = "signature=not-a-real-signature"
         const val PART_URL = "https://storage.example/upload/part-1?$SIGNATURE"
+        const val RENEWED_URL = "https://storage.example/upload/part-1?signature=renewed"
+        val NOW: Instant = Instant.parse("2026-03-01T09:00:00Z")
         val EXPIRY: Instant = Instant.parse("2026-03-01T09:15:00Z")
         const val CONTENT_TYPE = "application/pdf"
         val PAYLOAD: ByteArray = "slides".encodeToByteArray()

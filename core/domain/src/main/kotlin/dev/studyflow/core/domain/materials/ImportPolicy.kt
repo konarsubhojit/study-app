@@ -35,6 +35,14 @@ public object ImportPolicy {
                 ImportVerdict.Rejected(ImportRejectionReason.BLOCKED_TYPE)
             }
 
+            limits.allowedMimeTypes != null && normalizedMime !in limits.allowedMimeTypes -> {
+                ImportVerdict.Rejected(ImportRejectionReason.UNSUPPORTED_TYPE)
+            }
+
+            sizeBytes == 0L && !limits.allowEmptyFiles -> {
+                ImportVerdict.Rejected(ImportRejectionReason.EMPTY_FILE)
+            }
+
             sizeBytes > limits.maxBytesFor(kind) -> {
                 ImportVerdict.Rejected(ImportRejectionReason.FILE_TOO_LARGE)
             }
@@ -46,12 +54,20 @@ public object ImportPolicy {
     }
 }
 
-/** Per-kind size ceilings and the small set of MIME types and extensions refused outright. */
+/**
+ * Per-kind size ceilings and the small set of MIME types and extensions refused outright.
+ *
+ * @property allowedMimeTypes when set, the only MIME types accepted; `null` accepts anything not
+ *   blocked.
+ * @property allowEmptyFiles whether a zero-byte file may join the catalogue.
+ */
 public data class ImportLimits(
     val maxBytesByKind: Map<MaterialKind, Long>,
     val defaultMaxBytes: Long,
     val blockedMimeTypes: Set<String>,
     val blockedExtensions: Set<String>,
+    val allowedMimeTypes: Set<String>? = null,
+    val allowEmptyFiles: Boolean = true,
 ) {
     init {
         require(defaultMaxBytes > 0) { "defaultMaxBytes must be positive" }
@@ -97,6 +113,21 @@ public data class ImportLimits(
                     ),
                 blockedExtensions = setOf("apk", "exe", "msi", "bat", "cmd", "sh", "dex", "so", "dll"),
             )
+
+        /**
+         * [DEFAULT]'s blocklist narrowed to what the cloud will store ([CloudStorageLimits]).
+         *
+         * The app imports with these limits: every material is uploaded, so a file the `storage`
+         * function would refuse with `413`, `415` or `invalid_size` is turned away while the user
+         * is still looking at the picker rather than becoming an upload that can never succeed.
+         */
+        public val CLOUD_SYNC: ImportLimits =
+            DEFAULT.copy(
+                maxBytesByKind = emptyMap(),
+                defaultMaxBytes = CloudStorageLimits.MAX_SIZE_BYTES,
+                allowedMimeTypes = CloudStorageLimits.ALLOWED_MIME_TYPES,
+                allowEmptyFiles = false,
+            )
     }
 }
 
@@ -116,4 +147,10 @@ public enum class ImportRejectionReason {
 
     /** The MIME type or extension is on the blocklist regardless of size. */
     BLOCKED_TYPE,
+
+    /** The MIME type is not one the configured [ImportLimits.allowedMimeTypes] can store. */
+    UNSUPPORTED_TYPE,
+
+    /** The file has no bytes, and the configured [ImportLimits] cannot store an empty object. */
+    EMPTY_FILE,
 }

@@ -25,7 +25,10 @@ const ALLOWED_MIME_TYPES = new Set([
     "text/plain",
     "video/mp4",
 ]);
-const OPERATIONS = new Set(["initUpload", "completeUpload", "getDownloadUrl", "delete", "reapOrphans"]);
+const OPERATIONS = new Set(["initUpload", "completeUpload", "getDownloadUrl", "delete", "stat", "reapOrphans"]);
+// `backend_observability_events.operation` is constrained to the operations that existed when the
+// table was created; newer ones are recorded there as "unknown" and named in the log line instead.
+const RECORDED_OPERATIONS = new Set(["initUpload", "completeUpload", "getDownloadUrl", "delete", "reapOrphans"]);
 const TRACE_ID_PATTERN = /^[A-Za-z0-9._:-]{1,64}$/;
 const responseEgressBytes = new WeakMap<Response, number>();
 
@@ -40,6 +43,7 @@ type UploadRow = {
     size_bytes: number;
     part_checksums: string[];
     state: string;
+    completed_at?: string | null;
 };
 type Reservation = {
     upload_id: string;
@@ -102,10 +106,10 @@ function operationName(request: Request): string {
     return OPERATIONS.has(candidate) ? candidate : "unknown";
 }
 
-function observabilityPayload(event: ObservabilityEvent): Json {
+export function observabilityPayload(event: ObservabilityEvent): Json {
     return {
         request_id: event.requestId,
-        operation: event.operation,
+        operation: RECORDED_OPERATIONS.has(event.operation) ? event.operation : "unknown",
         status: event.status,
         duration_ms: event.durationMs,
         error_code: event.errorCode ?? null,
@@ -117,6 +121,7 @@ export function observabilityLogLine(event: ObservabilityEvent): string {
     return JSON.stringify({
         event: "storage_request",
         ...observabilityPayload(event),
+        operation: event.operation,
     });
 }
 
@@ -520,6 +525,21 @@ async function getDownloadUrl(request: Request, owner: string): Promise<Response
     return response;
 }
 
+export function statResponse(upload: UploadRow): Json {
+    return {
+        ...storedObject(upload),
+        ...(upload.completed_at ? { updatedAt: upload.completed_at } : {}),
+    };
+}
+
+// Lets a client confirm an object it believes it uploaded really exists before trusting it; a
+// `404 object_not_found` tells it to upload the bytes again.
+async function statObject(request: Request, owner: string): Promise<Response> {
+    await rateLimit(owner, "stat", 60);
+    const upload = await readyObject(owner, (await body(request)).contentHash);
+    return json(200, statResponse(upload));
+}
+
 async function deleteObject(request: Request, owner: string): Promise<Response> {
     await rateLimit(owner, "delete", 30);
     const value = await body(request);
@@ -626,6 +646,9 @@ export async function handleRequest(request: Request): Promise<Response> {
                 break;
             case "delete":
                 response = await deleteObject(request, owner);
+                break;
+            case "stat":
+                response = await statObject(request, owner);
                 break;
             default:
                 throw new ApiError(404, "endpoint_not_found", "Storage endpoint not found.");
