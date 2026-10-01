@@ -91,7 +91,7 @@ public class MaterialUploadEngine(
         var latest = material
         return try {
             log(material.id, stage, MaterialTransferOutcome.STARTED, retryable = true)
-            stage = MaterialTransferStage.VERIFY
+            stage = MaterialTransferStage.DEDUPE
             val linked = relinkIfAlreadyStored(material)
             if (linked != null) {
                 linked
@@ -147,19 +147,19 @@ public class MaterialUploadEngine(
         val stored = objectStore.stat(ObjectKey.ofMaterial(material.contentHash))
         return when {
             stored == null -> {
-                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.NOT_FOUND, retryable = false)
+                log(material.id, MaterialTransferStage.DEDUPE, MaterialTransferOutcome.NOT_FOUND, retryable = false)
                 null
             }
 
             stored.sizeBytes != material.sizeBytes || stored.contentHash != material.contentHash -> {
-                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.MISMATCH, retryable = false)
+                log(material.id, MaterialTransferStage.DEDUPE, MaterialTransferOutcome.MISMATCH, retryable = false)
                 null
             }
 
             else -> {
                 materialRepository.save(material.copy(sync = SyncState.Synced, remoteKey = stored.key.value))
                 uploadProgressStore.clear(material.id)
-                log(material.id, MaterialTransferStage.VERIFY, MaterialTransferOutcome.SUCCESS, retryable = false)
+                log(material.id, MaterialTransferStage.DEDUPE, MaterialTransferOutcome.SUCCESS, retryable = false)
                 UploadOutcome.Synced
             }
         }
@@ -202,7 +202,6 @@ public class MaterialUploadEngine(
 
         if (!plan.isComplete(completed.keys)) {
             val remaining = plan.remaining(completed.keys)
-            onStage(MaterialTransferStage.PART, null, remaining.size)
             remaining.forEachIndexed { index, part ->
                 onStage(MaterialTransferStage.PART, part.number, plan.parts.size)
                 val signedPart =

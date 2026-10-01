@@ -14,6 +14,7 @@ import dev.studyflow.core.common.coroutines.ApplicationScope
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.logging.CrashReporter
 import dev.studyflow.core.scheduling.DigestScheduler
+import dev.studyflow.core.scheduling.MaterialRemoteVerificationScheduler
 import dev.studyflow.core.scheduling.ReminderIntegrityCoordinator
 import dev.studyflow.core.scheduling.ReminderIntegrityScheduler
 import dev.studyflow.core.scheduling.WorkManagerSyncCoordinator
@@ -57,6 +58,10 @@ class StudyFlowApplication :
         // The recurring catch-up pull (issue #55). Local mutations enqueue their own drain, but a
         // device that only reads would otherwise never ask the server what it missed.
         WorkManagerSyncCoordinator(this).ensureScheduled()
+
+        // Confirms synced materials' remote copies exist, re-queueing any that were "uploaded"
+        // only into a build's in-process object store.
+        MaterialRemoteVerificationScheduler(this).ensureScheduled()
 
         crashReporter.initialize(
             enabled = BuildConfig.CRASH_REPORTING_ENABLED,

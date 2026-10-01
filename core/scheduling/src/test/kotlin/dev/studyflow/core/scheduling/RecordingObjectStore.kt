@@ -37,6 +37,8 @@ internal class RecordingObjectStore : ObjectStore {
     var failNextUploadPart: ObjectStoreException? = null
     var failCompleteUpload: ObjectStoreException? = null
     var failDownloadUrl: ObjectStoreException? = null
+    var failStat: ObjectStoreException? = null
+    val statted: MutableList<ObjectKey> = mutableListOf()
 
     override suspend fun initUpload(request: UploadRequest): UploadSession {
         val plan = UploadPlanner.plan(request.sizeBytes, request.contentHash)
@@ -93,7 +95,12 @@ internal class RecordingObjectStore : ObjectStore {
         mutex.withLock { partsByKey.remove(key) }
     }
 
-    override suspend fun stat(key: ObjectKey): StoredObject? = mutex.withLock { statResults[key] }
+    override suspend fun stat(key: ObjectKey): StoredObject? =
+        mutex.withLock {
+            failStat?.let { throw it }
+            statted += key
+            statResults[key]
+        }
 
     /**
      * Simulates a part the *server* already acknowledged before this test process existed — the

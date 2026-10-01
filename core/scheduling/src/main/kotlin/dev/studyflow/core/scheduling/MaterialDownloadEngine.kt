@@ -35,6 +35,10 @@ public fun materialDownloadCacheFileName(material: Material): String = "material
 /**
  * Resumable material download runner, independent of WorkManager so restart/resume rules are unit
  * testable (issue #39).
+ *
+ * @param onRemoteMissing told when the store has no object for a material the catalogue calls
+ *  synced, so it can be healed ([MaterialRemoteVerifier.onRemoteMissing]) instead of every later
+ *  attempt failing the same way.
  */
 public class MaterialDownloadEngine(
     private val materialRepository: MaterialRepository,
@@ -43,6 +47,7 @@ public class MaterialDownloadEngine(
     private val destinationPath: (Material) -> String,
     private val transport: DownloadTransport,
     private val logger: AppLogger? = null,
+    private val onRemoteMissing: suspend (materialId: String) -> Unit = {},
 ) {
     public suspend fun download(materialId: String): DownloadOutcome =
         materialRepository.observeByIdOnce(materialId)?.let { material -> download(material) }
@@ -107,6 +112,7 @@ public class MaterialDownloadEngine(
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: ObjectStoreException) {
+            if (exception is ObjectStoreException.NotFound) onRemoteMissing(material.id)
             val reason = exception.message ?: exception::class.simpleName.orEmpty()
             log(material.id, stage, MaterialTransferOutcome.FAILURE, exception.retryable, throwable = exception)
             if (exception.retryable) DownloadOutcome.Retryable(reason) else DownloadOutcome.Permanent(reason)

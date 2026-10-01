@@ -138,6 +138,30 @@ class MaterialUploadEngineTest {
         }
 
     @Test
+    fun `the dedupe probe is its own stage and each part starts exactly once`() =
+        runBlocking {
+            val logger = RecordingAppLogger()
+            val materialId = "00000000-0000-0000-0000-000000000002"
+            materialRepository.save(material().copy(id = materialId))
+            MaterialUploadEngine(
+                materialRepository = materialRepository,
+                uploadProgressStore = uploadProgressStore,
+                objectStore = objectStore,
+                readPart = { _, part -> ByteArray(part.size.toInt()) },
+                logger = logger,
+            ).upload(materialId)
+
+            val events = logger.diagnosticsWith(DiagnosticCode.MaterialUpload)
+            val dedupe = events.indexOfFirst { "stage=DEDUPE outcome=NOT_FOUND" in it }
+            val planned = events.indexOfFirst { "stage=PLAN outcome=SUCCESS" in it }
+            assertTrue(dedupe in 0 until planned, "the dedupe probe must read as happening before planning")
+            assertTrue(events.none { "stage=VERIFY outcome=NOT_FOUND" in it })
+            val partStarts = events.filter { "stage=PART outcome=STARTED" in it }
+            assertEquals(3, partStarts.size, "one PART STARTED per part, never an extra one without a number")
+            assertTrue(partStarts.all { "part=" in it })
+        }
+
+    @Test
     fun `an already-synced material is a no-op that never re-uploads`() =
         runBlocking {
             materialRepository.save(

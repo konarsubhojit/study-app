@@ -71,6 +71,7 @@ public class MaterialUploadWorker
         private val notifier: StudyFlowNotifier,
         private val syncScheduler: SyncScheduler,
         private val logger: AppLogger,
+        private val uploadGate: MaterialUploadGate,
     ) : CoroutineWorker(context, parameters) {
         override suspend fun doWork(): Result {
             val materialId = inputData.getString(EXTRA_UPLOAD_MATERIAL_ID)
@@ -91,15 +92,21 @@ public class MaterialUploadWorker
                 )
 
             val outcome =
-                runAfterForegroundPromotion(
-                    promoteToForeground = {
-                        setForeground(foregroundInfo(materialId, NotificationProgress.Indeterminate))
-                    },
-                    onPromotionUnavailable = { failure ->
-                        logger.warning(TAG, "Upload foreground promotion is unavailable; continuing transfer", failure)
-                    },
-                    work = { engine.upload(materialId) },
-                )
+                uploadGate.withPermit {
+                    runAfterForegroundPromotion(
+                        promoteToForeground = {
+                            setForeground(foregroundInfo(materialId, NotificationProgress.Indeterminate))
+                        },
+                        onPromotionUnavailable = { failure ->
+                            logger.warning(
+                                TAG,
+                                "Upload foreground promotion is unavailable; continuing transfer",
+                                failure,
+                            )
+                        },
+                        work = { engine.upload(materialId) },
+                    )
+                }
             return handleOutcome(materialId, outcome)
         }
 

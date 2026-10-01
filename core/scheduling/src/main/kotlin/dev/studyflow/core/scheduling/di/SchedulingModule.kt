@@ -10,6 +10,10 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.logging.AppLogger
+import dev.studyflow.core.scheduling.MaterialRemoteVerifier
+import dev.studyflow.core.scheduling.MaterialUploadGate
+import dev.studyflow.core.scheduling.SharedPreferencesRemoteCopyLedger
+import dev.studyflow.core.storage.ObjectStore
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.DefaultAnchoredClock
@@ -28,6 +32,7 @@ import dev.studyflow.core.domain.materials.DownloadProgressStore
 import dev.studyflow.core.domain.materials.MaterialDownloadCoordinator
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
+import dev.studyflow.core.domain.materials.UploadNetworkSettings
 import dev.studyflow.core.domain.materials.UploadProgressStore
 import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionRepository
@@ -62,6 +67,7 @@ import dev.studyflow.core.scheduling.WeeklySummaryDelivery
 import dev.studyflow.core.scheduling.WeeklySummaryScheduler
 import dev.studyflow.core.scheduling.WorkManagerMaterialDownloadCoordinator
 import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
+import dev.studyflow.core.scheduling.WorkManagerUploadNetworkSettings
 import dev.studyflow.core.scheduling.WorkManagerSyncCoordinator
 import kotlinx.coroutines.flow.first
 import javax.inject.Singleton
@@ -248,13 +254,56 @@ public object SchedulingModule {
 
     @Provides
     @Singleton
-    public fun materialUploadCoordinator(
+    public fun workManagerMaterialUploadCoordinator(
         @ApplicationContext context: Context,
         materialRepository: MaterialRepository,
         settingsStore: UserSettingsStore,
         syncScheduler: SyncScheduler,
-    ): MaterialUploadCoordinator =
-        WorkManagerMaterialUploadCoordinator(context, materialRepository, settingsStore, syncScheduler)
+        logger: AppLogger,
+    ): WorkManagerMaterialUploadCoordinator =
+        WorkManagerMaterialUploadCoordinator(
+            context = context,
+            materialRepository = materialRepository,
+            settingsStore = settingsStore,
+            syncScheduler = syncScheduler,
+            logger = logger,
+        )
+
+    @Provides
+    @Singleton
+    public fun materialUploadCoordinator(coordinator: WorkManagerMaterialUploadCoordinator): MaterialUploadCoordinator =
+        coordinator
+
+    @Provides
+    @Singleton
+    public fun uploadNetworkSettings(
+        settingsStore: UserSettingsStore,
+        coordinator: WorkManagerMaterialUploadCoordinator,
+    ): UploadNetworkSettings = WorkManagerUploadNetworkSettings(settingsStore, coordinator)
+
+    @Provides
+    @Singleton
+    public fun materialUploadGate(): MaterialUploadGate = MaterialUploadGate()
+
+    @Provides
+    @Singleton
+    public fun materialRemoteVerifier(
+        @ApplicationContext context: Context,
+        materialRepository: MaterialRepository,
+        objectStore: ObjectStore,
+        uploadCoordinator: MaterialUploadCoordinator,
+        logger: AppLogger,
+    ): MaterialRemoteVerifier =
+        MaterialRemoteVerifier(
+            materialRepository = materialRepository,
+            objectStore = objectStore,
+            uploadCoordinator = uploadCoordinator,
+            ledger =
+                SharedPreferencesRemoteCopyLedger(
+                    context.getSharedPreferences("studyflow-material-remote-copies", Context.MODE_PRIVATE),
+                ),
+            logger = logger,
+        )
 
     @Provides
     @Singleton
