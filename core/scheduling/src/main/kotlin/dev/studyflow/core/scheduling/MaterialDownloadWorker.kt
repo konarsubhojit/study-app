@@ -25,6 +25,7 @@ public class MaterialDownloadWorker
         private val objectStore: ObjectStore,
         private val transport: DownloadTransport,
         private val logger: AppLogger,
+        private val remoteVerifier: MaterialRemoteVerifier,
     ) : CoroutineWorker(context, parameters) {
         override suspend fun doWork(): Result {
             val materialId = inputData.getString(EXTRA_DOWNLOAD_MATERIAL_ID)
@@ -44,6 +45,7 @@ public class MaterialDownloadWorker
                         File(cacheDirectory, materialDownloadCacheFileName(material)).absolutePath
                     },
                     transport = transport,
+                    onRemoteMissing = remoteVerifier::onRemoteMissing,
                 )
             return when (engine.download(materialId)) {
                 is DownloadOutcome.Cached -> Result.success()

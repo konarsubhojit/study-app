@@ -123,6 +123,8 @@ public enum class DiagnosticKey(
     NotScheduled("notScheduled"),
     Overdue("overdue"),
     Degraded("degraded"),
+    NetworkType("networkType"),
+    SyncMode("syncMode"),
 }
 
 /** Closed subsystem names for exact-alarm degradation events. */

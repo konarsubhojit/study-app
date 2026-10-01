@@ -6,17 +6,24 @@ import androidx.work.Constraints
 import androidx.work.ExistingWorkPolicy
 import androidx.work.NetworkType
 import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.WorkRequest
 import androidx.work.workDataOf
+import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.datastore.UserSettingsStore
 import dev.studyflow.core.datastore.proto.SyncMode
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.domain.sync.SyncScheduler
 import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.model.SyncState
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import java.util.concurrent.TimeUnit
 
 /** The unique `WorkManager` name for a material's upload — one material, one work request, ever. */
@@ -30,6 +37,12 @@ public fun materialUploadWorkName(materialId: String): String = "upload:$materia
  * the object store keys a material's bytes by that hash (`ObjectKey.ofMaterial`), so a second
  * upload of identical content would send the same bytes twice for nothing. This material is marked
  * synced directly instead, borrowing the already-uploaded object's key.
+ *
+ * Every enqueue is logged with the constraint it was given, and [waitReason] explains a queued
+ * upload that has not started — a constraint WorkManager is holding it on runs no worker, so
+ * otherwise nothing at all would say why.
+ *
+ * @param conditions the device state the constraints are evaluated against; the platform's by default.
  */
 public class WorkManagerMaterialUploadCoordinator(
     private val context: Context,
@@ -37,7 +50,21 @@ public class WorkManagerMaterialUploadCoordinator(
     private val settingsStore: UserSettingsStore,
     private val syncScheduler: SyncScheduler,
     private val workManager: WorkManager = WorkManager.getInstance(context),
+    private val logger: AppLogger? = null,
+    private val conditions: Flow<UploadConditions> = context.uploadConditions(),
 ) : MaterialUploadCoordinator {
+    override val waitReason: Flow<UploadWaitReason?> =
+        combine(
+            // WorkManager tags every request with its worker's class name, so this also sees uploads
+            // queued before this tag-less code knew to look for them.
+            workManager
+                .getWorkInfosByTagFlow(MaterialUploadWorker::class.java.name)
+                .map { infos -> infos.any { it.state == WorkInfo.State.ENQUEUED } },
+            settingsStore.data.map { it.syncMode },
+            conditions,
+            ::uploadWaitReason,
+        ).distinctUntilChanged()
+
     override suspend fun enqueueUpload(materialId: String) {
         if (adoptExistingUploadIfAny(materialId)) return
         // `KEEP`: a second call for a material already queued or running (a duplicate share intent,
@@ -54,6 +81,24 @@ public class WorkManagerMaterialUploadCoordinator(
         // `REPLACE`: the previous attempt, successful or not, is done; a manual retry always starts
         // a fresh work request rather than being absorbed by `KEEP` into whatever is already there.
         enqueue(materialId, ExistingWorkPolicy.REPLACE)
+    }
+
+    /**
+     * Re-enqueues every upload still waiting to start under the constraint the current settings
+     * give, because WorkManager fixes a request's constraints when it is enqueued. A running upload
+     * is left alone; it is already past its constraint, and replacing it would discard its progress.
+     */
+    public suspend fun reapplyQueuedConstraints() {
+        materialRepository
+            .observeAll()
+            .first()
+            .filter { it.sync != SyncState.Synced }
+            .forEach { material ->
+                val infos = workManager.getWorkInfosForUniqueWorkFlow(materialUploadWorkName(material.id)).first()
+                if (infos.any { it.state == WorkInfo.State.ENQUEUED }) {
+                    enqueue(material.id, ExistingWorkPolicy.REPLACE)
+                }
+            }
     }
 
     /**
@@ -82,13 +127,16 @@ public class WorkManagerMaterialUploadCoordinator(
         materialId: String,
         existingWorkPolicy: ExistingWorkPolicy,
     ) {
+        val syncMode = settingsStore.data.first().syncMode
+        val networkType = requiredNetworkType(syncMode)
         val request =
             OneTimeWorkRequestBuilder<MaterialUploadWorker>()
                 .setInputData(workDataOf(EXTRA_UPLOAD_MATERIAL_ID to materialId))
-                .setConstraints(constraints())
+                .setConstraints(constraints(networkType))
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, WorkRequest.MIN_BACKOFF_MILLIS, TimeUnit.MILLISECONDS)
                 .build()
         workManager.enqueueUniqueWork(materialUploadWorkName(materialId), existingWorkPolicy, request)
+        logger?.materialUploadEnqueued(materialId, networkType, syncMode)
     }
 
     /**
@@ -100,16 +148,16 @@ public class WorkManagerMaterialUploadCoordinator(
      * here yet distinguishes "wait for the user to ask" from "wait for a network" — a manual-only
      * gate is a reasonable follow-up, not required by the acceptance criteria this change targets.
      */
-    private suspend fun constraints(): Constraints {
-        val networkType =
-            when (settingsStore.data.first().syncMode) {
-                SyncMode.SYNC_MODE_WIFI_ONLY -> NetworkType.UNMETERED
-                SyncMode.SYNC_MODE_ANY_NETWORK, SyncMode.SYNC_MODE_MANUAL -> NetworkType.CONNECTED
-            }
-        return Constraints
+    private fun requiredNetworkType(syncMode: SyncMode): NetworkType =
+        when (syncMode) {
+            SyncMode.SYNC_MODE_WIFI_ONLY -> NetworkType.UNMETERED
+            SyncMode.SYNC_MODE_ANY_NETWORK, SyncMode.SYNC_MODE_MANUAL -> NetworkType.CONNECTED
+        }
+
+    private fun constraints(networkType: NetworkType): Constraints =
+        Constraints
             .Builder()
             .setRequiredNetworkType(networkType)
             .setRequiresBatteryNotLow(true)
             .build()
-    }
 }

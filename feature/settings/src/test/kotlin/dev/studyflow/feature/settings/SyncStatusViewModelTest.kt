@@ -2,6 +2,7 @@ package dev.studyflow.feature.settings
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import dev.studyflow.core.domain.materials.UploadNetworkSettings
 import dev.studyflow.core.domain.sync.SyncStatus
 import dev.studyflow.core.domain.sync.SyncStatusRepository
 import dev.studyflow.core.domain.sync.SyncTrigger
@@ -27,6 +28,7 @@ class SyncStatusViewModelTest {
 
     private val statusRepository = FakeSyncStatusRepository()
     private val requestedTriggers = mutableListOf<SyncTrigger>()
+    private val uploadNetworkSettings = FakeUploadNetworkSettings()
 
     @Test
     fun `the screen shows what is waiting, when sync last worked, and what went wrong`() =
@@ -100,12 +102,37 @@ class SyncStatusViewModelTest {
             assertEquals(listOf(SyncTrigger.MANUAL), requestedTriggers)
         }
 
+    @Test
+    fun `uploads default to Wi-Fi only and the switch changes the stored choice`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel()
+
+            viewModel.state.test {
+                assertTrue(awaitItem().wifiOnlyUploads, "large files must not use mobile data unasked")
+
+                viewModel.onEvent(SyncStatusUiEvent.SetWifiOnlyUploads(false))
+                assertFalse(awaitItem().wifiOnlyUploads)
+            }
+            assertEquals(listOf(false), uploadNetworkSettings.changes)
+        }
+
     private fun viewModel(): SyncStatusViewModel =
         SyncStatusViewModel(
             savedStateHandle = SavedStateHandle(),
             statusRepository = statusRepository,
             syncScheduler = { trigger -> requestedTriggers += trigger },
+            uploadNetworkSettings = uploadNetworkSettings,
         )
+
+    private class FakeUploadNetworkSettings : UploadNetworkSettings {
+        override val wifiOnly = MutableStateFlow(true)
+        val changes = mutableListOf<Boolean>()
+
+        override suspend fun setWifiOnly(wifiOnly: Boolean) {
+            changes += wifiOnly
+            this.wifiOnly.value = wifiOnly
+        }
+    }
 
     private class FakeSyncStatusRepository : SyncStatusRepository {
         val status = MutableStateFlow(SyncStatus())

@@ -23,6 +23,7 @@ import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.storage.ObjectStore
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.first
 
 /** The material id an upload work request carries in its input data. */
 public const val EXTRA_UPLOAD_MATERIAL_ID: String = "dev.studyflow.core.scheduling.UPLOAD_MATERIAL_ID"
@@ -59,6 +60,8 @@ internal suspend fun <T> runAfterForegroundPromotion(
  * translating [UploadOutcome] into the [Result] WorkManager's own backoff and constraints act on.
  */
 @HiltWorker
+// Each dependency is a distinct injected collaborator; WorkManager's assisted factory owns the call.
+@Suppress("LongParameterList")
 public class MaterialUploadWorker
     @AssistedInject
     constructor(
@@ -71,6 +74,7 @@ public class MaterialUploadWorker
         private val notifier: StudyFlowNotifier,
         private val syncScheduler: SyncScheduler,
         private val logger: AppLogger,
+        private val uploadGate: MaterialUploadGate,
     ) : CoroutineWorker(context, parameters) {
         override suspend fun doWork(): Result {
             val materialId = inputData.getString(EXTRA_UPLOAD_MATERIAL_ID)
@@ -91,15 +95,21 @@ public class MaterialUploadWorker
                 )
 
             val outcome =
-                runAfterForegroundPromotion(
-                    promoteToForeground = {
-                        setForeground(foregroundInfo(materialId, NotificationProgress.Indeterminate))
-                    },
-                    onPromotionUnavailable = { failure ->
-                        logger.warning(TAG, "Upload foreground promotion is unavailable; continuing transfer", failure)
-                    },
-                    work = { engine.upload(materialId) },
-                )
+                uploadGate.withPermit {
+                    runAfterForegroundPromotion(
+                        promoteToForeground = {
+                            setForeground(foregroundInfo(materialId, NotificationProgress.Indeterminate))
+                        },
+                        onPromotionUnavailable = { failure ->
+                            logger.warning(
+                                TAG,
+                                "Upload foreground promotion is unavailable; continuing transfer",
+                                failure,
+                            )
+                        },
+                        work = { engine.upload(materialId) },
+                    )
+                }
             return handleOutcome(materialId, outcome)
         }
 
@@ -127,12 +137,18 @@ public class MaterialUploadWorker
                 }
 
                 is UploadOutcome.Permanent -> {
+                    val missingSource = materialRepository.observeById(materialId).first()?.isMissingSource == true
                     notifier.post(
                         materialUploadNotificationId(materialId),
                         StudyFlowNotificationChannel.UPLOADS,
                         finishedNotification(
                             title = "Upload failed",
-                            message = "You can retry or remove this material.",
+                            message =
+                                if (missingSource) {
+                                    "This file is no longer on your device. Re-attach it or remove it."
+                                } else {
+                                    "You can retry or remove this material."
+                                },
                         ),
                     )
                     Result.failure()

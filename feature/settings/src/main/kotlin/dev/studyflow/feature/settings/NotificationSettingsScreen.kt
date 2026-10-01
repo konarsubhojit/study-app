@@ -101,7 +101,7 @@ public fun NotificationSettingsRoute(
     LifecycleResumeEffect(activity) {
         exactAlarmsDenied =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                !context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
+            !context.getSystemService(AlarmManager::class.java).canScheduleExactAlarms()
         viewModel.onEvent(NotificationSettingsUiEvent.Refresh(activity.shouldExplainNotifications()))
         onPauseOrDispose {}
     }

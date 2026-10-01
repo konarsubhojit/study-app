@@ -80,6 +80,30 @@ class MaterialDownloadEngineTest {
         }
 
     @Test
+    fun `a missing remote object is reported so the material can be healed, and nothing else is`() =
+        runBlocking {
+            val missing = mutableListOf<String>()
+            val healingEngine =
+                MaterialDownloadEngine(
+                    materialRepository = materialRepository,
+                    downloadProgressStore = progressStore,
+                    objectStore = objectStore,
+                    destinationPath = { "/cache/${materialDownloadCacheFileName(it)}" },
+                    transport = transport,
+                    onRemoteMissing = { missing += it },
+                )
+            materialRepository.save(material())
+
+            objectStore.failDownloadUrl = ObjectStoreException.Transient("offline")
+            healingEngine.download("m1")
+            assertTrue(missing.isEmpty(), "a transient failure says nothing about whether the object exists")
+
+            objectStore.failDownloadUrl = ObjectStoreException.NotFound(ObjectKey("materials/${HASH.hex}"))
+            healingEngine.download("m1")
+            assertEquals(listOf("m1"), missing)
+        }
+
+    @Test
     fun `download diagnostics identify the failed transfer stage without file paths`() =
         runBlocking {
             val logger = RecordingAppLogger()

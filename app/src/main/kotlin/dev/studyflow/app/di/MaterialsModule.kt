@@ -15,6 +15,7 @@ import dev.studyflow.core.database.repository.OfflineFirstMaterialRepository
 import dev.studyflow.core.domain.materials.ArchiveReader
 import dev.studyflow.core.domain.materials.DurationExtractor
 import dev.studyflow.core.domain.materials.ImportContentReader
+import dev.studyflow.core.domain.materials.ImportLimits
 import dev.studyflow.core.domain.materials.MaterialImporter
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailCache
@@ -76,6 +77,9 @@ public object MaterialsModule {
             clock = SystemWallClock,
             dispatcherProvider = dispatcherProvider,
             durationExtractor = durationExtractor,
+            // What the storage function can hold, checked while the user is still at the picker:
+            // a 60 MiB video or a `.docx` is refused here in plain words, not mid-upload.
+            limits = ImportLimits.CLOUD_SYNC,
         )
 
     @Provides

@@ -1,18 +1,24 @@
 package dev.studyflow.core.scheduling
 
 import androidx.work.Configuration
+import androidx.work.NetworkType
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.datastore.userSettingsStore
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.testing.data.FakeMaterialRepository
+import dev.studyflow.core.testing.logging.RecordingAppLogger
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -29,6 +35,9 @@ class WorkManagerMaterialUploadCoordinatorTest {
     private val context = RuntimeEnvironment.getApplication()
     private val materialRepository = FakeMaterialRepository()
     private val requestedSyncs = mutableListOf<SyncTrigger>()
+    private val logger = RecordingAppLogger()
+    private val conditions =
+        MutableStateFlow(UploadConditions(connected = true, metered = true, batteryLow = false))
     private lateinit var workManager: WorkManager
     private lateinit var coordinator: WorkManagerMaterialUploadCoordinator
 
@@ -44,6 +53,8 @@ class WorkManagerMaterialUploadCoordinatorTest {
                 context.userSettingsStore(),
                 { trigger -> requestedSyncs += trigger },
                 workManager,
+                logger,
+                conditions,
             )
     }
 
@@ -114,6 +125,58 @@ class WorkManagerMaterialUploadCoordinatorTest {
             assertEquals(WorkInfo.State.CANCELLED, info.state)
         }
 
+    @Test
+    fun `every enqueue is logged with the constraint it was given, before any constraint can hold it`() =
+        runBlocking {
+            materialRepository.save(material(UUID_1, HASH_1))
+
+            coordinator.enqueueUpload(UUID_1)
+
+            val event = logger.diagnosticsWith(DiagnosticCode.MaterialUpload).single()
+            assertTrue(event, "stage=ENQUEUE outcome=QUEUED materialId=$UUID_1" in event)
+            assertTrue(event, "networkType=UNMETERED syncMode=SYNC_MODE_WIFI_ONLY" in event)
+        }
+
+    @Test
+    fun `an upload held by the Wi-Fi-only constraint reports that it is waiting for Wi-Fi`() =
+        runBlocking {
+            materialRepository.save(material(UUID_1, HASH_1))
+            coordinator.enqueueUpload(UUID_1)
+
+            val reason = withTimeout(TIMEOUT_MILLIS) { coordinator.waitReason.first { it != null } }
+
+            assertEquals(UploadWaitReason.WAITING_FOR_WIFI, reason)
+            assertEquals(
+                "the request is enqueued, not running and not failed",
+                WorkInfo.State.ENQUEUED,
+                workManager
+                    .getWorkInfosForUniqueWork(materialUploadWorkName(UUID_1))
+                    .get()
+                    .single()
+                    .state,
+            )
+
+            conditions.value = conditions.value.copy(metered = false)
+            assertEquals(null, withTimeout(TIMEOUT_MILLIS) { coordinator.waitReason.first { it == null } })
+        }
+
+    @Test
+    fun `allowing mobile data re-applies the constraint to uploads already waiting`() =
+        runBlocking {
+            val settings = WorkManagerUploadNetworkSettings(context.userSettingsStore(), coordinator)
+            materialRepository.save(material("m1", HASH_1))
+            coordinator.enqueueUpload("m1")
+            try {
+                settings.setWifiOnly(false)
+
+                val info = workManager.getWorkInfosForUniqueWork(materialUploadWorkName("m1")).get().single()
+                assertEquals(NetworkType.CONNECTED, info.constraints.requiredNetworkType)
+                assertEquals(WorkInfo.State.ENQUEUED, info.state)
+            } finally {
+                settings.setWifiOnly(true)
+            }
+        }
+
     private fun material(
         id: String,
         hash: String,
@@ -129,6 +192,8 @@ class WorkManagerMaterialUploadCoordinatorTest {
         )
 
     private companion object {
+        const val UUID_1 = "00000000-0000-0000-0000-0000000000c1"
+        const val TIMEOUT_MILLIS = 5_000L
         const val HASH_1 = "b000000000000000000000000000000000000000000000000000000000000001"
     }
 }

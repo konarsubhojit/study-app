@@ -71,6 +71,24 @@ class ApiError extends Error {
     }
 }
 
+/**
+ * A non-OK answer from a service this function called on the caller's behalf.
+ *
+ * Carrying the upstream status is what keeps a constraint violation from being reported as a
+ * server outage: a bare `Error` here would reach the catch-all and become a retryable 503, which
+ * the client then retries forever against a request that can never succeed. Mirrors the `api`
+ * function's class of the same name so the two report upstream failures identically.
+ */
+class UpstreamError extends Error {
+    constructor(
+        readonly service: string,
+        readonly status: number,
+    ) {
+        super(`${service} request failed (${status})`);
+        this.name = "UpstreamError";
+    }
+}
+
 const env = (name: string): string => {
     const value = Deno.env.get(name);
     if (!value) throw new Error(`Missing required server setting: ${name}`);
@@ -178,7 +196,7 @@ async function databaseJson<T>(path: string, init: RequestInit = {}): Promise<T>
         if (detail.includes("object_already_exists")) {
             throw new ApiError(409, "object_already_exists", "This file already exists or is being finalized.");
         }
-        throw new Error(`Database request failed (${response.status})`);
+        throw new UpstreamError("Database", response.status);
     }
     const text = await response.text();
     return (text ? JSON.parse(text) : undefined) as T;
@@ -655,7 +673,8 @@ export async function handleRequest(request: Request): Promise<Response> {
         }
         status = response.status;
         return withTrace(response, requestId);
-    } catch (error) {
+    } catch (caught) {
+        const error = caught instanceof UpstreamError ? upstreamApiError(caught) ?? caught : caught;
         if (error instanceof ApiError) {
             const headers: HeadersInit = error.status === 429 ? { "retry-after": "60" } : {};
             status = error.status;
@@ -668,7 +687,7 @@ export async function handleRequest(request: Request): Promise<Response> {
             return withTrace(response, requestId);
         }
         errorCode = "storage_unavailable";
-        console.error(error instanceof Error ? `storage_unavailable:${error.name}` : "storage_unavailable");
+        console.error(unavailableLogLine(operation, error));
         response = json(503, { code: "storage_unavailable", message: "Cloud storage is temporarily unavailable." });
         return withTrace(response, requestId);
     } finally {
@@ -681,6 +700,35 @@ export async function handleRequest(request: Request): Promise<Response> {
             egressBytes: response ? responseEgressBytes.get(response) : 0,
         });
     }
+}
+
+/**
+ * How an upstream refusal is reported to the client.
+ *
+ * A 4xx means the upstream understood the request and rejected *it*: another identical attempt
+ * cannot succeed, so it must not arrive as the retryable 503 that means "we are having a bad
+ * moment". A 5xx or a transport failure is exactly that bad moment and is left to the catch-all.
+ */
+function upstreamApiError(error: UpstreamError): ApiError | undefined {
+    if (error.status < 400 || error.status >= 500) return undefined;
+    if (error.status === 409) {
+        return new ApiError(409, "conflict", "This change conflicts with the stored data.");
+    }
+    return new ApiError(400, "invalid_request", "The request could not be processed.");
+}
+
+/**
+ * The catch-all's log line: the resolved operation, the error's name and its message.
+ *
+ * The messages thrown in this file are developer-authored ("Database request failed (500)") and
+ * carry no user data; the name alone was true of every unexpected failure and identified none of
+ * them. Stack traces, request bodies, tokens and headers stay out, and any URL is redacted, because
+ * a provider SDK's message may quote the request it was making — including a signed URL.
+ */
+export function unavailableLogLine(operation: string, error: unknown): string {
+    if (!(error instanceof Error)) return `storage_unavailable operation=${operation}`;
+    const message = error.message.replace(/[a-z][a-z0-9+.-]*:\/\/\S+/gi, "<url>");
+    return `storage_unavailable operation=${operation} name=${error.name} message=${message}`;
 }
 
 if (import.meta.main) Deno.serve(handleRequest);

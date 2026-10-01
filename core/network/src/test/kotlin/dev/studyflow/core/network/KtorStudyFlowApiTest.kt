@@ -372,6 +372,7 @@ class KtorStudyFlowApiTest {
             assertInstanceOf(ApiError.Server::class.java, error)
             assertEquals(UserFacingMessage.ServerProblem, error?.message)
         }
+
     /**
      * The unattended case behind issue #191: an access token expires while the sync worker is
      * pushing, so nobody is watching a screen to sign in again. The refresh has to happen inside
@@ -453,7 +454,9 @@ class KtorStudyFlowApiTest {
                     listOf(
                         async(Dispatchers.Default) { api.pushSessionChanges(pushRequest()) },
                         async(Dispatchers.Default) {
-                            api.pushRecordChanges(SyncRecordPushRequestDto(deviceId = "device-a", changes = emptyList()))
+                            api.pushRecordChanges(
+                                SyncRecordPushRequestDto(deviceId = "device-a", changes = emptyList()),
+                            )
                         },
                     ).awaitAll()
                 }
