@@ -93,7 +93,15 @@ internal class RecordingObjectStore : ObjectStore {
         mutex.withLock { partsByKey.remove(key) }
     }
 
-    override suspend fun stat(key: ObjectKey): StoredObject? = mutex.withLock { statResults[key] }
+    /** How many times the store was asked whether an object exists. */
+    var statCalls: Int = 0
+        private set
+
+    override suspend fun stat(key: ObjectKey): StoredObject? =
+        mutex.withLock {
+            statCalls++
+            statResults[key]
+        }
 
     /**
      * Simulates a part the *server* already acknowledged before this test process existed — the

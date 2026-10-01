@@ -61,6 +61,24 @@ class SyncWorkerTest {
         }
 
     @Test
+    fun `a finished pass re-checks what the catalogue believes is stored`() =
+        runBlocking {
+            // The self-heal pass for materials that were "uploaded" into an in-process store: it
+            // only has a reason to run once the catalogue itself is up to date.
+            worker(FailingTransport(failure = null)).doWork()
+
+            assertEquals(1, audits)
+        }
+
+    @Test
+    fun `a failed pass leaves the stored-object check alone`() =
+        runBlocking {
+            worker(FailingTransport(SyncFailure("server is down", retryable = true))).doWork()
+
+            assertEquals(0, audits)
+        }
+
+    @Test
     fun `a retryable failure asks WorkManager to back off rather than giving up`() =
         runBlocking {
             val worker = worker(FailingTransport(SyncFailure("server is down", retryable = true)))
@@ -151,6 +169,10 @@ class SyncWorkerTest {
 
     private var remoteChanges = 0
 
+    /** Counts the post-sync audit runs so a test can assert the self-heal pass is wired in. */
+    private var audits = 0
+    private val storageAudit = MaterialStorageAudit { audits++ }
+
     private fun worker(
         transport: SyncTransport,
         trigger: SyncTrigger = SyncTrigger.SCHEDULED,
@@ -176,6 +198,7 @@ class SyncWorkerTest {
                             engine,
                             tokenStore,
                             listener,
+                            storageAudit,
                             logger,
                         )
                 },

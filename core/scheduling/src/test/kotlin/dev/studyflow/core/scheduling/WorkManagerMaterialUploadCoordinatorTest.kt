@@ -5,12 +5,19 @@ import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
+import androidx.work.NetworkType
+import dev.studyflow.core.datastore.proto.SyncMode
 import dev.studyflow.core.datastore.userSettingsStore
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.domain.sync.SyncTrigger
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.testing.data.FakeMaterialRepository
+import dev.studyflow.core.testing.logging.RecordingAppLogger
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -31,6 +38,9 @@ class WorkManagerMaterialUploadCoordinatorTest {
     private val requestedSyncs = mutableListOf<SyncTrigger>()
     private lateinit var workManager: WorkManager
     private lateinit var coordinator: WorkManagerMaterialUploadCoordinator
+    private val logger = RecordingAppLogger()
+    private val constraints = MutableStateFlow(UploadConstraints(connected = true, unmetered = true, batteryLow = false))
+    private val constraintStatus = UploadConstraintStatus { constraints }
 
     @Before
     fun setUp() {
@@ -44,6 +54,8 @@ class WorkManagerMaterialUploadCoordinatorTest {
                 context.userSettingsStore(),
                 { trigger -> requestedSyncs += trigger },
                 workManager,
+                constraintStatus,
+                logger,
             )
     }
 
@@ -114,6 +126,50 @@ class WorkManagerMaterialUploadCoordinatorTest {
             assertEquals(WorkInfo.State.CANCELLED, info.state)
         }
 
+    @Test
+    fun `enqueueUpload records the constraint the upload now has to satisfy`() =
+        runBlocking {
+            materialRepository.save(material(MATERIAL_UUID, HASH_1))
+
+            coordinator.enqueueUpload(MATERIAL_UUID)
+
+            // Without this line an upload held on an unmet constraint produces no log at all, and
+            // an export cannot tell "never enqueued" from "enqueued and waiting".
+            assertEquals(
+                listOf(
+                    "code=MaterialUploadEnqueued syncMode=SYNC_MODE_WIFI_ONLY networkType=UNMETERED " +
+                        "materialId=$MATERIAL_UUID",
+                ),
+                logger.diagnosticsWith(DiagnosticCode.MaterialUploadEnqueued),
+            )
+        }
+
+    @Test
+    fun `a queued upload on mobile data reports that it is waiting for Wi-Fi`() =
+        runBlocking {
+            materialRepository.save(material("m1", HASH_1))
+            coordinator.enqueueUpload("m1")
+            constraints.value = UploadConstraints(connected = true, unmetered = false, batteryLow = false)
+
+            assertEquals(UploadWaitReason.WAITING_FOR_WIFI, coordinator.waitReason.first())
+        }
+
+    @Test
+    fun `nothing is reported as waiting when the queue is empty`() =
+        runBlocking {
+            constraints.value = UploadConstraints(connected = false, unmetered = false, batteryLow = false)
+
+            assertEquals(null, coordinator.waitReason.first())
+        }
+
+    @Test
+    fun `the Wi-Fi-only default is the only mode that demands an unmetered network`() {
+        // Stated rather than assumed: every other mode uploads on whatever connection exists, so
+        // this is the one setting that can park a material indefinitely.
+        assertEquals(NetworkType.UNMETERED, WorkManagerMaterialUploadCoordinator.networkTypeFor(SyncMode.SYNC_MODE_WIFI_ONLY))
+        assertEquals(NetworkType.CONNECTED, WorkManagerMaterialUploadCoordinator.networkTypeFor(SyncMode.SYNC_MODE_ANY_NETWORK))
+    }
+
     private fun material(
         id: String,
         hash: String,
@@ -129,6 +185,7 @@ class WorkManagerMaterialUploadCoordinatorTest {
         )
 
     private companion object {
+        const val MATERIAL_UUID = "f058ccde-0000-4000-8000-000000000001"
         const val HASH_1 = "b000000000000000000000000000000000000000000000000000000000000001"
     }
 }

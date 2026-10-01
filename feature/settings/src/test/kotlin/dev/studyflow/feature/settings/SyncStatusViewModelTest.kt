@@ -2,6 +2,8 @@ package dev.studyflow.feature.settings
 
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
+import dev.studyflow.core.datastore.UploadNetwork
+import dev.studyflow.core.datastore.UploadNetworkSettings
 import dev.studyflow.core.domain.sync.SyncStatus
 import dev.studyflow.core.domain.sync.SyncStatusRepository
 import dev.studyflow.core.domain.sync.SyncTrigger
@@ -100,12 +102,42 @@ class SyncStatusViewModelTest {
             assertEquals(listOf(SyncTrigger.MANUAL), requestedTriggers)
         }
 
+    @Test
+    fun `allowing mobile data saves the choice and starts the waiting uploads`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel()
+            viewModel.state.test {
+                awaitItem()
+
+                viewModel.onEvent(SyncStatusUiEvent.SetUploadNetwork(UploadNetwork.ANY_NETWORK))
+                advanceUntilIdle()
+
+                assertEquals(UploadNetwork.ANY_NETWORK, expectMostRecentItem().uploadNetwork)
+            }
+            // Changing the setting is only half an answer: the queue that was parked behind it has
+            // to be released now, not at the next scheduled pass.
+            assertEquals(listOf(SyncTrigger.MANUAL), requestedTriggers)
+        }
+
     private fun viewModel(): SyncStatusViewModel =
         SyncStatusViewModel(
             savedStateHandle = SavedStateHandle(),
             statusRepository = statusRepository,
             syncScheduler = { trigger -> requestedTriggers += trigger },
+            uploadNetworkSettings = uploadNetworkSettings,
         )
+
+    private val uploadNetworkSettings = FakeUploadNetworkSettings()
+
+    private class FakeUploadNetworkSettings : UploadNetworkSettings {
+        val selected = MutableStateFlow(UploadNetwork.WIFI_ONLY)
+
+        override val network: Flow<UploadNetwork> = selected
+
+        override suspend fun setNetwork(network: UploadNetwork) {
+            selected.value = network
+        }
+    }
 
     private class FakeSyncStatusRepository : SyncStatusRepository {
         val status = MutableStateFlow(SyncStatus())

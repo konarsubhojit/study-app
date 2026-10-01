@@ -143,11 +143,53 @@ class MaterialUploadEngineTest {
             materialRepository.save(
                 material().copy(sync = SyncState.Synced, remoteKey = "materials/${contentHash.hex}"),
             )
+            objectStore.seedStoredObject(ObjectKey.ofMaterial(contentHash), totalBytes, contentHash)
 
             val outcome = engine.upload("m1")
 
             assertEquals(UploadOutcome.Synced, outcome)
             assertTrue(objectStore.uploadedPartNumbers.isEmpty(), "an already-synced material must not be re-uploaded")
+        }
+
+    @Test
+    fun `a synced material whose object is missing is uploaded again`() =
+        runBlocking {
+            // The corruption a build that "uploaded" into an in-process map left behind: the row
+            // says Synced and carries a key, and the bytes behind that key never existed.
+            materialRepository.save(
+                material().copy(sync = SyncState.Synced, remoteKey = "materials/${contentHash.hex}"),
+            )
+
+            val outcome = engine.upload("m1")
+
+            assertEquals(UploadOutcome.Synced, outcome)
+            assertEquals(
+                listOf(1, 2, 3),
+                objectStore.uploadedPartNumbers,
+                "a material the store has never heard of has to be sent, not presented as stored",
+            )
+        }
+
+    @Test
+    fun `a synced material with no local copy and no stored object stops claiming to be stored`() =
+        runBlocking {
+            materialRepository.save(
+                material().copy(
+                    sync = SyncState.Synced,
+                    remoteKey = "materials/${contentHash.hex}",
+                    localPath = null,
+                ),
+            )
+
+            val outcome = engine.upload("m1")
+
+            assertTrue(outcome is UploadOutcome.Permanent, "there is nothing left to upload: \$outcome")
+            val updated = materialRepository.observeById("m1").first()
+            assertEquals(null, updated?.remoteKey, "a key that resolves to nothing must not survive")
+            assertTrue(
+                updated?.sync is SyncState.Failed && !(updated.sync as SyncState.Failed).retryable,
+                "retrying cannot conjure bytes that exist in neither place",
+            )
         }
 
     @Test

@@ -11,6 +11,7 @@ import dev.studyflow.core.domain.materials.thumbnails.ThumbnailLoader
 import dev.studyflow.core.testing.coroutines.MainDispatcherExtension
 import dev.studyflow.core.testing.coroutines.TestDispatcherProvider
 import dev.studyflow.core.testing.data.FakeMaterialRepository
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.testing.data.FakeMaterialUploadCoordinator
 import dev.studyflow.core.testing.data.FakeThumbnailCache
 import dev.studyflow.core.testing.data.FakeThumbnailRenderer
@@ -176,6 +177,39 @@ class MaterialsViewModelTest {
                 viewModel.loadThumbnail(testMaterial(localUri = null)),
                 "browsing a cloud-only material must not pull the original down to draw a cell",
             )
+        }
+
+    @Test
+    fun `a queued upload held on an unmet constraint says what it is waiting for`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel(fakeReader("content://one" to "hello".toByteArray()))
+            viewModel.onEvent(MaterialsUiEvent.ImportUris(listOf("content://one")))
+            advanceUntilIdle()
+
+            uploadCoordinator.waiting.value = UploadWaitReason.WAITING_FOR_WIFI
+            advanceUntilIdle()
+
+            // Distinct from "Pending upload": a device behaving exactly as configured must not
+            // look like a broken one.
+            assertEquals(UploadWaitReason.WAITING_FOR_WIFI, viewModel.state.value.uploadWaitReason)
+        }
+
+    @Test
+    fun `removing a material whose file is gone stops its upload and drops the row`() =
+        runTest(mainDispatcher.dispatcher) {
+            val viewModel = viewModel(fakeReader("content://one" to "hello".toByteArray()))
+            viewModel.onEvent(MaterialsUiEvent.ImportUris(listOf("content://one")))
+            advanceUntilIdle()
+            val materialId =
+                viewModel.state.value.catalog
+                    .single()
+                    .id
+
+            viewModel.onEvent(MaterialsUiEvent.RemoveMaterial(materialId))
+            advanceUntilIdle()
+
+            assertEquals(listOf(materialId), uploadCoordinator.cancelled)
+            assertTrue(viewModel.state.value.catalog.isEmpty(), "a removed material must leave the catalogue")
         }
 
     private fun viewModel(reader: ImportContentReader): MaterialsViewModel {
