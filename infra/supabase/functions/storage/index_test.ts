@@ -8,10 +8,19 @@ const settings = {
 };
 Object.entries(settings).forEach(([name, value]) => Deno.env.set(name, value));
 
-const { objectKey, observabilityLogLine, observabilityPayload, requestTraceId, statResponse, validateUpload } =
-    await import("./index.ts");
+const {
+    handleRequest,
+    objectKey,
+    observabilityLogLine,
+    observabilityPayload,
+    requestTraceId,
+    statResponse,
+    validateUpload,
+} = await import("./index.ts");
 
 const checksum = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=";
+const ALICE = "11111111-1111-1111-1111-111111111111";
+const TOKEN = "valid-test-token";
 
 Deno.test("object keys are always derived from the authenticated owner", () => {
     const hash = "a".repeat(64);
@@ -125,6 +134,91 @@ Deno.test("operations newer than the observability table are recorded as unknown
         throw new Error("a recorded operation was renamed");
     }
 });
+
+// A PostgREST refusal of this caller's own request — a constraint violation, a malformed filter —
+// is the caller's problem, never an outage. Reported as a 503 it was retried forever and logged as
+// one indistinguishable `storage_unavailable` line; the `api` function was fixed the same way.
+Deno.test("a database refusal of the caller's request is not a retryable outage", async () => {
+    for (const [upstreamStatus, expectedStatus, expectedCode] of [
+        [400, 400, "invalid_request"],
+        [403, 400, "invalid_request"],
+        [409, 409, "conflict"],
+        [500, 503, "storage_unavailable"],
+        [502, 503, "storage_unavailable"],
+    ] as const) {
+        await withFetch((input) => {
+            const url = String(input);
+            if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: ALICE });
+            if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+            if (url.includes("/rest/v1/rpc/")) return jsonResponse(upstreamStatus, { message: "upstream said no" });
+            throw new Error(`unexpected fetch ${url}`);
+        }, async () => {
+            const response = await handleRequest(initUploadRequest());
+            const body = await response.json();
+            if (response.status !== expectedStatus || body.code !== expectedCode) {
+                throw new Error(`database ${upstreamStatus} became ${response.status} ${body.code}`);
+            }
+        });
+    }
+});
+
+Deno.test("an unexpected failure is logged with its message and operation, and nothing else", async () => {
+    const lines: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    try {
+        await withFetch((input) => {
+            const url = String(input);
+            if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: ALICE });
+            if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+            if (url.includes("/rest/v1/rpc/")) return jsonResponse(500, { message: "boom" });
+            throw new Error(`unexpected fetch ${url}`);
+        }, async () => {
+            const response = await handleRequest(initUploadRequest());
+            if (response.status !== 503) throw new Error("an upstream 500 was not reported as unavailable");
+        });
+    } finally {
+        console.error = original;
+    }
+    const line = lines.find((entry) => entry.startsWith("storage_unavailable"));
+    if (!line) throw new Error("no storage_unavailable line was logged");
+    for (const expected of ["operation=initUpload", "name=UpstreamError", "message=Database request failed (500)"]) {
+        if (!line.includes(expected)) throw new Error(`log line "${line}" is missing ${expected}`);
+    }
+    for (const unsafe of [TOKEN, "Bearer", "https://", "    at "]) {
+        if (line.includes(unsafe)) throw new Error(`log line "${line}" carried ${unsafe}`);
+    }
+});
+
+function initUploadRequest(): Request {
+    return new Request("https://edge.test/storage/initUpload", {
+        method: "POST",
+        headers: { authorization: "Bearer " + TOKEN, "content-type": "application/json" },
+        body: JSON.stringify({
+            contentHash: "a".repeat(64),
+            contentType: "application/pdf",
+            sizeBytes: 1024,
+            partChecksums: [checksum],
+        }),
+    });
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+    return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
+}
+
+async function withFetch(
+    replacement: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response> | Response,
+    block: () => Promise<void>,
+): Promise<void> {
+    const original = globalThis.fetch;
+    globalThis.fetch = replacement as typeof fetch;
+    try {
+        await block();
+    } finally {
+        globalThis.fetch = original;
+    }
+}
 
 function assertApiError(block: () => unknown, code: string): void {
     try {

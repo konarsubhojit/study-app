@@ -71,6 +71,24 @@ class ApiError extends Error {
     }
 }
 
+/**
+ * A non-OK answer from a service this function called on the caller's behalf.
+ *
+ * Carrying the upstream status is what keeps a constraint violation from being reported as a
+ * server outage: a bare `Error` here would reach the catch-all and become a retryable 503, which
+ * the client then retries forever against a request that can never succeed. Mirrors the `api`
+ * function, so a reader of one log stream reads the other the same way.
+ */
+class UpstreamError extends Error {
+    constructor(
+        readonly service: string,
+        readonly status: number,
+    ) {
+        super(`${service} request failed (${status})`);
+        this.name = "UpstreamError";
+    }
+}
+
 const env = (name: string): string => {
     const value = Deno.env.get(name);
     if (!value) throw new Error(`Missing required server setting: ${name}`);
@@ -178,7 +196,7 @@ async function databaseJson<T>(path: string, init: RequestInit = {}): Promise<T>
         if (detail.includes("object_already_exists")) {
             throw new ApiError(409, "object_already_exists", "This file already exists or is being finalized.");
         }
-        throw new Error(`Database request failed (${response.status})`);
+        throw new UpstreamError("Database", response.status);
     }
     const text = await response.text();
     return (text ? JSON.parse(text) : undefined) as T;
@@ -443,7 +461,12 @@ async function completeUpload(request: Request, owner: string): Promise<Response
             method: "POST",
             body: JSON.stringify({ p_upload_id: upload.id, p_user_id: owner }),
         });
-        if (!finalized) throw new Error("Upload state changed before finalization");
+        // Another request finished — or failed — this upload while this one was assembling it.
+        // That is a conflict over the caller's own upload, not an outage: the client's next `stat`
+        // finds the finished object instead of retrying a 503 forever.
+        if (!finalized) {
+            throw new ApiError(409, "upload_not_completable", "This upload is already being completed.");
+        }
         return json(200, storedObject({ ...upload, state: "ready" }));
     } catch (error) {
         if (error instanceof ApiError) {
@@ -655,7 +678,8 @@ export async function handleRequest(request: Request): Promise<Response> {
         }
         status = response.status;
         return withTrace(response, requestId);
-    } catch (error) {
+    } catch (caught) {
+        const error = caught instanceof UpstreamError ? upstreamApiError(caught) ?? caught : caught;
         if (error instanceof ApiError) {
             const headers: HeadersInit = error.status === 429 ? { "retry-after": "60" } : {};
             status = error.status;
@@ -668,7 +692,15 @@ export async function handleRequest(request: Request): Promise<Response> {
             return withTrace(response, requestId);
         }
         errorCode = "storage_unavailable";
-        console.error(error instanceof Error ? `storage_unavailable:${error.name}` : "storage_unavailable");
+        // The message is developer-authored ("Database request failed (409)"), so it names the
+        // fault without carrying user data; the name alone was true of every unexpected failure
+        // here and identified none of them. Request bodies, tokens, headers, signed URLs and
+        // stack traces stay out: those are the parts that can carry a credential or user content.
+        console.error(
+            error instanceof Error
+                ? `storage_unavailable operation=${operation} name=${error.name} message=${error.message}`
+                : `storage_unavailable operation=${operation}`,
+        );
         response = json(503, { code: "storage_unavailable", message: "Cloud storage is temporarily unavailable." });
         return withTrace(response, requestId);
     } finally {
@@ -681,6 +713,21 @@ export async function handleRequest(request: Request): Promise<Response> {
             egressBytes: response ? responseEgressBytes.get(response) : 0,
         });
     }
+}
+
+/**
+ * How an upstream refusal is reported to the client.
+ *
+ * A 4xx means the upstream understood the request and rejected *it*: another identical attempt
+ * cannot succeed, so it must not arrive as the retryable 503 that means "we are having a bad
+ * moment". A 5xx or a transport failure is exactly that bad moment and is left to the catch-all.
+ */
+export function upstreamApiError(error: UpstreamError): ApiError | undefined {
+    if (error.status < 400 || error.status >= 500) return undefined;
+    if (error.status === 409) {
+        return new ApiError(409, "conflict", "This change conflicts with the stored data.");
+    }
+    return new ApiError(400, "invalid_request", "The request could not be processed.");
 }
 
 if (import.meta.main) Deno.serve(handleRequest);
