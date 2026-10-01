@@ -2,14 +2,17 @@ package dev.studyflow.feature.settings
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -68,9 +71,41 @@ public fun SyncStatusCard(
             TextButton(onClick = { onEvent(SyncStatusUiEvent.SyncNow) }) {
                 Text(text = "Sync now")
             }
+            WifiOnlyUploadsRow(
+                wifiOnly = state.wifiOnlyUploads,
+                onChange = { onEvent(SyncStatusUiEvent.SetWifiOnlyUploads(it)) },
+            )
         }
     }
 }
+
+/**
+ * Where the materials screen's "Waiting for Wi-Fi" notice leads. On by default — materials can be
+ * 50 MB each — and the explanation says what turning it off costs, so the choice is informed.
+ */
+@Composable
+private fun WifiOnlyUploadsRow(
+    wifiOnly: Boolean,
+    onChange: (Boolean) -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = "Upload files on Wi-Fi only", style = MaterialTheme.typography.bodyLarge)
+            Text(text = wifiOnlyUploadsSummary(wifiOnly), style = MaterialTheme.typography.bodySmall)
+        }
+        Switch(checked = wifiOnly, onCheckedChange = onChange)
+    }
+}
+
+internal fun wifiOnlyUploadsSummary(wifiOnly: Boolean): String =
+    if (wifiOnly) {
+        "Files wait until you're on Wi-Fi, so they don't use your mobile data."
+    } else {
+        "Files upload on any connection, which can use your mobile data."
+    }
 
 private fun SyncStatusUiState.pendingSummary(): String =
     when (pendingCount) {

@@ -211,6 +211,7 @@ private fun MaterialsEntry(
                     backStack.add(MaterialsRoute(materialId))
                 }
             },
+            onOpenUploadSettings = { backStack.add(SettingsRoute) },
         )
     } else {
         MaterialDetailRoute(

@@ -42,6 +42,13 @@ class SyncStatusCardTest {
         assertEquals("This device has not synced yet.", SyncStatusUiState(SyncStatus()).lastSuccessSummary())
     }
 
+    @Test
+    fun `the Wi-Fi-only switch says what each choice costs`() {
+        assertTrue("mobile data" in wifiOnlyUploadsSummary(wifiOnly = true))
+        assertTrue("mobile data" in wifiOnlyUploadsSummary(wifiOnly = false))
+        assertNotEquals(wifiOnlyUploadsSummary(true), wifiOnlyUploadsSummary(false))
+    }
+
     private companion object {
         val AT: Instant = Instant.parse("2026-03-01T09:00:00Z")
     }

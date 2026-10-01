@@ -149,7 +149,11 @@ class WorkManagerMaterialUploadCoordinatorTest {
             assertEquals(
                 "the request is enqueued, not running and not failed",
                 WorkInfo.State.ENQUEUED,
-                workManager.getWorkInfosForUniqueWork(materialUploadWorkName(UUID_1)).get().single().state,
+                workManager
+                    .getWorkInfosForUniqueWork(materialUploadWorkName(UUID_1))
+                    .get()
+                    .single()
+                    .state,
             )
 
             conditions.value = conditions.value.copy(metered = false)

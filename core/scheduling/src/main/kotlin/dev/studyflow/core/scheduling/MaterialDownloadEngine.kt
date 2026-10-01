@@ -111,15 +111,25 @@ public class MaterialDownloadEngine(
             }
         } catch (exception: CancellationException) {
             throw exception
+        } catch (exception: ObjectStoreException.NotFound) {
+            onRemoteMissing(material.id)
+            storeFailure(material, stage, exception)
         } catch (exception: ObjectStoreException) {
-            if (exception is ObjectStoreException.NotFound) onRemoteMissing(material.id)
-            val reason = exception.message ?: exception::class.simpleName.orEmpty()
-            log(material.id, stage, MaterialTransferOutcome.FAILURE, exception.retryable, throwable = exception)
-            if (exception.retryable) DownloadOutcome.Retryable(reason) else DownloadOutcome.Permanent(reason)
+            storeFailure(material, stage, exception)
         } catch (exception: IOException) {
             log(material.id, stage, MaterialTransferOutcome.FAILURE, retryable = true, throwable = exception)
             DownloadOutcome.Retryable("download interrupted: ${exception.message}")
         }
+    }
+
+    private fun storeFailure(
+        material: Material,
+        stage: MaterialTransferStage,
+        exception: ObjectStoreException,
+    ): DownloadOutcome {
+        val reason = exception.message ?: exception::class.simpleName.orEmpty()
+        log(material.id, stage, MaterialTransferOutcome.FAILURE, exception.retryable, throwable = exception)
+        return if (exception.retryable) DownloadOutcome.Retryable(reason) else DownloadOutcome.Permanent(reason)
     }
 
     private suspend fun downloadParts(

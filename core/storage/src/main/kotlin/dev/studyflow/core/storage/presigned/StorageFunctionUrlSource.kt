@@ -92,7 +92,10 @@ public class StorageFunctionUrlSource(
                         put("contentHash", hash.hex)
                         put("contentType", request.contentType)
                         put("sizeBytes", request.sizeBytes)
-                        put("partChecksums", buildJsonArray { request.partChecksums.forEach { add(JsonPrimitive(it)) } })
+                        put(
+                            "partChecksums",
+                            buildJsonArray { request.partChecksums.forEach { add(JsonPrimitive(it)) } },
+                        )
                     },
             )
         return parse(OP_INIT) {
@@ -166,34 +169,39 @@ public class StorageFunctionUrlSource(
         return parse(OP_STAT) { response.toStoredObject(key) }
     }
 
-    // A transport failure of any kind is the same thing to a caller: the request may not have
-    // arrived, and repeating it later is the remedy.
-    @Suppress("TooGenericExceptionCaught")
     private suspend fun call(
         operation: String,
         key: ObjectKey,
         body: JsonObject,
     ): JsonObject {
-        val (status, text) =
-            try {
-                val response =
-                    client.post("$baseUrl/$operation") {
-                        contentType(ContentType.Application.Json)
-                        setBody(body.toString())
-                    }
-                response.status to response.bodyAsText()
-            } catch (cancellation: CancellationException) {
-                throw cancellation
-            } catch (failure: Throwable) {
-                // Named, not attached: an engine exception can quote the request, and its headers
-                // carry the user's token.
-                throw ObjectStoreException.Transient("$operation for '$key' failed: ${failure::class.simpleName}")
-            }
-
+        val (status, text) = post(operation, key, body)
         val json = text.takeIf(String::isNotBlank)?.let(::parseObjectOrNull)
         if (status.isSuccess()) return json ?: JsonObject(emptyMap())
         throw failureFor(operation, key, status, json?.get("code")?.jsonPrimitive?.contentOrNull)
     }
+
+    // A transport failure of any kind is the same thing to a caller: the request may not have
+    // arrived, and repeating it later is the remedy.
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun post(
+        operation: String,
+        key: ObjectKey,
+        body: JsonObject,
+    ): Pair<HttpStatusCode, String> =
+        try {
+            val response =
+                client.post("$baseUrl/$operation") {
+                    contentType(ContentType.Application.Json)
+                    setBody(body.toString())
+                }
+            response.status to response.bodyAsText()
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (failure: Throwable) {
+            // Named, not attached: an engine exception can quote the request, and its headers
+            // carry the user's token.
+            throw ObjectStoreException.Transient("$operation for '$key' failed: ${failure::class.simpleName}")
+        }
 
     private fun hashBody(hash: ContentHash): JsonObject = buildJsonObject { put("contentHash", hash.hex) }
 
@@ -258,34 +266,56 @@ public class StorageFunctionUrlSource(
         ): ObjectStoreException {
             val subject = "$operation for '$key' (${status.value} ${code ?: "no code"})"
             return when {
-                code == "object_not_found" -> ObjectStoreException.NotFound(key)
+                code == "object_not_found" -> {
+                    ObjectStoreException.NotFound(key)
+                }
 
                 // Signed out or the session lapsed: the bearer plugin has already tried a refresh,
                 // so this resolves once the user signs in again rather than never.
-                status == HttpStatusCode.Unauthorized -> ObjectStoreException.Transient("$subject: not signed in")
+                status == HttpStatusCode.Unauthorized -> {
+                    ObjectStoreException.Transient("$subject: not signed in")
+                }
 
                 // `upload_initializing` is explicitly "retry shortly"; `object_already_exists` and
                 // `upload_not_completable` mean another attempt is finishing the same object, which
                 // the next run's `stat` will find.
-                status == HttpStatusCode.Conflict -> ObjectStoreException.Transient(subject)
+                status == HttpStatusCode.Conflict -> {
+                    ObjectStoreException.Transient(subject)
+                }
 
                 // The reservation lapsed (24 h) or was reaped; a fresh `initUpload` opens a new one.
-                code == "upload_not_found" -> ObjectStoreException.Transient(subject)
+                code == "upload_not_found" -> {
+                    ObjectStoreException.Transient(subject)
+                }
 
                 // An older deployment without this operation: redeploying fixes it, not the user.
-                code == "endpoint_not_found" -> ObjectStoreException.Transient("$subject: storage service is out of date")
+                code == "endpoint_not_found" -> {
+                    ObjectStoreException.Transient(
+                        "$subject: storage service is out of date",
+                    )
+                }
 
-                code == "quota_exceeded" -> ObjectStoreException.QuotaExceeded(subject)
+                code == "quota_exceeded" -> {
+                    ObjectStoreException.QuotaExceeded(subject)
+                }
 
-                code == "integrity_mismatch" || code == "scan_rejected" -> ObjectStoreException.Integrity(subject)
+                code == "integrity_mismatch" || code == "scan_rejected" -> {
+                    ObjectStoreException.Integrity(subject)
+                }
 
-                status == HttpStatusCode.TooManyRequests -> ObjectStoreException.Transient(subject)
+                status == HttpStatusCode.TooManyRequests -> {
+                    ObjectStoreException.Transient(subject)
+                }
 
-                status.value >= HttpStatusCode.InternalServerError.value -> ObjectStoreException.Transient(subject)
+                status.value >= HttpStatusCode.InternalServerError.value -> {
+                    ObjectStoreException.Transient(subject)
+                }
 
                 // `413 file_too_large`, `415 unsupported_media_type` and every `400`: the request
                 // itself is unacceptable and resending it unchanged cannot help.
-                else -> ObjectStoreException.AccessDenied(subject)
+                else -> {
+                    ObjectStoreException.AccessDenied(subject)
+                }
             }
         }
 

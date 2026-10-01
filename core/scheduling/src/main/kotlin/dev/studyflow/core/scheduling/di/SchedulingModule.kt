@@ -10,10 +10,6 @@ import dagger.hilt.components.SingletonComponent
 import dagger.multibindings.IntoSet
 import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.logging.AppLogger
-import dev.studyflow.core.scheduling.MaterialRemoteVerifier
-import dev.studyflow.core.scheduling.MaterialUploadGate
-import dev.studyflow.core.scheduling.SharedPreferencesRemoteCopyLedger
-import dev.studyflow.core.storage.ObjectStore
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.DefaultAnchoredClock
@@ -53,6 +49,8 @@ import dev.studyflow.core.scheduling.AndroidReminderPlatformScheduler
 import dev.studyflow.core.scheduling.AndroidSchedulingCapabilitiesProvider
 import dev.studyflow.core.scheduling.ApiSyncTransport
 import dev.studyflow.core.scheduling.DownloadTransport
+import dev.studyflow.core.scheduling.MaterialRemoteVerifier
+import dev.studyflow.core.scheduling.MaterialUploadGate
 import dev.studyflow.core.scheduling.ReminderActionExecutor
 import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
 import dev.studyflow.core.scheduling.ReminderIntegrityCoordinator
@@ -61,14 +59,16 @@ import dev.studyflow.core.scheduling.ReminderSchedulingService
 import dev.studyflow.core.scheduling.RemoteChangesListener
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
 import dev.studyflow.core.scheduling.SharedPreferencesDownloadProgressStore
+import dev.studyflow.core.scheduling.SharedPreferencesRemoteCopyLedger
 import dev.studyflow.core.scheduling.SyncOnSessionCommandObserver
 import dev.studyflow.core.scheduling.UrlConnectionDownloadTransport
 import dev.studyflow.core.scheduling.WeeklySummaryDelivery
 import dev.studyflow.core.scheduling.WeeklySummaryScheduler
 import dev.studyflow.core.scheduling.WorkManagerMaterialDownloadCoordinator
 import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
-import dev.studyflow.core.scheduling.WorkManagerUploadNetworkSettings
 import dev.studyflow.core.scheduling.WorkManagerSyncCoordinator
+import dev.studyflow.core.scheduling.WorkManagerUploadNetworkSettings
+import dev.studyflow.core.storage.ObjectStore
 import kotlinx.coroutines.flow.first
 import javax.inject.Singleton
 

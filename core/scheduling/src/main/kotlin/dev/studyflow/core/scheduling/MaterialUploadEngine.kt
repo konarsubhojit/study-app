@@ -17,6 +17,7 @@ import dev.studyflow.core.storage.UploadRequest
 import dev.studyflow.core.storage.UploadedPart
 import kotlinx.coroutines.flow.first
 import java.io.File
+import java.io.FileNotFoundException
 import java.io.IOException
 import java.io.RandomAccessFile
 import java.net.URI
@@ -89,6 +90,26 @@ public class MaterialUploadEngine(
         // The transfer rewrites the row as parts are acknowledged, so a failure has to be recorded
         // against the newest snapshot rather than the one this function started with.
         var latest = material
+
+        // The local staging copy is gone or unreadable; resending the same bytes cannot help.
+        suspend fun localFileFailure(
+            source: Material,
+            exception: IOException,
+        ): UploadOutcome {
+            val reason = "local file unreadable: ${exception.message}"
+            source.fail(reason, retryable = false)
+            log(
+                material.id,
+                stage,
+                MaterialTransferOutcome.FAILURE,
+                retryable = false,
+                part = partNumber,
+                partCount = partCount,
+                throwable = exception,
+            )
+            return UploadOutcome.Permanent(reason)
+        }
+
         return try {
             log(material.id, stage, MaterialTransferOutcome.STARTED, retryable = true)
             stage = MaterialTransferStage.DEDUPE
@@ -117,20 +138,12 @@ public class MaterialUploadEngine(
                 exception,
             )
             if (exception.retryable) UploadOutcome.Retryable(reason) else UploadOutcome.Permanent(reason)
+        } catch (exception: FileNotFoundException) {
+            // A file that is gone (app data cleared under a surviving catalogue row) is recorded as
+            // gone, so the catalogue offers re-attach or remove rather than a retry that cannot work.
+            localFileFailure(latest.copy(localPath = null), exception)
         } catch (exception: IOException) {
-            // The local staging copy is gone or unreadable; resending the same bytes cannot help.
-            val reason = "local file unreadable: ${exception.message}"
-            latest.fail(reason, retryable = false)
-            log(
-                material.id,
-                stage,
-                MaterialTransferOutcome.FAILURE,
-                retryable = false,
-                part = partNumber,
-                partCount = partCount,
-                throwable = exception,
-            )
-            UploadOutcome.Permanent(reason)
+            localFileFailure(latest, exception)
         }
     }
 

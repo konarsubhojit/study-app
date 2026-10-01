@@ -109,15 +109,20 @@ public class PresignedObjectStore(
         part: SignedPart,
     ): SignedPart {
         val subject = "part ${part.number} of '${session.key}'"
-        val request =
-            openRequests[session.uploadId]
-                ?: throw ObjectStoreException.AccessDenied("$subject has an expired URL; a fresh signed URL is needed")
-        val fresh = urls.createUpload(request)
-        if (fresh.uploadId != session.uploadId) {
-            throw ObjectStoreException.AccessDenied("$subject belongs to an upload that has been replaced")
-        }
-        return fresh.parts.firstOrNull { it.number == part.number && it.part == part.part }
-            ?: throw ObjectStoreException.AccessDenied("$subject is no longer part of the upload")
+        val request = openRequests[session.uploadId]
+        val fresh = request?.let { urls.createUpload(it) }
+        val problem =
+            when {
+                fresh == null -> "has an expired URL; a fresh signed URL is needed"
+                fresh.uploadId != session.uploadId -> "belongs to an upload that has been replaced"
+                else -> "is no longer part of the upload"
+            }
+        val renewed =
+            fresh
+                ?.takeIf { it.uploadId == session.uploadId }
+                ?.parts
+                ?.firstOrNull { it.number == part.number && it.part == part.part }
+        return renewed ?: throw ObjectStoreException.AccessDenied("$subject $problem")
     }
 
     override suspend fun completeUpload(

@@ -87,24 +87,30 @@ public class MaterialRemoteVerifier(
                 .filterNot { (material, key) -> ledger.isVerified(material.id, key) }
                 .take(limit)
         for ((material, remoteKey) in candidates) {
-            if (remoteKey in healedKeys) continue
-            // A key this client could never have written cannot be fetched either; it reads as missing.
-            val key = runCatching { ObjectKey(remoteKey) }.getOrNull()
-            val stored =
-                try {
-                    key?.let { objectStore.stat(it) }
-                } catch (failure: ObjectStoreException) {
-                    if (failure.retryable) break else continue
-                }
-            if (stored == null) {
+            // A twin of a row already healed this run went back with it; asking again is wasted.
+            val copy = if (remoteKey in healedKeys) RemoteCopy.Unknown else probe(remoteKey)
+            if (copy == RemoteCopy.Unreachable) break
+            if (copy == RemoteCopy.Missing) {
                 healed += heal(material)
                 healedKeys += remoteKey
-            } else {
+            } else if (copy == RemoteCopy.Present) {
                 ledger.markVerified(material.id, remoteKey)
             }
         }
         return healed
     }
+
+    private suspend fun probe(remoteKey: String): RemoteCopy {
+        // A key this client could never have written cannot be fetched either; it reads as missing.
+        val key = runCatching { ObjectKey(remoteKey) }.getOrNull() ?: return RemoteCopy.Missing
+        return try {
+            if (objectStore.stat(key) == null) RemoteCopy.Missing else RemoteCopy.Present
+        } catch (failure: ObjectStoreException) {
+            if (failure.retryable) RemoteCopy.Unreachable else RemoteCopy.Unknown
+        }
+    }
+
+    private enum class RemoteCopy { Present, Missing, Unknown, Unreachable }
 
     /**
      * Heals [materialId] after something else — a download — found its remote object missing. A

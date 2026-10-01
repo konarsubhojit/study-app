@@ -7,11 +7,14 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dev.studyflow.core.common.coroutines.DispatcherProvider
+import dev.studyflow.core.domain.materials.ImportFailureReason
 import dev.studyflow.core.domain.materials.ImportOutcome
 import dev.studyflow.core.domain.materials.MaterialImporter
 import dev.studyflow.core.domain.materials.MaterialRepository
 import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
+import dev.studyflow.core.domain.materials.ReattachOutcome
 import dev.studyflow.core.domain.materials.ShareImportInbox
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailLoader
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
@@ -22,6 +25,7 @@ import dev.studyflow.core.ui.mvi.UiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.UUID
@@ -34,6 +38,11 @@ public data class MaterialsUiState(
     val loaded: Boolean = false,
     val isImporting: Boolean = false,
     val results: List<MaterialImportResult> = emptyList(),
+    /**
+     * Why queued uploads are not running, or `null` when nothing holds them back. Pending materials
+     * read as waiting on this rather than as a bare "Pending upload", which looks like a fault.
+     */
+    val uploadWaitReason: UploadWaitReason? = null,
 ) : UiState
 
 /** One file's outcome from a picker, document, or share-sheet import. */
@@ -83,6 +92,25 @@ public sealed interface MaterialsUiEvent : UiEvent {
     public data class RetryUpload(
         val materialId: String,
     ) : MaterialsUiEvent
+
+    /** The user asked to pick a file to restore a material whose file is gone ([Material.isMissingSource]). */
+    public data class ChooseReattachFile(
+        val materialId: String,
+    ) : MaterialsUiEvent
+
+    /** The user picked [uri] to restore a material whose file is gone ([Material.isMissingSource]). */
+    public data class ReattachFile(
+        val materialId: String,
+        val uri: String,
+    ) : MaterialsUiEvent
+
+    /** The user chose to remove a material whose file is gone rather than re-attach it. */
+    public data class RemoveMaterial(
+        val materialId: String,
+    ) : MaterialsUiEvent
+
+    /** The user asked to change when uploads may run, from the "Waiting for Wi-Fi" notice. */
+    public data object OpenUploadSettings : MaterialsUiEvent
 }
 
 public sealed interface MaterialsUiEffect : UiEffect {
@@ -91,6 +119,14 @@ public sealed interface MaterialsUiEffect : UiEffect {
      * catalogue row and a duplicate import's "view existing" action both resolve to.
      */
     public data class NavigateToMaterial(
+        val materialId: String,
+    ) : MaterialsUiEffect
+
+    /** Asks the app shell to open the settings screen holding the upload network choice. */
+    public data object NavigateToUploadSettings : MaterialsUiEffect
+
+    /** Asks the route to open a single-document picker whose result re-attaches to [materialId]. */
+    public data class PickReattachFile(
         val materialId: String,
     ) : MaterialsUiEffect
 }
@@ -115,12 +151,14 @@ public class MaterialsViewModel
                 repository.observeAll(),
                 results,
                 importing,
-            ) { catalog, results, importing ->
+                uploadCoordinator.waitReason,
+            ) { catalog, results, importing, waitReason ->
                 MaterialsUiState(
                     catalog = catalog,
                     loaded = true,
                     isImporting = importing,
                     results = results,
+                    uploadWaitReason = waitReason,
                 )
             }.stateInViewModel(MaterialsUiState())
 
@@ -169,6 +207,62 @@ public class MaterialsViewModel
 
                 is MaterialsUiEvent.RetryUpload -> {
                     viewModelScope.launch { uploadCoordinator.retryUpload(event.materialId) }
+                }
+
+                is MaterialsUiEvent.ChooseReattachFile -> {
+                    emitEffect(MaterialsUiEffect.PickReattachFile(event.materialId))
+                }
+
+                is MaterialsUiEvent.ReattachFile -> {
+                    reattach(event.materialId, event.uri)
+                }
+
+                is MaterialsUiEvent.RemoveMaterial -> {
+                    viewModelScope.launch {
+                        uploadCoordinator.cancelUpload(event.materialId)
+                        repository.delete(event.materialId)
+                    }
+                }
+
+                MaterialsUiEvent.OpenUploadSettings -> {
+                    emitEffect(MaterialsUiEffect.NavigateToUploadSettings)
+                }
+            }
+        }
+
+        private fun reattach(
+            materialId: String,
+            uri: String,
+        ) {
+            viewModelScope.launch {
+                val displayName =
+                    repository
+                        .observeById(materialId)
+                        .first()
+                        ?.displayName
+                        .orEmpty()
+                val status =
+                    when (importer.reattach(materialId, uri)) {
+                        ReattachOutcome.Reattached -> {
+                            uploadCoordinator.enqueueUpload(materialId)
+                            null
+                        }
+
+                        ReattachOutcome.Mismatch -> {
+                            MaterialImportResultStatus.Rejected(MaterialsCopy.REATTACH_MISMATCH)
+                        }
+
+                        ReattachOutcome.Failed -> {
+                            MaterialImportResultStatus.Failed(MaterialsCopy.failure(ImportFailureReason.UNREADABLE))
+                        }
+
+                        ReattachOutcome.MaterialMissing -> {
+                            null
+                        }
+                    }
+                if (status != null) {
+                    results.value =
+                        results.value + MaterialImportResult(UUID.randomUUID().toString(), displayName, status)
                 }
             }
         }

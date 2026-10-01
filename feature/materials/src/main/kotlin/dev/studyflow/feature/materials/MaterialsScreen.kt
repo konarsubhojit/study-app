@@ -30,9 +30,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -48,6 +51,7 @@ import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementKeys
 import dev.studyflow.core.designsystem.motion.StudyFlowSharedElementScope
 import dev.studyflow.core.designsystem.motion.studyFlowSharedElement
 import dev.studyflow.core.designsystem.theme.spacing
+import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.domain.materials.thumbnails.ThumbnailPlaceholder
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
@@ -67,6 +71,7 @@ import java.util.Locale
 public fun MaterialsRoute(
     modifier: Modifier = Modifier,
     onOpenMaterial: (String) -> Unit = {},
+    onOpenUploadSettings: () -> Unit = {},
     sharedElementScope: StudyFlowSharedElementScope? = null,
     viewModel: MaterialsViewModel = hiltViewModel(),
 ) {
@@ -80,14 +85,37 @@ public fun MaterialsRoute(
         rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
             if (uris.isNotEmpty()) viewModel.onEvent(MaterialsUiEvent.ImportUris(uris.map(Uri::toString)))
         }
+    // Which material a single-document pick is re-attaching to; saved so it survives the picker
+    // recreating this screen.
+    var reattachingId by rememberSaveable { mutableStateOf<String?>(null) }
+    val reattachLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+            val materialId = reattachingId
+            reattachingId = null
+            if (uri != null && materialId != null) {
+                viewModel.onEvent(MaterialsUiEvent.ReattachFile(materialId, uri.toString()))
+            }
+        }
 
     // Read through a remembered snapshot, not the parameter itself: this effect is keyed on
     // `viewModel` alone so it is not restarted every time a caller passes a fresh lambda literal.
     val currentOnOpenMaterial by rememberUpdatedState(onOpenMaterial)
+    val currentOnOpenUploadSettings by rememberUpdatedState(onOpenUploadSettings)
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
-                is MaterialsUiEffect.NavigateToMaterial -> currentOnOpenMaterial(effect.materialId)
+                is MaterialsUiEffect.NavigateToMaterial -> {
+                    currentOnOpenMaterial(effect.materialId)
+                }
+
+                MaterialsUiEffect.NavigateToUploadSettings -> {
+                    currentOnOpenUploadSettings()
+                }
+
+                is MaterialsUiEffect.PickReattachFile -> {
+                    reattachingId = effect.materialId
+                    reattachLauncher.launch(arrayOf(ALL_MIME_TYPES))
+                }
             }
         }
     }
@@ -133,6 +161,14 @@ public fun MaterialsScreen(
             )
         }
 
+        val waitReason = state.uploadWaitReason
+        if (waitReason != null && state.catalog.any { it.sync == SyncState.Pending }) {
+            UploadWaitingNotice(
+                reason = waitReason,
+                onOpenUploadSettings = { onEvent(MaterialsUiEvent.OpenUploadSettings) },
+            )
+        }
+
         AnimatedContent(
             targetState = state.displayState,
             transitionSpec = {
@@ -152,9 +188,15 @@ public fun MaterialsScreen(
                 MaterialsDisplayState.Content -> {
                     MaterialsGrid(
                         catalog = state.catalog,
+                        waitReason = state.uploadWaitReason,
                         onLoadThumbnail = onLoadThumbnail,
                         onMaterialClick = { id -> onEvent(MaterialsUiEvent.ViewExisting(id)) },
-                        onRetryUpload = { id -> onEvent(MaterialsUiEvent.RetryUpload(id)) },
+                        actions =
+                            MaterialCellActions(
+                                onRetryUpload = { id -> onEvent(MaterialsUiEvent.RetryUpload(id)) },
+                                onReattach = { id -> onEvent(MaterialsUiEvent.ChooseReattachFile(id)) },
+                                onRemove = { id -> onEvent(MaterialsUiEvent.RemoveMaterial(id)) },
+                            ),
                         sharedElementScope = sharedElementScope,
                     )
                 }
@@ -182,6 +224,34 @@ private fun PickerActions(
         }
         if (isImporting) {
             CircularProgressIndicator(modifier = Modifier.padding(top = MaterialTheme.spacing.small))
+        }
+    }
+}
+
+/**
+ * Says why pending uploads are not moving. Only Wi-Fi-only is a choice the user made, so only it
+ * offers a way to change it; a missing connection or a low battery just explains itself.
+ */
+@Composable
+private fun UploadWaitingNotice(
+    reason: UploadWaitReason,
+    onOpenUploadSettings: () -> Unit,
+) {
+    Card(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = MaterialTheme.spacing.medium),
+    ) {
+        Column(
+            modifier = Modifier.padding(MaterialTheme.spacing.medium),
+            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
+        ) {
+            Text(text = MaterialsCopy.waiting(reason), style = MaterialTheme.typography.titleSmall)
+            Text(text = MaterialsCopy.waitingNotice(reason), style = MaterialTheme.typography.bodyMedium)
+            if (reason == UploadWaitReason.WAITING_FOR_WIFI) {
+                TextButton(onClick = onOpenUploadSettings) { Text(text = "Upload settings") }
+            }
         }
     }
 }
@@ -247,12 +317,20 @@ private fun ImportResultRow(
     }
 }
 
+/** What a catalogue cell can ask for about its upload, by material id. */
+private class MaterialCellActions(
+    val onRetryUpload: (String) -> Unit,
+    val onReattach: (String) -> Unit,
+    val onRemove: (String) -> Unit,
+)
+
 @Composable
 private fun MaterialsGrid(
     catalog: List<Material>,
+    waitReason: UploadWaitReason?,
     onLoadThumbnail: suspend (Material) -> ImageBitmap?,
     onMaterialClick: (String) -> Unit,
-    onRetryUpload: (String) -> Unit,
+    actions: MaterialCellActions,
     sharedElementScope: StudyFlowSharedElementScope?,
 ) {
     // A grid of real thumbnails is the feature (issue #42): cells are sized adaptively so a phone
@@ -267,9 +345,10 @@ private fun MaterialsGrid(
         items(catalog, key = Material::id) { material ->
             MaterialGridCell(
                 material = material,
+                waitReason = waitReason,
                 onLoadThumbnail = onLoadThumbnail,
                 onClick = { onMaterialClick(material.id) },
-                onRetryUpload = { onRetryUpload(material.id) },
+                actions = actions,
                 modifier = Modifier.animateItem(),
                 sharedElementScope = sharedElementScope,
             )
@@ -280,9 +359,10 @@ private fun MaterialsGrid(
 @Composable
 private fun MaterialGridCell(
     material: Material,
+    waitReason: UploadWaitReason?,
     onLoadThumbnail: suspend (Material) -> ImageBitmap?,
     onClick: () -> Unit,
-    onRetryUpload: () -> Unit,
+    actions: MaterialCellActions,
     modifier: Modifier = Modifier,
     sharedElementScope: StudyFlowSharedElementScope? = null,
 ) {
@@ -315,26 +395,25 @@ private fun MaterialGridCell(
                     ),
             )
             Text(text = formatSize(material.sizeBytes), style = MaterialTheme.typography.bodySmall)
-            when (material.sync) {
-                SyncState.Pending -> {
-                    Text(text = "Pending upload", style = MaterialTheme.typography.bodySmall)
-                }
-
-                is SyncState.Uploading -> {
-                    Text(text = "Uploading", style = MaterialTheme.typography.bodySmall)
-                }
-
-                is SyncState.Failed -> {
-                    Text(text = "Upload failed", style = MaterialTheme.typography.bodySmall)
-                }
-
-                SyncState.Synced -> Unit
+            MaterialsCopy.uploadStatus(material, waitReason)?.let { status ->
+                Text(text = status, style = MaterialTheme.typography.bodySmall)
             }
             // A failed upload is the one sync state a tap on the cell cannot resolve — the user
             // needs an explicit way to ask for another attempt, not just to reopen the file
-            // (issue #38). Every other sync state renders without it.
-            if (material.sync is SyncState.Failed) {
-                TextButton(onClick = onRetryUpload) { Text(text = "Retry") }
+            // (issue #38). A material whose file is gone cannot be retried at all, so it offers
+            // the two things that can actually resolve it instead.
+            when {
+                material.isMissingSource -> {
+                    // Stacked: a phone-width grid cell has no room for both side by side.
+                    Column {
+                        TextButton(onClick = { actions.onReattach(material.id) }) { Text(text = "Re-attach") }
+                        TextButton(onClick = { actions.onRemove(material.id) }) { Text(text = "Remove") }
+                    }
+                }
+
+                material.sync is SyncState.Failed -> {
+                    TextButton(onClick = { actions.onRetryUpload(material.id) }) { Text(text = "Retry") }
+                }
             }
         }
     }

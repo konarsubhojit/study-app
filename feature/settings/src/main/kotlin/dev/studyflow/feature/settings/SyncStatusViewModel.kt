@@ -3,6 +3,7 @@ package dev.studyflow.feature.settings
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
+import dev.studyflow.core.domain.materials.UploadNetworkSettings
 import dev.studyflow.core.domain.sync.SyncScheduler
 import dev.studyflow.core.domain.sync.SyncStatus
 import dev.studyflow.core.domain.sync.SyncStatusRepository
@@ -12,7 +13,7 @@ import dev.studyflow.core.ui.mvi.UiEffect
 import dev.studyflow.core.ui.mvi.UiEvent
 import dev.studyflow.core.ui.mvi.UiState
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 import kotlin.time.Instant
@@ -27,6 +28,8 @@ import kotlin.time.Instant
  */
 public data class SyncStatusUiState(
     val status: SyncStatus = SyncStatus(),
+    /** Whether material uploads wait for Wi-Fi; the default, so large files never use mobile data unasked. */
+    val wifiOnlyUploads: Boolean = true,
 ) : UiState {
     val pendingCount: Int get() = status.pendingCount
     val lastSuccessAt: Instant? get() = status.lastSuccessAt
@@ -49,6 +52,11 @@ public data class SyncStatusUiState(
 public sealed interface SyncStatusUiEvent : UiEvent {
     /** The user tapped "Sync now". */
     public data object SyncNow : SyncStatusUiEvent
+
+    /** The user flipped "Upload files on Wi-Fi only". */
+    public data class SetWifiOnlyUploads(
+        val wifiOnly: Boolean,
+    ) : SyncStatusUiEvent
 }
 
 /** No effects today; declared so the screen keeps the same MVI shape as its neighbours. */
@@ -61,14 +69,13 @@ public class SyncStatusViewModel
         savedStateHandle: SavedStateHandle,
         statusRepository: SyncStatusRepository,
         private val syncScheduler: SyncScheduler,
+        private val uploadNetworkSettings: UploadNetworkSettings,
     ) : MviViewModel<SyncStatusUiEvent, SyncStatusUiEffect>(savedStateHandle) {
         public val state: StateFlow<SyncStatusUiState> =
-            statusRepository
-                .observeStatus()
-                // The state is read straight from the store rather than mirrored in a local flag:
-                // the run happens in a worker, possibly in another process lifetime, so anything
-                // this ViewModel set by hand could outlive the run that finished it.
-                .map(::SyncStatusUiState)
+            // The state is read straight from the store rather than mirrored in a local flag:
+            // the run happens in a worker, possibly in another process lifetime, so anything
+            // this ViewModel set by hand could outlive the run that finished it.
+            combine(statusRepository.observeStatus(), uploadNetworkSettings.wifiOnly, ::SyncStatusUiState)
                 .stateInViewModel(SyncStatusUiState())
 
         override fun onEvent(event: SyncStatusUiEvent) {
@@ -77,6 +84,10 @@ public class SyncStatusViewModel
                     viewModelScope.launch {
                         syncScheduler.requestSync(SyncTrigger.MANUAL)
                     }
+                }
+
+                is SyncStatusUiEvent.SetWifiOnlyUploads -> {
+                    viewModelScope.launch { uploadNetworkSettings.setWifiOnly(event.wifiOnly) }
                 }
             }
         }
