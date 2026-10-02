@@ -206,6 +206,9 @@ public fun MaterialDetailScreen(
                 fadeIn(StudyFlowMotion.effects()) togetherWith fadeOut(StudyFlowMotion.effects())
             },
             label = "material detail state",
+            // Keyed by branch, not snapshot, so a catalogue update to the shown material recomposes
+            // in place instead of cross-fading into itself.
+            contentKey = { displayState -> displayState::class },
         ) { displayState ->
             when (displayState) {
                 DetailDisplayState.Loading -> {
@@ -219,9 +222,10 @@ public fun MaterialDetailScreen(
                     )
                 }
 
-                DetailDisplayState.Content -> {
+                is DetailDisplayState.Content -> {
                     MaterialDetailContent(
-                        state = state,
+                        material = displayState.material,
+                        state = displayState.state,
                         onEvent = onEvent,
                         onShare = onShare,
                         onExport = onExport,
@@ -236,6 +240,7 @@ public fun MaterialDetailScreen(
 
 @Composable
 private fun MaterialDetailContent(
+    material: Material,
     state: MaterialDetailUiState,
     onEvent: (MaterialDetailUiEvent) -> Unit,
     onShare: (Material, MaterialPreviewSource?) -> Unit,
@@ -243,7 +248,6 @@ private fun MaterialDetailContent(
     onStartStudySession: (String?) -> Unit,
     sharedElementScope: StudyFlowSharedElementScope?,
 ) {
-    val material = requireNotNull(state.material)
     Column(
         modifier =
             Modifier
@@ -270,6 +274,7 @@ private fun MaterialDetailContent(
             onStartStudySession = onStartStudySession,
         )
         MaterialPreview(
+            material = material,
             state = state,
             onPdfPageChange = { pageIndex -> onEvent(MaterialDetailUiEvent.PdfPageChanged(pageIndex)) },
             onPlaybackChange = { position, speed ->
@@ -318,6 +323,7 @@ private fun PreviewActions(
 
 @Composable
 private fun MaterialPreview(
+    material: Material,
     state: MaterialDetailUiState,
     onPdfPageChange: (Int) -> Unit,
     onPlaybackChange: (Long, Float) -> Unit,
@@ -325,7 +331,6 @@ private fun MaterialPreview(
     onCancelArchiveExtraction: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val material = state.material
     val source = state.previewSource
     when {
         state.previewSourceLoading -> {
@@ -336,7 +341,7 @@ private fun MaterialPreview(
             EmptyState(message = state.previewSourceMessage, modifier = modifier.fillMaxSize())
         }
 
-        material == null || source == null -> {
+        source == null -> {
             EmptyState(message = "No preview is available for this material.", modifier = modifier)
         }
 
@@ -1048,12 +1053,31 @@ private const val IMAGE_PREVIEW_TAG = "ImagePreview"
 /** ~300 KB of characters — generous for notes or code, far short of loading a huge log whole. */
 private const val TEXT_PREVIEW_MAX_BYTES = 300_000
 
-private enum class DetailDisplayState { Loading, NotFound, Content }
+/**
+ * Which branch of the detail screen to show, carrying what that branch renders.
+ *
+ * [Content] holds the material and state it was chosen with because `AnimatedContent` keeps the
+ * outgoing branch composed while it fades out. Deleting a material makes the repository emit `null`
+ * before navigation removes the screen, so a branch that re-read `MaterialDetailUiState.material`
+ * would find nothing to render mid-transition; the snapshot keeps the last frame intact instead.
+ */
+private sealed interface DetailDisplayState {
+    data object Loading : DetailDisplayState
+
+    data object NotFound : DetailDisplayState
+
+    data class Content(
+        val material: Material,
+        val state: MaterialDetailUiState,
+    ) : DetailDisplayState
+}
 
 private val MaterialDetailUiState.displayState: DetailDisplayState
-    get() =
-        when {
+    get() {
+        val shown = material
+        return when {
             loading -> DetailDisplayState.Loading
-            notFound -> DetailDisplayState.NotFound
-            else -> DetailDisplayState.Content
+            shown == null -> DetailDisplayState.NotFound
+            else -> DetailDisplayState.Content(material = shown, state = this)
         }
+    }
