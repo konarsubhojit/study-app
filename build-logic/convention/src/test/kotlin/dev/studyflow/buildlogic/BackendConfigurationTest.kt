@@ -84,13 +84,14 @@ class BackendConfigurationTest {
         vararg arguments: String,
         projectRef: String? = null,
     ): GradleRunner {
-        File(repository, "app/backend.gradle.kts").copyTo(File(projectDir, "backend.gradle.kts"), overwrite = true)
         File(projectDir, "settings.gradle.kts").writeText("rootProject.name = \"backend-test\"")
         File(projectDir, "build.gradle.kts").writeText(
             """
-            apply(from = "backend.gradle.kts")
+            import dev.studyflow.buildlogic.BackendConfiguration
+            plugins { id("studyflow.backend") }
+            val backend = extensions.getByType<BackendConfiguration>()
             println("configuration completed")
-            println("backend=${'$'}{extra["backendConfigured"]} api=${'$'}{extra["apiBaseUrl"]} storage=${'$'}{extra["storageBaseUrl"]}")
+            println("backend=${'$'}{backend.configured} api=${'$'}{backend.apiBaseUrl.orEmpty()} storage=${'$'}{backend.storageBaseUrl.orEmpty()}")
             listOf("assembleMockDebug", "assembleProductionDebug", "assembleProductionRelease", "check").forEach {
                 tasks.register(it)
             }
@@ -101,6 +102,7 @@ class BackendConfigurationTest {
         }.toMutableMap()
         projectRef?.let { environment["STUDYFLOW_SUPABASE_PROJECT_REF"] = it }
         return GradleRunner.create()
+            .withPluginClasspath()
             .withProjectDir(projectDir)
             .withEnvironment(environment)
             .withArguments(*arguments, "--stacktrace")

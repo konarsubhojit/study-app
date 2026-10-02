@@ -1,15 +1,18 @@
 import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.variant.ApplicationAndroidComponentsExtension
+import dev.studyflow.buildlogic.BackendConfiguration
 import java.util.Properties
 
 plugins {
     id("studyflow.android.application")
+    id("studyflow.backend")
     id("studyflow.compose")
     alias(libs.plugins.kotlin.serialization)
 }
 
 // Pointing the app at a local mock backend is a build flag rather than a code change (issue #63):
-//   ./gradlew installProductionDebug -Pstudyflow.supabaseProjectRef=<project-ref>
+//   ./gradlew installProductionDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080 \
+//     -Pstudyflow.storageBaseUrl=http://10.0.2.2:54321/functions/v1/storage
 // 10.0.2.2 is the host machine as seen from the emulator.
 //
 // The contract is served by the `api` Supabase Edge Function (ADR 0017), whose URL is
@@ -19,10 +22,7 @@ plugins {
 // it appears in every request URL — and must be supplied to target a deployed project:
 //   ./gradlew assembleProductionRelease -Pstudyflow.supabaseProjectRef=<project-ref>
 // Both production build types require configuration; mock builds need neither URL.
-apply(from = "backend.gradle.kts")
-val backendConfigured: Boolean by extra
-val apiBaseUrl: String by extra
-val storageBaseUrl: String by extra
+val backendConfiguration = extensions.getByType<BackendConfiguration>()
 
 // Material bytes are signed for by the `storage` Edge Function (infra/supabase/functions/storage),
 // a sibling of `api` on the same project, and resolved the same way: an explicit override for a
@@ -117,8 +117,8 @@ extensions.configure<ApplicationExtension> {
     productFlavors {
         create("production") {
             dimension = "backend"
-            buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
-            buildConfigField("String", "STORAGE_BASE_URL", "\"$storageBaseUrl\"")
+            buildConfigField("String", "API_BASE_URL", "\"${backendConfiguration.apiBaseUrl.orEmpty()}\"")
+            buildConfigField("String", "STORAGE_BASE_URL", "\"${backendConfiguration.storageBaseUrl.orEmpty()}\"")
             buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         }
         // The mock flavour is served entirely by `FakeStudyFlowBackend` and performs no network
@@ -154,7 +154,7 @@ tasks.register("printVersionName") {
 
 extensions.configure<ApplicationAndroidComponentsExtension> {
     beforeVariants(selector().withFlavor("backend" to "production")) {
-        it.enable = backendConfigured
+        it.enable = backendConfiguration.configured
     }
 }
 

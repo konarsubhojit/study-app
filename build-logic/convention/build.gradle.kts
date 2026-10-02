@@ -31,6 +31,10 @@ tasks.test {
 
 gradlePlugin {
     plugins {
+        register("backend") {
+            id = "studyflow.backend"
+            implementationClass = "dev.studyflow.buildlogic.BackendConventionPlugin"
+        }
         register("androidApplication") {
             id = "studyflow.android.application"
             implementationClass = "dev.studyflow.buildlogic.AndroidApplicationConventionPlugin"

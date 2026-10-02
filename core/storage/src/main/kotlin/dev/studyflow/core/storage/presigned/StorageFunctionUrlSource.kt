@@ -200,11 +200,10 @@ public class StorageFunctionUrlSource(
         } catch (failure: Throwable) {
             // Named, not attached: an engine exception can quote the request, and its headers
             // carry the user's token.
-            val message = "$operation for '$key' failed: ${failure::class.simpleName}"
             throw if (failure.isHostResolutionFailure()) {
-                ObjectStoreException.BackendUnreachable(message)
+                ObjectStoreException.BackendUnreachable("$operation for '$key' failed: ${failure::class.simpleName}")
             } else {
-                ObjectStoreException.Transient(message)
+                ObjectStoreException.Transient("$operation for '$key' failed: ${failure::class.simpleName}")
             }
         }
 

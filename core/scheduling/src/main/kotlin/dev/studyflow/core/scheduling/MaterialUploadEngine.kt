@@ -110,6 +110,23 @@ public class MaterialUploadEngine(
             return UploadOutcome.Permanent(reason)
         }
 
+        suspend fun storageFailure(
+            exception: ObjectStoreException,
+            reason: String = exception.message ?: exception::class.simpleName.orEmpty(),
+        ): UploadOutcome {
+            latest.fail(reason, exception.retryable)
+            log(
+                material.id,
+                stage,
+                MaterialTransferOutcome.FAILURE,
+                exception.retryable,
+                partNumber,
+                partCount,
+                exception,
+            )
+            return if (exception.retryable) UploadOutcome.Retryable(reason) else UploadOutcome.Permanent(reason)
+        }
+
         return try {
             log(material.id, stage, MaterialTransferOutcome.STARTED, retryable = true)
             stage = MaterialTransferStage.DEDUPE
@@ -125,24 +142,10 @@ public class MaterialUploadEngine(
                     log(material.id, stage, MaterialTransferOutcome.STARTED, retryable = true, part, count)
                 }
             }
+        } catch (exception: ObjectStoreException.BackendUnreachable) {
+            storageFailure(exception, SyncState.Failed.BACKEND_UNREACHABLE)
         } catch (exception: ObjectStoreException) {
-            val reason =
-                if (exception is ObjectStoreException.BackendUnreachable) {
-                    SyncState.Failed.BACKEND_UNREACHABLE
-                } else {
-                    exception.message ?: exception::class.simpleName.orEmpty()
-                }
-            latest.fail(reason, exception.retryable)
-            log(
-                material.id,
-                stage,
-                MaterialTransferOutcome.FAILURE,
-                exception.retryable,
-                partNumber,
-                partCount,
-                exception,
-            )
-            if (exception.retryable) UploadOutcome.Retryable(reason) else UploadOutcome.Permanent(reason)
+            storageFailure(exception)
         } catch (exception: FileNotFoundException) {
             // A file that is gone (app data cleared under a surviving catalogue row) is recorded as
             // gone, so the catalogue offers re-attach or remove rather than a retry that cannot work.

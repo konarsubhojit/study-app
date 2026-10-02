@@ -98,11 +98,14 @@ public class PresignedObjectStore(
             // The URL is a bearer credential, and engine exceptions routinely carry the failed
             // request URL in their message, so the cause is named but never attached: nothing
             // that reaches a log line or a crash report may contain the signature.
-            val message = "part ${part.number} of '${session.key}' failed: ${failure::class.simpleName}"
             throw if (failure.isHostResolutionFailure()) {
-                ObjectStoreException.BackendUnreachable(message)
+                ObjectStoreException.BackendUnreachable(
+                    "part ${part.number} of '${session.key}' failed: ${failure::class.simpleName}",
+                )
             } else {
-                ObjectStoreException.Transient(message)
+                ObjectStoreException.Transient(
+                    "part ${part.number} of '${session.key}' failed: ${failure::class.simpleName}",
+                )
             }
         }
 
