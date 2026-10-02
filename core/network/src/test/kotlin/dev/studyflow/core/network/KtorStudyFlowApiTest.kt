@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.io.IOException
+import java.net.UnknownHostException
 import java.util.concurrent.atomic.AtomicInteger
 
 @DisplayName("KtorStudyFlowApi against a mock server")
@@ -337,6 +338,20 @@ class KtorStudyFlowApiTest {
 
             assertInstanceOf(ApiError.RateLimited::class.java, error)
             assertEquals(30L, (error as ApiError.RateLimited).retryAfter)
+        }
+
+    @Test
+    fun `a DNS failure is never replayed even for an idempotent request`() =
+        runTest {
+            val attempts = AtomicInteger()
+            val api =
+                MockBackend.api {
+                    attempts.incrementAndGet()
+                    throw UnknownHostException("private request headers")
+                }
+
+            assertEquals(ApiError.BackendUnreachable, api.subjects().errorOrNull())
+            assertEquals(1, attempts.get())
         }
 
     @Test

@@ -13,6 +13,10 @@ import dev.studyflow.core.model.SessionStatus
 import dev.studyflow.core.model.StudySession
 import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.model.TimeAnchor
+import dev.studyflow.core.network.ApiResult
+import dev.studyflow.core.network.StudyFlowApi
+import dev.studyflow.core.network.error.ApiError
+import dev.studyflow.core.network.error.UserFacingMessage
 import dev.studyflow.core.network.model.SyncDeltaDto
 import dev.studyflow.core.network.model.SyncRecordDeltaDto
 import dev.studyflow.core.network.model.SyncSessionDto
@@ -44,6 +48,24 @@ class ApiSyncTransportTest {
 
     private fun transport(): ApiSyncTransport =
         ApiSyncTransport(api = backend.api(), deviceIdProvider = { DEVICE }, logger = logger)
+
+    @Test
+    fun `an unresolved API backend is a non-retryable sync failure`() =
+        runTest {
+            val api =
+                object : StudyFlowApi by backend.api() {
+                    override suspend fun sessionChanges(
+                        cursor: String?,
+                        limit: Int,
+                    ): ApiResult<SyncDeltaDto> = ApiResult.Failure(ApiError.BackendUnreachable)
+                }
+            val result = ApiSyncTransport(api, { DEVICE }, logger).pull(cursor = null, limit = 50)
+
+            assertTrue(result is SyncResult.Failure)
+            val failure = (result as SyncResult.Failure).failure
+            assertFalse(failure.retryable)
+            assertEquals(UserFacingMessage.BackendUnreachable.defaultText, failure.message)
+        }
 
     @Test
     fun `a pushed session carries its projection and its whole event log`() =

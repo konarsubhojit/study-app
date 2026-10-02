@@ -1,14 +1,18 @@
 import com.android.build.api.dsl.ApplicationExtension
+import com.android.build.api.variant.ApplicationAndroidComponentsExtension
+import dev.studyflow.buildlogic.BackendConfiguration
 import java.util.Properties
 
 plugins {
     id("studyflow.android.application")
+    id("studyflow.backend")
     id("studyflow.compose")
     alias(libs.plugins.kotlin.serialization)
 }
 
 // Pointing the app at a local mock backend is a build flag rather than a code change (issue #63):
-//   ./gradlew installDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080
+//   ./gradlew installProductionDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080 \
+//     -Pstudyflow.storageBaseUrl=http://10.0.2.2:54321/functions/v1/storage
 // 10.0.2.2 is the host machine as seen from the emulator.
 //
 // The contract is served by the `api` Supabase Edge Function (ADR 0017), whose URL is
@@ -17,35 +21,13 @@ plugins {
 // paths are appended unchanged. The project ref is deployment configuration rather than a secret —
 // it appears in every request URL — and must be supplied to target a deployed project:
 //   ./gradlew assembleProductionRelease -Pstudyflow.supabaseProjectRef=<project-ref>
-// Unconfigured local builds retain the undeployed custom-domain URL for compatibility; release
-// workflows require a project ref before building an APK.
-val defaultApiBaseUrl = "https://api.studyflow.dev"
-val supabaseProjectRef: String? =
-    providers
-        .gradleProperty("studyflow.supabaseProjectRef")
-        .orElse(providers.environmentVariable("STUDYFLOW_SUPABASE_PROJECT_REF"))
-        .orNull
-        ?.takeIf(String::isNotBlank)
-        .also {
-            require(it == null || Regex("""[a-z0-9]{8,}""").matches(it)) {
-                "studyflow.supabaseProjectRef '$it' is not a Supabase project ref"
-            }
-        }
-val apiBaseUrl: String =
-    providers
-        .gradleProperty("studyflow.apiBaseUrl")
-        .getOrElse(supabaseProjectRef?.let { "https://$it.supabase.co/functions/v1/api" } ?: defaultApiBaseUrl)
+// Both production build types require configuration; mock builds need neither URL.
+val backendConfiguration = extensions.getByType<BackendConfiguration>()
 
 // Material bytes are signed for by the `storage` Edge Function (infra/supabase/functions/storage),
 // a sibling of `api` on the same project, and resolved the same way: an explicit override for a
-// local stack, else the deployed function for the configured project ref, else the undeployed
-// custom domain. The app only ever holds this URL and the user's JWT — never a storage credential.
-//   ./gradlew installProductionDebug -Pstudyflow.storageBaseUrl=http://10.0.2.2:54321/functions/v1/storage
-val defaultStorageBaseUrl = "https://storage.studyflow.dev"
-val storageBaseUrl: String =
-    providers
-        .gradleProperty("studyflow.storageBaseUrl")
-        .getOrElse(supabaseProjectRef?.let { "https://$it.supabase.co/functions/v1/storage" } ?: defaultStorageBaseUrl)
+// local stack, else the deployed function for the configured project ref. The app only ever
+// holds this URL and the user's JWT — never a storage credential.
 
 // The Google *Web application* OAuth client id, which is a public identifier and ships in the APK
 // by design: Credential Manager needs it to ask for an ID token, and the server needs the same
@@ -135,8 +117,8 @@ extensions.configure<ApplicationExtension> {
     productFlavors {
         create("production") {
             dimension = "backend"
-            buildConfigField("String", "API_BASE_URL", "\"$apiBaseUrl\"")
-            buildConfigField("String", "STORAGE_BASE_URL", "\"$storageBaseUrl\"")
+            buildConfigField("String", "API_BASE_URL", "\"${backendConfiguration.apiBaseUrl.orEmpty()}\"")
+            buildConfigField("String", "STORAGE_BASE_URL", "\"${backendConfiguration.storageBaseUrl.orEmpty()}\"")
             buildConfigField("String", "GOOGLE_SERVER_CLIENT_ID", "\"$googleServerClientId\"")
         }
         // The mock flavour is served entirely by `FakeStudyFlowBackend` and performs no network
@@ -167,6 +149,12 @@ tasks.register("printVersionName") {
     inputs.property("versionName", appVersionName)
     doLast {
         logger.quiet(inputs.properties.getValue("versionName").toString())
+    }
+}
+
+extensions.configure<ApplicationAndroidComponentsExtension> {
+    beforeVariants(selector().withFlavor("backend" to "production")) {
+        it.enable = backendConfiguration.configured
     }
 }
 

@@ -15,6 +15,7 @@ public enum class UserFacingMessage(
     public val defaultText: String,
 ) {
     Offline("You're offline. StudyFlow will sync as soon as you're back."),
+    BackendUnreachable("StudyFlow can't reach its service. Your data is safe on this device. Contact support."),
     Slow("The connection is too slow right now. Please try again."),
     SignInRequired("Please sign in again to continue."),
     NotAllowed("Your account doesn't have access to that."),
@@ -41,7 +42,10 @@ public sealed class ApiError(
     public val code: String? = null,
     public val cause: Throwable? = null,
 ) {
-    /** The request never reached the server: no connectivity, DNS failure, refused connection. */
+    /** The configured service cannot be found. Retrying the same address cannot fix it. */
+    public data object BackendUnreachable : ApiError(UserFacingMessage.BackendUnreachable)
+
+    /** The request never reached the server: no connectivity or a refused connection. */
     public class Offline(
         cause: Throwable? = null,
     ) : ApiError(UserFacingMessage.Offline, cause = cause)

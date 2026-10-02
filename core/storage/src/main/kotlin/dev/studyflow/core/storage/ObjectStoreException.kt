@@ -39,6 +39,11 @@ public sealed class ObjectStoreException(
         message: String,
     ) : ObjectStoreException(message, retryable = false)
 
+    /** The configured backend host cannot be resolved; automatic retries cannot fix its address. */
+    public class BackendUnreachable(
+        message: String,
+    ) : ObjectStoreException(message, retryable = false)
+
     /** A dropped connection, a timeout, a 503 — the request is worth repeating. */
     public class Transient(
         message: String,

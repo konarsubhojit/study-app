@@ -1,5 +1,6 @@
 package dev.studyflow.core.storage.presigned
 
+import dev.studyflow.core.common.network.isHostResolutionFailure
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.storage.ObjectKey
@@ -79,8 +80,7 @@ public class PresignedObjectStore(
         )
     }
 
-    // Every transport failure is the same failure to a caller: the part did not arrive and the
-    // upload should be retried, whether the engine threw an IOException or something stranger.
+    // A dropped connection can recover, but an unresolvable storage host needs configuration fixed.
     @Suppress("TooGenericExceptionCaught")
     private suspend fun put(
         session: UploadSession,
@@ -98,9 +98,15 @@ public class PresignedObjectStore(
             // The URL is a bearer credential, and engine exceptions routinely carry the failed
             // request URL in their message, so the cause is named but never attached: nothing
             // that reaches a log line or a crash report may contain the signature.
-            throw ObjectStoreException.Transient(
-                "part ${part.number} of '${session.key}' failed: ${failure::class.simpleName}",
-            )
+            throw if (failure.isHostResolutionFailure()) {
+                ObjectStoreException.BackendUnreachable(
+                    "part ${part.number} of '${session.key}' failed: ${failure::class.simpleName}",
+                )
+            } else {
+                ObjectStoreException.Transient(
+                    "part ${part.number} of '${session.key}' failed: ${failure::class.simpleName}",
+                )
+            }
         }
 
     /** A freshly signed copy of [part] in the same upload, or `AccessDenied` if none can be had. */

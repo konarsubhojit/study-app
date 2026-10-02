@@ -242,6 +242,7 @@ public class ApiSyncTransport(
             is ApiError.UpgradeRequired,
             is ApiError.Malformed,
             is ApiError.Unexpected,
+            is ApiError.BackendUnreachable,
             -> SyncFailure(message = message.defaultText, retryable = false, reason = syncFailureReason())
         }
 
@@ -266,6 +267,7 @@ public class ApiSyncTransport(
             is ApiError.UpgradeRequired -> SyncFailureReason.UPGRADE_REQUIRED
             is ApiError.Malformed -> SyncFailureReason.MALFORMED
             is ApiError.Unexpected -> SyncFailureReason.UNEXPECTED
+            is ApiError.BackendUnreachable -> SyncFailureReason.UNEXPECTED
         }
 
     private fun SyncSessionRecord.asSessionDto(): SyncSessionDto =

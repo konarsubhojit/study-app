@@ -7,6 +7,7 @@ import kotlinx.serialization.SerializationException
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -72,8 +73,21 @@ class ApiErrorMapperTest {
 
     @Test
     fun `a transport failure reads as offline`() {
-        assertInstanceOf(ApiError.Offline::class.java, ApiErrorMapper.fromThrowable(UnknownHostException("dns")))
         assertInstanceOf(ApiError.Offline::class.java, ApiErrorMapper.fromThrowable(IOException("reset")))
+    }
+
+    @Test
+    fun `DNS failure is a distinct sanitized backend error`() {
+        val error =
+            ApiErrorMapper.fromThrowable(
+                IOException("Authorization: private", UnknownHostException("secret.test")),
+            )
+
+        assertEquals(ApiError.BackendUnreachable, error)
+        assertEquals(UserFacingMessage.BackendUnreachable, error.message)
+        assertNull(error.cause)
+        assertFalse(error.toString().contains("private"))
+        assertFalse(error.message.defaultText.contains("secret.test"))
     }
 
     @Test

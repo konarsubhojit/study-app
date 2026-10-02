@@ -55,6 +55,7 @@ graph TD
     core_datastore --> core_network
     core_domain --> core_common
     core_domain --> core_model
+    core_network --> core_common
     core_notifications --> core_common
     core_scheduling --> core_common
     core_scheduling --> core_database
@@ -96,6 +97,7 @@ graph TD
     feature_materials --> core_designsystem
     feature_materials --> core_domain
     feature_materials --> core_model
+    feature_materials --> core_network
     feature_materials --> core_storage
     feature_materials --> core_ui
     feature_settings --> core_common

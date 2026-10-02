@@ -1,5 +1,6 @@
 package dev.studyflow.core.network.http
 
+import dev.studyflow.core.common.network.isHostResolutionFailure
 import dev.studyflow.core.network.ApiConfig
 import dev.studyflow.core.network.ApiEndpoint
 import dev.studyflow.core.network.CLIENT_VERSION_HEADER
@@ -101,7 +102,9 @@ public fun studyFlowHttpClient(
             // no proof that nothing happened. Only a request that cannot duplicate data is
             // replayed; cancellation is the caller leaving, never something to retry.
             retryOnExceptionIf { request, cause ->
-                cause !is CancellationException && request.method in IDEMPOTENT_METHODS
+                cause !is CancellationException &&
+                    !cause.isHostResolutionFailure() &&
+                    request.method in IDEMPOTENT_METHODS
             }
 
             delayMillis { attempt ->

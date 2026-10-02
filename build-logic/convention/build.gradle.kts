@@ -20,10 +20,21 @@ dependencies {
     compileOnly(libs.room.gradlePlugin)
     compileOnly(libs.screenshot.gradlePlugin)
     compileOnly(libs.spotless.gradlePlugin)
+    testImplementation(gradleTestKit())
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 gradlePlugin {
     plugins {
+        register("backend") {
+            id = "studyflow.backend"
+            implementationClass = "dev.studyflow.buildlogic.BackendConventionPlugin"
+        }
         register("androidApplication") {
             id = "studyflow.android.application"
             implementationClass = "dev.studyflow.buildlogic.AndroidApplicationConventionPlugin"

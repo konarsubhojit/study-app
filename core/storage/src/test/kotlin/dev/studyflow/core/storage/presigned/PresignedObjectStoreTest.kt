@@ -31,6 +31,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import java.io.IOException
+import java.net.UnknownHostException
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.ZERO
 import kotlin.time.Duration.Companion.minutes
@@ -124,6 +125,23 @@ class PresignedObjectStoreTest {
                         store.uploadPart(session, session.parts.single(), PAYLOAD)
                     }
                 assertTrue(failure.retryable)
+            }
+        }
+
+    @Test
+    fun `an unresolvable part host stops retries without exposing signed URLs or headers`() =
+        runTest {
+            val store = store { throw UnknownHostException("$PART_URL Authorization: private-header") }
+            val session = store.initUpload(REQUEST)
+            val failure =
+                assertFailsWith<ObjectStoreException.BackendUnreachable> {
+                    store.uploadPart(session, session.parts.single(), PAYLOAD)
+                }
+
+            assertFalse(failure.retryable)
+            assertNull(failure.cause)
+            listOf(PART_URL, SIGNATURE, "Authorization", "private-header").forEach {
+                assertFalse(failure.stackTraceToString().contains(it), it)
             }
         }
 

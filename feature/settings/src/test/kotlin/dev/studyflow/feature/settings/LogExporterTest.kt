@@ -62,7 +62,7 @@ class LogExporterTest {
             assertTrue(content.contains("app version: 1.4.0 (140)"), content)
             assertTrue(content.contains("android: Android 15 (API 35)"), content)
             assertTrue(content.contains("device: Google Pixel 8"), content)
-            assertTrue(content.contains("api host: api.studyflow.dev"), content)
+            assertTrue(content.contains("api host: api.example.test"), content)
             assertFalse(content.contains("https://"), "the full base URL must not travel with the log")
             assertFalse(content.contains("project-ref"), content)
         }
@@ -159,7 +159,7 @@ class LogExporterTest {
                 appVersion = "1.4.0 (140)",
                 androidVersion = "Android 15 (API 35)",
                 deviceModel = "Google Pixel 8",
-                apiHost = "api.studyflow.dev",
+                apiHost = "api.example.test",
             )
     }
 }
