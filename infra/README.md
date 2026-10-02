@@ -90,7 +90,7 @@ Add the following repository Actions secrets for each operation.
 | `GOOGLE_SERVER_CLIENT_ID` | Required for `api` | Google OAuth server client ID accepted as the ID-token audience | Google Cloud Console OAuth client used by the Android Credential Manager flow |
 | `API_MINIMUM_CLIENT_VERSION` | Required for `api` | Value sent in every `X-Minimum-Client-Version` response header | The oldest app version the backend currently supports, for example `1.0.0` |
 | `API_BACKUP_RETENTION_DAYS` | Required for `api` | Maximum number of days before pre-deletion provider backups expire; must match enforced provider backup policies (use `0` only if no historical backups exist) | Database and object-storage backup settings |
-| `PASSKEY_RP_ID` | Required for `api` | WebAuthn relying-party id the app's passkeys are bound to, for example `studyflow.dev` | The domain hosting `assetlinks.json` for the Android app |
+| `PASSKEY_RP_ID` | Required for `api` | WebAuthn relying-party id the app's passkeys are bound to, for example `auth.example.com` (replace with your owned domain) | The domain hosting `assetlinks.json` for the Android app |
 | `PASSKEY_ANDROID_ORIGIN` | Required for `api` | Comma-separated list of accepted `android:apk-key-hash:<base64url SHA-256 of the signing certificate>` origins | `keytool -list -v` on each signing certificate (upload key and Play release key), SHA-256 fingerprint re-encoded as base64url |
 
 Except for the two platform-provided `SUPABASE_*` settings, add each setting that applies as a
@@ -197,13 +197,20 @@ SHA-1. Without it the Google option is silently dropped from the sheet. See
 [Google Cloud OAuth clients](../docs/authentication.md#google-cloud-oauth-clients).
 
 The app's base URL must point at this function — `https://<project-ref>.supabase.co/functions/v1/api`.
-An unconfigured production-flavour build defaults to `https://api.studyflow.dev`, an **undeployed**
-custom domain; it cannot reach the API. This fallback keeps local debug builds possible without
-configuration, but is not a production endpoint. Pass `-Pstudyflow.supabaseProjectRef=<project-ref>`
-(or set `STUDYFLOW_SUPABASE_PROJECT_REF`) to target a deployed project. Both the CI testing APK and
+Production-flavour builds (debug and release) require backend configuration and fail during Gradle
+configuration if it is missing. Pass `-Pstudyflow.supabaseProjectRef=<project-ref>`
+(or set `STUDYFLOW_SUPABASE_PROJECT_REF`) to target a deployed project:
+
+```bash
+./gradlew installProductionDebug -Pstudyflow.supabaseProjectRef=<project-ref>
+```
+
+Both the CI testing APK and
 tagged release read that ref from the `SUPABASE_PROJECT_REF` repository variable and fail if it is
 missing; no project ref is committed. To target a local mock server, pass
-`-Pstudyflow.apiBaseUrl=http://10.0.2.2:8080`. The project ref is not a secret: it appears in every
+both `-Pstudyflow.apiBaseUrl=http://10.0.2.2:8080` and
+`-Pstudyflow.storageBaseUrl=http://10.0.2.2:54321/functions/v1/storage`.
+Per-service overrides take precedence over the project ref. The project ref is not a secret: it appears in every
 request URL. The gateway prefix stays in the path and the function strips it, so no client endpoint
 path changes. The `mock` flavour gets no base URL at all and is served entirely by an in-process fake.
 
@@ -313,7 +320,7 @@ Deploy it with the **Deploy Edge Function** workflow by choosing `api`, or local
 ```sh
 export SUPABASE_ACCESS_TOKEN=...
 export GOOGLE_SERVER_CLIENT_ID=...
-export PASSKEY_RP_ID=studyflow.dev
+export PASSKEY_RP_ID=auth.example.com # Replace with your owned relying-party domain.
 export PASSKEY_ANDROID_ORIGIN=android:apk-key-hash:...
 export API_MINIMUM_CLIENT_VERSION=1.0.0
 export API_BACKUP_RETENTION_DAYS=30 # replace with the verified provider backup lifetime

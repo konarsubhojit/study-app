@@ -20,6 +20,13 @@ dependencies {
     compileOnly(libs.room.gradlePlugin)
     compileOnly(libs.screenshot.gradlePlugin)
     compileOnly(libs.spotless.gradlePlugin)
+    testImplementation(gradleTestKit())
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly(libs.junit.platform.launcher)
+}
+
+tasks.test {
+    useJUnitPlatform()
 }
 
 gradlePlugin {

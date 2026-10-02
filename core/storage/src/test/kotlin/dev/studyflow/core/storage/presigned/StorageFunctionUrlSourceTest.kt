@@ -40,6 +40,8 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.MethodSource
 import java.io.IOException
+import java.net.UnknownHostException
+import java.nio.channels.UnresolvedAddressException
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
@@ -211,6 +213,38 @@ class StorageFunctionUrlSourceTest {
     }
 
     @Test
+    fun `an unresolved host is permanent and exposes only its failure type`() =
+        runTest {
+            val secrets = listOf(BASE_URL, "project.supabase.co", TOKEN, "Authorization", "private-header")
+            val source = source { throw UnknownHostException(secrets.joinToString()) }
+
+            val failure =
+                assertFailsWith<ObjectStoreException.BackendUnreachable> {
+                    source.stat(ObjectKey.ofMaterial(HASH))
+                }
+
+            assertFalse(failure.retryable)
+            assertTrue(failure.message.orEmpty().contains("UnknownHostException"))
+            secrets.forEach { assertFalse(failure.stackTraceToString().contains(it), it) }
+            assertNull(failure.cause)
+        }
+
+    @Test
+    fun `wrapped unresolved addresses are also permanent without retaining the engine cause`() =
+        runTest {
+            val source = source { throw IOException("private request", UnresolvedAddressException()) }
+
+            val failure =
+                assertFailsWith<ObjectStoreException.BackendUnreachable> {
+                    source.stat(ObjectKey.ofMaterial(HASH))
+                }
+
+            assertFalse(failure.retryable)
+            assertFalse(failure.message.orEmpty().contains("private request"))
+            assertNull(failure.cause)
+        }
+
+    @Test
     fun `a dropped connection is worth retrying and names nothing from the request`() =
         runTest {
             val source = source { throw IOException("Authorization: ******") }
@@ -218,6 +252,7 @@ class StorageFunctionUrlSourceTest {
             val failure = assertFailsWith<ObjectStoreException.Transient> { source.stat(ObjectKey.ofMaterial(HASH)) }
 
             assertFalse(failure.message.orEmpty().contains(TOKEN))
+            assertTrue(failure.retryable)
             assertNull(failure.cause)
         }
 

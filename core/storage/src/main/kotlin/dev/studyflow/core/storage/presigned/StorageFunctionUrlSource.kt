@@ -1,5 +1,6 @@
 package dev.studyflow.core.storage.presigned
 
+import dev.studyflow.core.common.network.isHostResolutionFailure
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.SystemWallClock
 import dev.studyflow.core.domain.materials.CloudStorageLimits
@@ -180,8 +181,7 @@ public class StorageFunctionUrlSource(
         throw failureFor(operation, key, status, json?.get("code")?.jsonPrimitive?.contentOrNull)
     }
 
-    // A transport failure of any kind is the same thing to a caller: the request may not have
-    // arrived, and repeating it later is the remedy.
+    // DNS configuration failures are permanent; dropped connections and timeouts may recover.
     @Suppress("TooGenericExceptionCaught")
     private suspend fun post(
         operation: String,
@@ -200,7 +200,12 @@ public class StorageFunctionUrlSource(
         } catch (failure: Throwable) {
             // Named, not attached: an engine exception can quote the request, and its headers
             // carry the user's token.
-            throw ObjectStoreException.Transient("$operation for '$key' failed: ${failure::class.simpleName}")
+            val message = "$operation for '$key' failed: ${failure::class.simpleName}"
+            throw if (failure.isHostResolutionFailure()) {
+                ObjectStoreException.BackendUnreachable(message)
+            } else {
+                ObjectStoreException.Transient(message)
+            }
         }
 
     private fun hashBody(hash: ContentHash): JsonObject = buildJsonObject { put("contentHash", hash.hex) }

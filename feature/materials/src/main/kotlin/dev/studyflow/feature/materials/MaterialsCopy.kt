@@ -5,6 +5,7 @@ import dev.studyflow.core.domain.materials.ImportRejectionReason
 import dev.studyflow.core.domain.materials.UploadWaitReason
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
+import dev.studyflow.core.network.error.UserFacingMessage
 
 /**
  * The words for the import outcomes [dev.studyflow.core.domain.materials.MaterialImporter] hands
@@ -55,11 +56,34 @@ internal object MaterialsCopy {
         material: Material,
         waitReason: UploadWaitReason?,
     ): String? =
-        when (material.sync) {
-            SyncState.Pending -> waitReason?.let(::waiting) ?: "Pending upload"
-            is SyncState.Uploading -> "Uploading"
-            is SyncState.Failed -> if (material.isMissingSource) "File missing" else "Upload failed"
-            SyncState.Synced -> null
+        when (val sync = material.sync) {
+            SyncState.Pending -> {
+                waitReason?.let(::waiting) ?: "Pending upload"
+            }
+
+            is SyncState.Uploading -> {
+                "Uploading"
+            }
+
+            is SyncState.Failed -> {
+                when {
+                    material.isMissingSource -> {
+                        "File missing"
+                    }
+
+                    sync.reason == SyncState.Failed.BACKEND_UNREACHABLE -> {
+                        UserFacingMessage.BackendUnreachable.defaultText
+                    }
+
+                    else -> {
+                        "Upload failed"
+                    }
+                }
+            }
+
+            SyncState.Synced -> {
+                null
+            }
         }
 
     fun waiting(reason: UploadWaitReason): String =

@@ -126,7 +126,12 @@ public class MaterialUploadEngine(
                 }
             }
         } catch (exception: ObjectStoreException) {
-            val reason = exception.message ?: exception::class.simpleName.orEmpty()
+            val reason =
+                if (exception is ObjectStoreException.BackendUnreachable) {
+                    SyncState.Failed.BACKEND_UNREACHABLE
+                } else {
+                    exception.message ?: exception::class.simpleName.orEmpty()
+                }
             latest.fail(reason, exception.retryable)
             log(
                 material.id,

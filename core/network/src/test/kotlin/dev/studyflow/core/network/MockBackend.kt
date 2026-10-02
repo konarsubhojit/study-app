@@ -20,7 +20,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 /** Shared mock-server plumbing for the contract tests. */
 internal object MockBackend {
-    const val BASE_URL: String = "https://api.test.studyflow.dev"
+    const val BASE_URL: String = "https://api.example.test"
 
     val clientVersion: ClientVersion = ClientVersion(1, 4, 0)
 

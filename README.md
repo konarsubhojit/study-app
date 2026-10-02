@@ -103,11 +103,25 @@ store, suitable for demos and UI tests:
 ./gradlew installMockDebug
 ```
 
-To point a production-flavour debug build at a backend running on the host instead:
+The `production` flavour requires a Supabase project ref (property or
+`STUDYFLOW_SUPABASE_PROJECT_REF` environment variable), or explicit base URLs for **both** services.
+Missing configuration fails before building either debug or release:
 
 ```bash
-./gradlew installProductionDebug -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080
+./gradlew installProductionDebug -Pstudyflow.supabaseProjectRef=<project-ref>
 ```
+
+Per-service URL overrides take precedence over the project ref. To point a production-flavour
+debug build at backends running on the host instead:
+
+```bash
+./gradlew installProductionDebug \
+  -Pstudyflow.apiBaseUrl=http://10.0.2.2:8080 \
+  -Pstudyflow.storageBaseUrl=http://10.0.2.2:54321/functions/v1/storage
+```
+
+See [Setup](docs/SETUP.md). If the backend host cannot be resolved, uploads stop automatically
+retrying and show that StudyFlow cannot reach its service; the local file stays safe on the device.
 
 → [ADR 0014](docs/adr/0014-api-contract-and-network-client.md) ·
 [`KtorStudyFlowApi`](core/network/src/main/kotlin/dev/studyflow/core/network/KtorStudyFlowApi.kt) ·

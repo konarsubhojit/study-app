@@ -19,3 +19,7 @@ plugins {
     id("studyflow.quality")
     id("studyflow.module-boundaries")
 }
+
+tasks.named("check") {
+    dependsOn(gradle.includedBuild("build-logic").task(":convention:test"))
+}

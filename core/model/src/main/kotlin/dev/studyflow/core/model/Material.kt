@@ -148,7 +148,12 @@ public sealed interface SyncState {
     public data class Failed(
         val reason: String,
         val retryable: Boolean,
-    ) : SyncState
+    ) : SyncState {
+        public companion object {
+            /** Stable reason persisted in the existing failure column, never exception text. */
+            public const val BACKEND_UNREACHABLE: String = "backend_unreachable"
+        }
+    }
 }
 
 /**

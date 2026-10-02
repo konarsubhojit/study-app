@@ -4,6 +4,7 @@ plugins {
 
 dependencies {
     implementation(projects.core.designsystem)
+    implementation(projects.core.network)
     implementation(projects.core.storage)
     implementation(projects.core.ui)
     implementation(libs.androidx.activity.compose)

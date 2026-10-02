@@ -80,6 +80,20 @@ class MaterialUploadEngineTest {
         }
 
     @Test
+    fun `an unreachable backend parks the upload with a stable non-retryable reason`() =
+        runBlocking {
+            materialRepository.save(material())
+            objectStore.failStat = ObjectStoreException.BackendUnreachable("stat failed: UnknownHostException")
+
+            assertInstanceOf(UploadOutcome.Permanent::class.java, engine.upload("m1"))
+            assertEquals(
+                SyncState.Failed(SyncState.Failed.BACKEND_UNREACHABLE, retryable = false),
+                materialRepository.observeById("m1").first()?.sync,
+            )
+            assertTrue(objectStore.uploadedPartNumbers.isEmpty())
+        }
+
+    @Test
     fun `a transient part failure is reported as retryable and leaves the material resumable`() =
         runBlocking {
             materialRepository.save(material())

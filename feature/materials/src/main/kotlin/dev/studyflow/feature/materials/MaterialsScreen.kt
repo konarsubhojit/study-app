@@ -411,7 +411,8 @@ private fun MaterialGridCell(
                     }
                 }
 
-                material.sync is SyncState.Failed -> {
+                material.sync is SyncState.Failed &&
+                    (material.sync as SyncState.Failed).reason != SyncState.Failed.BACKEND_UNREACHABLE -> {
                     TextButton(onClick = { actions.onRetryUpload(material.id) }) { Text(text = "Retry") }
                 }
             }

@@ -4,6 +4,7 @@ plugins {
 }
 
 dependencies {
+    implementation(projects.core.common)
     api(libs.ktor.client.core)
     implementation(libs.ktor.client.auth)
     implementation(libs.ktor.client.content.negotiation)

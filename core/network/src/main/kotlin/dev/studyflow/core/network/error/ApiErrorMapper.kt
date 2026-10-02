@@ -1,5 +1,6 @@
 package dev.studyflow.core.network.error
 
+import dev.studyflow.core.common.network.isHostResolutionFailure
 import dev.studyflow.core.network.model.ApiErrorDto
 import dev.studyflow.core.network.version.ClientVersion
 import io.ktor.client.network.sockets.ConnectTimeoutException
@@ -72,22 +73,26 @@ public object ApiErrorMapper {
      * is reached.
      */
     public fun fromThrowable(throwable: Throwable): ApiError =
-        when (throwable) {
-            is HttpRequestTimeoutException, is ConnectTimeoutException, is SocketTimeoutException -> {
-                ApiError.Timeout(throwable)
-            }
+        if (throwable.isHostResolutionFailure()) {
+            ApiError.BackendUnreachable
+        } else {
+            when (throwable) {
+                is HttpRequestTimeoutException, is ConnectTimeoutException, is SocketTimeoutException -> {
+                    ApiError.Timeout(throwable)
+                }
 
-            // A contract breach — a missing or mistyped field — not an unknown field, which is ignored.
-            is JsonConvertException, is SerializationException -> {
-                ApiError.Malformed(throwable)
-            }
+                // A contract breach — a missing or mistyped field — not an unknown field, which is ignored.
+                is JsonConvertException, is SerializationException -> {
+                    ApiError.Malformed(throwable)
+                }
 
-            is IOException -> {
-                ApiError.Offline(throwable)
-            }
+                is IOException -> {
+                    ApiError.Offline(throwable)
+                }
 
-            else -> {
-                ApiError.Unexpected(cause = throwable)
+                else -> {
+                    ApiError.Unexpected(cause = throwable)
+                }
             }
         }
 }

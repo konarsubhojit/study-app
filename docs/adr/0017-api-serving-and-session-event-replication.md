@@ -102,10 +102,9 @@ This lets the function own the contract's authentication and error shape rather 
 gateway to answer first in a different format. `false` means the platform does not perform the
 check; it does not make StudyFlow's authenticated operations public.
 
-A custom domain is the only deployment option that would make the declared
-`https://api.studyflow.dev` production server literally true. Supabase offers custom domains on
-paid plans, but adopting one is not recommended by this decision. If a Supabase function URL is
-documented as another server later, it must be additive: `openapi.yaml` must retain
+Production builds require a Supabase project ref or explicit API and storage base URLs; there is
+no default deployment. Supabase offers custom domains on paid plans, but adopting one is not
+recommended by this decision. The contract lists the Supabase function URL and must retain
 `http://10.0.2.2:8080`, which
 [`OpenApiContractTest`](../../core/network/src/test/kotlin/dev/studyflow/core/network/OpenApiContractTest.kt)
 requires.

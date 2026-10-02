@@ -123,7 +123,7 @@ class LogExportViewModelTest {
                 appVersion = "1.4.0 (140)",
                 androidVersion = "Android 15 (API 35)",
                 deviceModel = "Google Pixel 8",
-                apiHost = "api.studyflow.dev",
+                apiHost = "api.example.test",
             )
     }
 }

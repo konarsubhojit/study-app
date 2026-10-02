@@ -22,8 +22,6 @@ info:
       calling the API and show the force-upgrade screen; the server also answers
       `426 Upgrade Required` if such a client keeps calling.
 servers:
-  - url: https://api.studyflow.dev
-    description: Production, once a custom domain is adopted (ADR 0017 does not recommend one)
   - url: https://{projectRef}.supabase.co/functions/v1/api
     description: >-
       The deployed api Edge Function. The Supabase gateway leaves the /functions/v1/api prefix in
