@@ -12,7 +12,10 @@ public object LogSanitizer {
     private val headerValue =
         Regex("""(?:^|[\s;])[A-Z][A-Z0-9-]*:[^\r\n]*""", RegexOption.IGNORE_CASE)
     private val tokenValue =
-        Regex("""\b(access[_-]?token|refresh[_-]?token|id[_-]?token|jwt|token)\s*[:=]\s*[^\s,;]+""", RegexOption.IGNORE_CASE)
+        Regex(
+            """\b(access[_-]?token|refresh[_-]?token|id[_-]?token|jwt|token)\s*[:=]\s*[^\s,;]+""",
+            RegexOption.IGNORE_CASE,
+        )
     private val jwt = Regex("""\b[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b""")
     private val query = Regex("""\?[^\s,;)]+""")
     private val lineBreak = Regex("""[\r\n\t]+""")
