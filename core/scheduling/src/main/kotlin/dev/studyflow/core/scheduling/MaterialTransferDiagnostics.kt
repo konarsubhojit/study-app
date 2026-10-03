@@ -4,7 +4,11 @@ import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.common.logging.DiagnosticFields
 import dev.studyflow.core.common.logging.DiagnosticKey
+import dev.studyflow.core.common.logging.DiagnosticThrowableKind
+import dev.studyflow.core.common.logging.LogSanitizer
 import dev.studyflow.core.common.logging.diagnosticEvent
+import dev.studyflow.core.storage.ObjectStoreException
+import java.io.IOException
 import java.util.UUID
 
 internal enum class MaterialTransferStage {
@@ -82,10 +86,28 @@ internal fun AppLogger.materialTransfer(
             putMaterialId(materialId)
             details.part?.let { put(DiagnosticKey.Part, it) }
             details.partCount?.let { put(DiagnosticKey.PartCount, it) }
+            if (code == DiagnosticCode.MaterialUpload && throwable != null) {
+                putThrowableKind(throwable.materialUploadFailureKind())
+                putThrowableMessage(
+                    LogSanitizer.sanitizeDiagnosticFailureMessage(throwable.message ?: "No exception message"),
+                )
+            }
         },
-        throwable,
+        throwable.takeUnless { code == DiagnosticCode.MaterialUpload },
     )
 }
+
+internal fun Throwable.materialUploadFailureKind(): DiagnosticThrowableKind =
+    when (this) {
+        is ObjectStoreException.NotFound -> DiagnosticThrowableKind.OBJECT_NOT_FOUND
+        is ObjectStoreException.AccessDenied -> DiagnosticThrowableKind.OBJECT_ACCESS_DENIED
+        is ObjectStoreException.Integrity -> DiagnosticThrowableKind.OBJECT_INTEGRITY
+        is ObjectStoreException.QuotaExceeded -> DiagnosticThrowableKind.OBJECT_QUOTA_EXCEEDED
+        is ObjectStoreException.BackendUnreachable -> DiagnosticThrowableKind.BACKEND_UNREACHABLE
+        is ObjectStoreException.Transient -> DiagnosticThrowableKind.TRANSIENT_STORAGE
+        is IOException -> DiagnosticThrowableKind.LOCAL_IO
+        else -> DiagnosticThrowableKind.UNEXPECTED
+    }
 
 /** Only a well-formed UUID is logged: an id is never a display name or a path. */
 private fun DiagnosticFields.putMaterialId(materialId: String) {

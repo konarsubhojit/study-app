@@ -2,6 +2,10 @@ package dev.studyflow.core.storage.presigned
 
 import dev.studyflow.core.domain.materials.CloudStorageLimits
 import dev.studyflow.core.model.ContentHash
+import dev.studyflow.core.network.ApiConfig
+import dev.studyflow.core.network.auth.InMemoryTokenStore
+import dev.studyflow.core.network.http.studyFlowHttpClient
+import dev.studyflow.core.network.version.ClientVersion
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStoreException
 import dev.studyflow.core.storage.PartChecksums
@@ -26,12 +30,14 @@ import io.ktor.http.contentType
 import io.ktor.http.headersOf
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -48,6 +54,7 @@ import kotlin.time.Instant
 @DisplayName("StorageFunctionUrlSource")
 class StorageFunctionUrlSourceTest {
     private val requests = mutableListOf<Pair<String, JsonObject?>>()
+    private val parsedRequestBodies = mutableListOf<JsonElement?>()
 
     @Test
     fun `opening an upload sends the content hash and one checksum per planned part, never a key`() =
@@ -172,6 +179,28 @@ class StorageFunctionUrlSourceTest {
         }
 
     @Test
+    fun `all operations send JSON objects through the production client`() =
+        runTest {
+            val request = requestFor(PAYLOAD)
+            val source = sourceWithSharedClient { data -> respondForOperation(data, request) }
+            val key = ObjectKey.ofMaterial(request.contentHash)
+
+            source.stat(key)
+            val session = source.createUpload(request)
+            source.finishUpload(session, listOf(UploadedPart(1, "etag-1", PAYLOAD.size.toLong())))
+            source.downloadUrl(key, 5.minutes)
+            source.delete(key)
+
+            assertEquals(
+                listOf("stat", "initUpload", "completeUpload", "getDownloadUrl", "delete"),
+                requests.map {
+                    it.first.substringAfterLast('/')
+                },
+            )
+            assertOperationBodies(request)
+        }
+
+    @Test
     fun `a key outside the materials namespace is never sent to the function`() =
         runTest {
             val source = source { respondJson("{}") }
@@ -213,7 +242,7 @@ class StorageFunctionUrlSourceTest {
     }
 
     @Test
-    fun `an unresolved host is permanent and exposes only its failure type`() =
+    fun `an unresolved host is permanent and names the failure without retaining the engine cause`() =
         runTest {
             val secrets = listOf(BASE_URL, "project.supabase.co", TOKEN, "Authorization", "private-header")
             val source = source { throw UnknownHostException(secrets.joinToString()) }
@@ -224,7 +253,7 @@ class StorageFunctionUrlSourceTest {
                 }
 
             assertFalse(failure.retryable)
-            assertTrue(failure.message.orEmpty().contains("UnknownHostException"))
+            assertTrue(failure.message.orEmpty().contains("backend host resolution"))
             secrets.forEach { assertFalse(failure.stackTraceToString().contains(it), it) }
             assertNull(failure.cause)
         }
@@ -340,17 +369,90 @@ class StorageFunctionUrlSourceTest {
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ): StorageFunctionUrlSource =
         StorageFunctionUrlSource(
-            client =
-                HttpClient(
-                    MockEngine { data ->
-                        val text = (data.body as? OutgoingContent.ByteArrayContent)?.bytes()?.decodeToString()
-                        requests += data.url.toString() to text?.let { Json.parseToJsonElement(it).jsonObject }
-                        handler(data)
-                    },
-                ),
+            client = HttpClient(capturingEngine(handler)),
             baseUrl = "$BASE_URL/",
             clock = { clock },
         )
+
+    private fun sourceWithSharedClient(
+        handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
+    ): StorageFunctionUrlSource {
+        val engine = capturingEngine(handler)
+        return StorageFunctionUrlSource(
+            client =
+                studyFlowHttpClient(
+                    engine = engine,
+                    config =
+                        ApiConfig(
+                            baseUrl = "https://api.example.test",
+                            clientVersion = ClientVersion(1, 0, 0),
+                        ),
+                    tokenStore = InMemoryTokenStore(),
+                ),
+            baseUrl = BASE_URL,
+            clock = { NOW },
+        )
+    }
+
+    private suspend fun MockRequestHandleScope.respondForOperation(
+        data: HttpRequestData,
+        request: UploadRequest,
+    ): HttpResponseData {
+        val objectJson =
+            """{"contentHash":"${request.contentHash.hex}","contentType":"application/pdf",""" +
+                """"sizeBytes":${PAYLOAD.size}}"""
+        return when (data.url.encodedPath.substringAfterLast('/')) {
+            "stat", "completeUpload" -> respondJson(objectJson)
+            "initUpload" -> respondJson(initResponse(request.sizeBytes))
+            "getDownloadUrl" -> respondJson("""{"url":"$PART_URL","expiresAt":"2026-03-01T09:10:00.000Z"}""")
+            "delete" -> respondJson("{}")
+            else -> error("unexpected storage operation ${data.url.encodedPath}")
+        }
+    }
+
+    private fun assertOperationBodies(request: UploadRequest) {
+        val bodies =
+            parsedRequestBodies.mapIndexed { index, body ->
+                assertInstanceOf(
+                    JsonObject::class.java,
+                    body,
+                    "request ${requests[index].first} must be a JSON object",
+                )
+            }
+        assertEquals(setOf("contentHash"), bodies[0].keys)
+        assertEquals(
+            setOf("contentHash", "contentType", "sizeBytes", "partChecksums"),
+            bodies[1].keys,
+        )
+        assertEquals(setOf("uploadId", "parts"), bodies[2].keys)
+        assertEquals(setOf("contentHash"), bodies[3].keys)
+        assertEquals(setOf("contentHash"), bodies[4].keys)
+        assertEquals(request.contentHash.hex, bodies[0].string("contentHash"))
+        assertEquals(request.contentHash.hex, bodies[1].string("contentHash"))
+        assertEquals("application/pdf", bodies[1].string("contentType"))
+        assertEquals(request.sizeBytes.toString(), bodies[1].string("sizeBytes"))
+        assertEquals(
+            request.partChecksums,
+            bodies[1]["partChecksums"]?.jsonArray?.map { it.jsonPrimitive.content },
+        )
+        assertEquals("upload-1", bodies[2].string("uploadId"))
+        val uploadedPart = bodies[2]["parts"]?.jsonArray?.single()?.jsonObject
+        assertEquals("1", uploadedPart?.get("number")?.jsonPrimitive?.content)
+        assertEquals("etag-1", uploadedPart?.string("etag"))
+        assertEquals(request.contentHash.hex, bodies[3].string("contentHash"))
+        assertEquals(request.contentHash.hex, bodies[4].string("contentHash"))
+    }
+
+    private fun capturingEngine(
+        handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
+    ): MockEngine =
+        MockEngine { data ->
+            val text = (data.body as? OutgoingContent.ByteArrayContent)?.bytes()?.decodeToString()
+            val parsed = text?.let(Json::parseToJsonElement)
+            requests += data.url.toString() to (parsed as? JsonObject)
+            parsedRequestBodies += parsed
+            handler(data)
+        }
 
     private fun MockRequestHandleScope.respondJson(
         body: String,
@@ -404,6 +506,9 @@ class StorageFunctionUrlSourceTest {
         @JvmStatic
         fun failures(): List<Arguments> =
             listOf(
+                Arguments.of(400, "invalid_request", ObjectStoreException.AccessDenied::class.java, false),
+                Arguments.of(400, "invalid_content_hash", ObjectStoreException.AccessDenied::class.java, false),
+                Arguments.of(400, "invalid_size", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(400, "invalid_part_checksums", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(401, "authentication_required", ObjectStoreException.Transient::class.java, true),
                 Arguments.of(404, "upload_not_found", ObjectStoreException.Transient::class.java, true),

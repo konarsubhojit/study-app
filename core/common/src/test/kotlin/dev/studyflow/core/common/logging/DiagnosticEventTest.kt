@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import java.lang.reflect.Modifier
+import java.util.UUID
 
 /**
  * The release diagnostic contract: rich enough to name a cause, structurally unable to name a user.
@@ -32,13 +33,73 @@ class DiagnosticEventTest {
         assertFalse(rendered.contains("exam.pdf"))
     }
 
+    @Test
+    fun `a sanitized failure message is quoted and remains safe to render`() {
+        val event =
+            diagnosticEvent(DiagnosticCode.MaterialUpload) {
+                putThrowableKind(DiagnosticThrowableKind.TRANSIENT_STORAGE)
+                putThrowableMessage(
+                    LogSanitizer.sanitizeDiagnosticFailureMessage(
+                        "stat failed https://bucket.example/object?signature=signed-value " +
+                            "response={\"Authorization\":\"json-secret\"}",
+                    ),
+                )
+            }
+
+        val rendered = event.render()
+
+        assertEquals(
+            """code=MaterialUpload throwable=TRANSIENT_STORAGE """ +
+                """throwableMessage="stat failed [url] [headers redacted]"""",
+            rendered,
+        )
+        assertFalse(rendered.contains("signed-value"))
+        assertFalse(rendered.contains("json-secret"))
+        assertFalse(rendered.contains("Authorization"))
+        assertFalse(rendered.contains("?"))
+    }
+
+    @Test
+    fun `reminder degradation records its closed fields`() {
+        var recordedEvent: DiagnosticEvent? = null
+        var recordedThrowable: Throwable? = null
+        val logger =
+            object : AppLogger {
+                override fun log(
+                    level: LogLevel,
+                    tag: String,
+                    message: String,
+                    throwable: Throwable?,
+                ) = Unit
+
+                override fun diagnostic(
+                    event: DiagnosticEvent,
+                    throwable: Throwable?,
+                ) {
+                    recordedEvent = event
+                    recordedThrowable = throwable
+                }
+            }
+        val reminderId = UUID.fromString("00000000-0000-0000-0000-000000000001")
+        val failure = IllegalStateException("exact alarm denied")
+
+        logger.reminderDegraded(
+            degradation = Stage.Push,
+            subsystem = ReminderDegradationSubsystem.TIMER_INTERVAL,
+            reminderId = reminderId,
+            throwable = failure,
+        )
+
+        assertEquals(
+            "code=ReminderDegraded degraded=Push subsystem=TIMER_INTERVAL reminderId=$reminderId " +
+                "throwable=IllegalStateException",
+            recordedEvent?.render(recordedThrowable),
+        )
+    }
+
     /**
-     * The PII guarantee, asserted as the property it actually is.
-     *
-     * Nothing here filters a string — the point is that a call site has no overload to hand a
-     * string to, so `put(key, userEmail)` does not compile. A regex would be a filter that fails
-     * open the first time someone logs a value its author never imagined; this fails closed,
-     * because the only escape is to add an overload in this module and be reviewed for it.
+     * Ordinary diagnostic values stay closed; failure text is the deliberate, separately sanitized
+     * exception. This pins that callers cannot pass raw text to a regular field.
      */
     @Test
     fun `no diagnostic field accepts free text`() {

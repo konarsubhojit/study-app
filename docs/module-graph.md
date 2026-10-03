@@ -128,6 +128,7 @@ graph TD
 | `:core:domain` | `:core:testing` |
 | `:core:notifications` | `:core:testing` |
 | `:core:scheduling` | `:core:testing` |
+| `:core:storage` | `:core:network` |
 | `:core:storage` | `:core:testing` |
 | `:feature:auth` | `:core:testing` |
 | `:feature:history` | `:core:testing` |

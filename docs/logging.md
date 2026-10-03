@@ -5,7 +5,7 @@ Two kinds of log line leave this app, and they are treated differently on purpos
 | | Debug build | Release build | Ring buffer / export |
 |---|---|---|---|
 | Free text (`AppLogger.info/warning/error`) | scrubbed of emails, paths and file names, then printed with the caller's tag | **discarded**: only `level=…` and a sanitised `throwable=…` survive, under the fixed `StudyFlow` tag | the release form |
-| Structured diagnostic (`AppLogger.diagnostic`) | printed verbatim | printed verbatim | verbatim |
+| Structured diagnostic (`AppLogger.diagnostic`) | printed verbatim | printed verbatim | verbatim; MaterialUpload failure messages are sanitized before recording |
 
 ## Why free text is thrown away in release
 
@@ -39,15 +39,19 @@ The guarantee is the type system, not a filter:
 
 - `DiagnosticCode` and `DiagnosticKey` are enums declared in `:core:common`, so a code and a key are
   always constants of this repository's source.
-- `DiagnosticFields` has overloads for `Boolean`, `Int`, `Long` and `Enum<*>`, plus
-  `putThrowableType`, which keeps a throwable's class name and never its message. **There is no
-  `String` overload**, so `put(key, userEmail)` does not compile.
-- A regex that inspected values would be a filter that fails open on the first case its author did
-  not imagine. `DiagnosticEventTest` asserts the absence of any textual overload, so adding one is a
-  reviewed change rather than an accident.
+- `DiagnosticFields` has overloads for `Boolean`, `Int`, `Long` and `Enum<*>`, plus `putThrowableType`.
+  Material upload failures use a fixed `DiagnosticThrowableKind` and a `SanitizedDiagnosticMessage`;
+  the latter can only be made through `LogSanitizer.sanitizeDiagnosticFailureMessage`.
+- That sanitizer removes URLs/query strings, headers, token-shaped values, emails, paths and
+  filenames. Object keys and content hashes remain because material keys are opaque
+  `materials/<sha256>` identifiers, not names or paths.
+- Ordinary diagnostic fields are not admitted through a regex-based allow-through filter.
+  `DiagnosticEventTest` asserts that `DiagnosticFields` has no raw text overload; failure text is
+  the deliberate exception and must pass the dedicated redaction pipeline above.
 
-When a diagnostic needs a value that does not fit — a new dimension of a failure — add an enum for
-it. That is the intended cost: a closed vocabulary is what makes the log safe to keep.
+For `MaterialUpload`, the logged `throwable=` value is a stable source-defined kind such as
+`TRANSIENT_STORAGE`, not a throwable class name; `throwableMessage=` carries the sanitized exception
+message. The engine exception and its cause are never attached to the diagnostic.
 
 ### What is instrumented today
 
@@ -57,6 +61,7 @@ it. That is the intended cost: a closed vocabulary is what makes the log safe to
 | `SyncFailed` | `SyncWorker` | which half of the pass failed (`stage`), why (`reason`), and whether it will be retried |
 | `SyncCrashed` | `SyncWorker` | the pass threw; the throwable type is named |
 | `SyncInboundRecordDropped` | `ApiSyncTransport` | an inbound row could not be parsed and was skipped so the cursor could advance |
+| `MaterialUpload` | `MaterialUploadEngine` | stage, retryability, material UUID, and—on failure—a stable kind and sanitized message |
 | `ReminderIntegrityOk` / `ReminderIntegrityAnomaly` | `ReminderIntegrityCoordinator` | reconciliation counters |
 | `LogsExported` | `LogExporter` | the user exported the buffer, and how many entries it held |
 

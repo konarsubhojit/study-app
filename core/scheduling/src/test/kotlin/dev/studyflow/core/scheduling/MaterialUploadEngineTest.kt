@@ -1,6 +1,7 @@
 package dev.studyflow.core.scheduling
 
 import dev.studyflow.core.common.logging.DiagnosticCode
+import dev.studyflow.core.common.logging.DiagnosticThrowableKind
 import dev.studyflow.core.domain.materials.CompletedUploadPart
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
@@ -144,13 +145,101 @@ class MaterialUploadEngineTest {
             assertTrue(events.any { "stage=INIT outcome=SUCCESS retryable=false materialId=$materialId" in it })
             assertTrue(
                 events.any {
-                    "stage=PART outcome=FAILURE retryable=true materialId=$materialId part=1 partCount=3" in it
+                    "stage=PART outcome=FAILURE retryable=true materialId=$materialId part=1 partCount=3" in it &&
+                        "throwable=TRANSIENT_STORAGE" in it &&
+                        """throwableMessage="connection reset"""" in it
                 },
             )
             assertTrue(events.any { "stage=COMPLETE outcome=SUCCESS" in it })
             assertTrue(events.any { "stage=VERIFY outcome=SUCCESS" in it })
             assertTrue(events.none { "lecture.mp4" in it || "/tmp/" in it })
         }
+
+    @Test
+    fun `a dedupe failure logs its message and stable kind`() =
+        runBlocking {
+            val logger = RecordingAppLogger()
+            val materialId = "00000000-0000-0000-0000-000000000003"
+            val message = "stat for 'materials/${contentHash.hex}' returned 503 storage_unavailable"
+            materialRepository.save(material().copy(id = materialId))
+            objectStore.failStat = ObjectStoreException.Transient(message)
+            val diagnosticEngine =
+                MaterialUploadEngine(
+                    materialRepository = materialRepository,
+                    uploadProgressStore = uploadProgressStore,
+                    objectStore = objectStore,
+                    logger = logger,
+                )
+
+            assertInstanceOf(UploadOutcome.Retryable::class.java, diagnosticEngine.upload(materialId))
+
+            val failure =
+                logger.diagnosticsWith(DiagnosticCode.MaterialUpload).single {
+                    "stage=DEDUPE outcome=FAILURE" in it
+                }
+            assertTrue("throwable=TRANSIENT_STORAGE" in failure)
+            assertTrue("""throwableMessage="$message"""" in failure)
+            assertFalse("Transient" in failure)
+        }
+
+    @Test
+    fun `a failure message never logs signed urls tokens or header values`() =
+        runBlocking {
+            val logger = RecordingAppLogger()
+            val materialId = "00000000-0000-0000-0000-000000000004"
+            materialRepository.save(material().copy(id = materialId))
+            objectStore.failStat =
+                ObjectStoreException.Transient(
+                    "stat failed https://bucket.example/object?X-Amz-Signature=signed-value&token=eyJ.user.jwt; " +
+                        "Authorization: ******; X-Private-Header: header-secret; token=token-secret",
+                )
+            val diagnosticEngine =
+                MaterialUploadEngine(
+                    materialRepository = materialRepository,
+                    uploadProgressStore = uploadProgressStore,
+                    objectStore = objectStore,
+                    logger = logger,
+                )
+
+            assertInstanceOf(UploadOutcome.Retryable::class.java, diagnosticEngine.upload(materialId))
+
+            val failure =
+                logger.diagnosticsWith(DiagnosticCode.MaterialUpload).single {
+                    "stage=DEDUPE outcome=FAILURE" in it
+                }
+            listOf(
+                "https://bucket.example/object",
+                "signed-value",
+                "******",
+                "auth-secret",
+                "header-secret",
+                "token-secret",
+                "eyJ.user.jwt",
+                "Authorization",
+                "X-Private-Header",
+                "?",
+            ).forEach { assertFalse(it in failure, "diagnostic leaked $it") }
+        }
+
+    @Test
+    fun `every object store exception subtype maps to its stable failure kind`() {
+        val failures =
+            listOf(
+                ObjectStoreException.NotFound(ObjectKey("materials/${contentHash.hex}")) to
+                    DiagnosticThrowableKind.OBJECT_NOT_FOUND,
+                ObjectStoreException.AccessDenied("denied") to DiagnosticThrowableKind.OBJECT_ACCESS_DENIED,
+                ObjectStoreException.Integrity("integrity failed") to DiagnosticThrowableKind.OBJECT_INTEGRITY,
+                ObjectStoreException.QuotaExceeded("quota exceeded") to DiagnosticThrowableKind.OBJECT_QUOTA_EXCEEDED,
+                ObjectStoreException.BackendUnreachable("host unreachable") to
+                    DiagnosticThrowableKind.BACKEND_UNREACHABLE,
+                ObjectStoreException.Transient("temporary failure") to DiagnosticThrowableKind.TRANSIENT_STORAGE,
+            )
+
+        failures.forEach { (exception, expected) ->
+            assertEquals(expected, exception.materialUploadFailureKind())
+            assertEquals(expected.wireName, exception.materialUploadFailureKind().wireName)
+        }
+    }
 
     @Test
     fun `the dedupe probe is its own stage and each part starts exactly once`() =

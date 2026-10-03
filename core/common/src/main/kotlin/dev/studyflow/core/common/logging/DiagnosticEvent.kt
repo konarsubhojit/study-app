@@ -6,16 +6,11 @@ import java.util.UUID
  * A structured, non-PII diagnostic that survives release sanitisation.
  *
  * Free-text log messages are deliberately discarded in release builds by
- * [LogSanitizer.scrubReleaseMessage], which is what keeps an email address, a document name or a
- * file path out of a shared log buffer. That protection also makes real failures undiagnosable,
- * so this type provides the other half: facts that are *structurally* incapable of carrying user
- * content, and are therefore safe to keep verbatim.
+ * [LogSanitizer.scrubReleaseMessage]. Structured fields are closed values except for a diagnostic
+ * failure message, which must pass [LogSanitizer.sanitizeDiagnosticFailureMessage] first.
  *
- * The guarantee is enforced by the type system rather than by a filter. A [DiagnosticCode] and a
- * [DiagnosticKey] are closed sets declared in this module, and [DiagnosticFields] offers no
- * overload that accepts a `String`, so there is no expression a call site can write that puts
- * user-supplied text into an event. A regex-based filter would be the opposite: it would fail
- * open on anything its authors did not anticipate.
+ * Codes, keys and ordinary values are closed sets declared in this module. The only free-text
+ * exception is a failure message wrapped by [LogSanitizer.sanitizeDiagnosticFailureMessage].
  */
 public class DiagnosticEvent internal constructor(
     public val code: DiagnosticCode,
@@ -24,8 +19,7 @@ public class DiagnosticEvent internal constructor(
     /**
      * The single log line this event becomes, in both debug and release builds.
      *
-     * @param throwable appended as its sanitised class name only, the same detail
-     *   [LogSanitizer.scrubReleaseMessage] keeps for a free-text message.
+     * @param throwable appended as its sanitised class name only.
      */
     public fun render(throwable: Throwable? = null): String =
         buildString {
@@ -35,7 +29,13 @@ public class DiagnosticEvent internal constructor(
                 append(' ')
                 append(key.wireName)
                 append('=')
-                append(value)
+                if (key == DiagnosticKey.ThrowableMessage) {
+                    append('"')
+                    append(value.replace("\\", "\\\\").replace("\"", "\\\""))
+                    append('"')
+                } else {
+                    append(value)
+                }
             }
             LogSanitizer.sanitizeThrowableType(throwable?.javaClass?.simpleName)?.let { type ->
                 append(' ')
@@ -107,6 +107,7 @@ public enum class DiagnosticKey(
     Reason("reason"),
     Retryable("retryable"),
     Throwable("throwable"),
+    ThrowableMessage("throwableMessage"),
     EntityType("entityType"),
     Pushed("pushed"),
     Applied("applied"),
@@ -137,9 +138,8 @@ public enum class ReminderDegradationSubsystem {
  * Collects the fields of one [DiagnosticEvent].
  *
  * The absence of a `put(key, value: String)` overload is the point of this class: values are
- * restricted to booleans, numbers and enum constants — types whose textual form is written in the
- * source of this app, not by its user — plus a throwable's class name, which is passed through
- * [LogSanitizer.sanitizeThrowableType] exactly as the release logger already does.
+ * restricted to booleans, numbers and enum constants, plus failure details with dedicated,
+ * sanitizing APIs.
  */
 public class DiagnosticFields internal constructor() {
     private val entries = mutableListOf<Pair<DiagnosticKey, String>>()
@@ -188,7 +188,31 @@ public class DiagnosticFields internal constructor() {
         entries += key to type
     }
 
+    public fun putThrowableKind(kind: DiagnosticThrowableKind) {
+        entries += DiagnosticKey.Throwable to kind.wireName
+    }
+
+    public fun putThrowableMessage(message: SanitizedDiagnosticMessage) {
+        if (message.value.isNotBlank()) {
+            entries += DiagnosticKey.ThrowableMessage to message.value
+        }
+    }
+
     internal fun build(): List<Pair<DiagnosticKey, String>> = entries.toList()
+}
+
+/** Stable, source-defined failure kinds that do not depend on throwable class names. */
+public enum class DiagnosticThrowableKind(
+    public val wireName: String,
+) {
+    OBJECT_NOT_FOUND("OBJECT_NOT_FOUND"),
+    OBJECT_ACCESS_DENIED("OBJECT_ACCESS_DENIED"),
+    OBJECT_INTEGRITY("OBJECT_INTEGRITY"),
+    OBJECT_QUOTA_EXCEEDED("OBJECT_QUOTA_EXCEEDED"),
+    BACKEND_UNREACHABLE("BACKEND_UNREACHABLE"),
+    TRANSIENT_STORAGE("TRANSIENT_STORAGE"),
+    LOCAL_IO("LOCAL_IO"),
+    UNEXPECTED("UNEXPECTED"),
 }
 
 /** Builds a [DiagnosticEvent]; the only way to make one. */
