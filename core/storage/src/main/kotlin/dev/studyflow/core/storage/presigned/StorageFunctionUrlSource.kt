@@ -182,7 +182,7 @@ public class StorageFunctionUrlSource(
     }
 
     // DNS configuration failures are permanent; dropped connections and timeouts may recover.
-    @Suppress("TooGenericExceptionCaught")
+    @Suppress("SwallowedException", "TooGenericExceptionCaught")
     private suspend fun post(
         operation: String,
         key: ObjectKey,

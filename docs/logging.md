@@ -45,8 +45,9 @@ The guarantee is the type system, not a filter:
 - That sanitizer removes URLs/query strings, headers, token-shaped values, emails, paths and
   filenames. Object keys and content hashes remain because material keys are opaque
   `materials/<sha256>` identifiers, not names or paths.
-- A regex that inspected values would be a filter that fails open on the first case its author did
-  not imagine. `DiagnosticEventTest` asserts that `DiagnosticFields` has no raw text overload.
+- Ordinary diagnostic fields are not admitted through a regex-based allow-through filter.
+  `DiagnosticEventTest` asserts that `DiagnosticFields` has no raw text overload; failure text is
+  the deliberate exception and must pass the dedicated redaction pipeline above.
 
 For `MaterialUpload`, the logged `throwable=` value is a stable source-defined kind such as
 `TRANSIENT_STORAGE`, not a throwable class name; `throwableMessage=` carries the sanitized exception

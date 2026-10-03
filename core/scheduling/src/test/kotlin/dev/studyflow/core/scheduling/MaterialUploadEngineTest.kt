@@ -173,9 +173,10 @@ class MaterialUploadEngineTest {
 
             assertInstanceOf(UploadOutcome.Retryable::class.java, diagnosticEngine.upload(materialId))
 
-            val failure = logger.diagnosticsWith(DiagnosticCode.MaterialUpload).single {
-                "stage=DEDUPE outcome=FAILURE" in it
-            }
+            val failure =
+                logger.diagnosticsWith(DiagnosticCode.MaterialUpload).single {
+                    "stage=DEDUPE outcome=FAILURE" in it
+                }
             assertTrue("throwable=TRANSIENT_STORAGE" in failure)
             assertTrue("""throwableMessage="$message"""" in failure)
             assertFalse("Transient" in failure)
@@ -202,9 +203,10 @@ class MaterialUploadEngineTest {
 
             assertInstanceOf(UploadOutcome.Retryable::class.java, diagnosticEngine.upload(materialId))
 
-            val failure = logger.diagnosticsWith(DiagnosticCode.MaterialUpload).single {
-                "stage=DEDUPE outcome=FAILURE" in it
-            }
+            val failure =
+                logger.diagnosticsWith(DiagnosticCode.MaterialUpload).single {
+                    "stage=DEDUPE outcome=FAILURE" in it
+                }
             listOf(
                 "https://bucket.example/object",
                 "signed-value",
