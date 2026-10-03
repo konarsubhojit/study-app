@@ -65,7 +65,7 @@ jobs:
     # fork PR must never execute on the self-hosted machine. Default-branch pushes run
     # on the dedicated runner, which has a warm Gradle cache.
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     permissions:
       contents: read
       checks: write
