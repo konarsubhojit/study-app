@@ -24,6 +24,60 @@ Deno.test("router strips the Supabase gateway prefix and matches full paths", ()
     if (route?.operation !== "beginSignIn") throw new Error("challenge route was not resolved");
 });
 
+Deno.test("api distinguishes invalid body shapes without logging their contents", async () => {
+    const lines: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    try {
+        await withFetch(() => jsonResponse(201, {}), async () => {
+            for (
+                const [payload, reason] of [
+                    ["", "empty_body"],
+                    [" \n ", "empty_body"],
+                    ['{"private-note":', "invalid_json"],
+                    ['["private-note"]', "json_array"],
+                    ['"private-note"', "json_string"],
+                    ["null", "json_null"],
+                    ["1", "json_number"],
+                    ["true", "json_boolean"],
+                ]
+            ) {
+                const response = await handleRequest(new Request("https://edge.test/v1/auth/refresh", {
+                    method: "POST",
+                    headers: { "content-type": "application/json" },
+                    body: payload,
+                }));
+                const result = await response.json();
+                if (response.status !== 400 || result.code !== "invalid_request") {
+                    throw new Error(`invalid body became ${response.status} ${result.code}`);
+                }
+                const diagnostic = JSON.parse(lines.at(-1) ?? "{}");
+                if (diagnostic.event !== "request_body_invalid" || diagnostic.reason !== reason) {
+                    throw new Error(`missing body diagnostic ${reason}`);
+                }
+            }
+        });
+    } finally {
+        console.warn = original;
+    }
+    if (lines.join("").includes("private-note")) throw new Error("request contents were logged");
+});
+
+Deno.test("a consumed api request stream is a retryable server failure", async () => {
+    const request = new Request("https://edge.test/v1/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ refreshToken: "private-note" }),
+    });
+    await request.text();
+    await withFetch(() => jsonResponse(201, {}), async () => {
+        const response = await handleRequest(request);
+        const result = await response.json();
+        if (response.status !== 503 || result.code !== "api_unavailable") {
+            throw new Error(`consumed stream became ${response.status} ${result.code}`);
+        }
+    });
+});
+
 Deno.test("router falls back to direct v1 paths for local tests", () => {
     const route = resolveRoute("POST", routedPath("/v1/auth/refresh"));
     if (route?.operation !== "refreshTokens") throw new Error("refresh route was not resolved");

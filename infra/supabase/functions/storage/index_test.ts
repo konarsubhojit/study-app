@@ -137,6 +137,109 @@ Deno.test("operations newer than the observability table are recorded as unknown
 const OWNER = "00000000-0000-4000-8000-000000000001";
 const TOKEN = "valid-test-token";
 
+Deno.test("a well-formed stat request reads its body once and reports a missing object", async () => {
+    const request = statRequest();
+    let reads = 0;
+    const originalJson = request.json.bind(request);
+    request.json = () => {
+        reads++;
+        return originalJson();
+    };
+    const original = request.text.bind(request);
+    request.text = () => {
+        reads++;
+        return original();
+    };
+    await withFetch((input) => {
+        if (String(input).includes("/rest/v1/storage_uploads")) return jsonResponse(200, []);
+        return storageBackend(200)(input);
+    }, async () => {
+        const response = await handleRequest(request);
+        const result = await response.json();
+        if (response.status !== 404 || result.code !== "object_not_found") {
+            throw new Error(`valid stat became ${response.status} ${result.code}`);
+        }
+        if (!request.bodyUsed) throw new Error("stat did not consume its body");
+        if (reads !== 1) throw new Error(`stat read its body ${reads} times`);
+    });
+});
+
+Deno.test("storage distinguishes invalid body shapes without logging their contents", async () => {
+    const cases = [
+        ["", "empty_body"],
+        [" \n ", "empty_body"],
+        ['{"private-note":', "invalid_json"],
+        ['["private-note"]', "json_array"],
+        ['"private-note"', "json_string"],
+        ["null", "json_null"],
+        ["1", "json_number"],
+        ["true", "json_boolean"],
+    ];
+    const lines: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    try {
+        await withFetch(storageBackend(200), async () => {
+            for (const [payload, reason] of cases) {
+                const response = await handleRequest(new Request(statRequest(), { body: payload }));
+                const result = await response.json();
+                if (response.status !== 400 || result.code !== "invalid_request") {
+                    throw new Error(`invalid body became ${response.status} ${result.code}`);
+                }
+                const diagnostic = JSON.parse(lines.at(-1) ?? "{}");
+                if (diagnostic.event !== "request_body_invalid" || diagnostic.reason !== reason) {
+                    throw new Error(`missing body diagnostic ${reason}`);
+                }
+            }
+        });
+    } finally {
+        console.warn = original;
+    }
+    if (lines.join("").includes("private-note")) throw new Error("request contents were logged");
+});
+
+Deno.test("a consumed storage request stream is a retryable server failure", async () => {
+    const request = statRequest();
+    await request.text();
+    await withFetch(storageBackend(200), async () => {
+        const response = await handleRequest(request);
+        const result = await response.json();
+        if (response.status !== 503 || result.code !== "storage_unavailable") {
+            throw new Error(`consumed stream became ${response.status} ${result.code}`);
+        }
+    });
+});
+
+Deno.test("an upstream refusal is diagnosed separately from invalid client JSON", async () => {
+    const lines: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    try {
+        await withFetch((input) => {
+            if (String(input).includes("/rest/v1/rpc/storage_consume_rate_limit")) {
+                return jsonResponse(400, { code: "23514", message: "private-note", details: OWNER });
+            }
+            return storageBackend(200)(input);
+        }, async () => {
+            const response = await handleRequest(statRequest());
+            const result = await response.json();
+            if (response.status !== 400 || result.code !== "invalid_request") {
+                throw new Error("upstream client-error mapping changed");
+            }
+        });
+    } finally {
+        console.warn = original;
+    }
+    const diagnostic = JSON.parse(lines[0] ?? "{}");
+    if (
+        diagnostic.event !== "storage_upstream_rejected" || diagnostic.status !== 400 ||
+        diagnostic.resource !== "rpc/storage_consume_rate_limit" || diagnostic.code !== "23514"
+    ) throw new Error("upstream rejection was not diagnosed");
+    if (lines.join("").includes("private-note") || lines.join("").includes(OWNER)) {
+        throw new Error("upstream details leaked");
+    }
+});
+
 Deno.test("a database refusal inside a storage operation is a client error, not a retryable outage", async () => {
     for (const [upstreamStatus, expectedStatus, expectedCode] of [
         [400, 400, "invalid_request"],

@@ -181,6 +181,20 @@ async function databaseJson<T>(path: string, init: RequestInit = {}): Promise<T>
     const response = await database(path, init);
     if (!response.ok) {
         const detail = await response.text();
+        let code = "unknown";
+        try {
+            const value = JSON.parse(detail).code;
+            if (typeof value === "string" && /^(?:[0-9A-Z]{5}|PGRST\d{3})$/.test(value)) code = value;
+        } catch {
+            // Only bounded database error codes are safe to log; messages can contain user data.
+        }
+        const resource = path.split("?")[0];
+        console.warn(JSON.stringify({
+            event: "storage_upstream_rejected",
+            resource: /^(?:rpc\/)?[a-z_]+$/.test(resource) ? resource : "unknown",
+            status: response.status,
+            code,
+        }));
         if (detail.includes("rate_limited")) {
             throw new ApiError(429, "rate_limited", "Too many storage requests. Try again in one minute.");
         }
@@ -217,13 +231,32 @@ async function userId(request: Request): Promise<string> {
 }
 
 async function body(request: Request): Promise<Json> {
+    if (request.bodyUsed) throw new Error("Request body stream already consumed.");
+    let text: string;
     try {
-        const value = await request.json();
-        if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
-        return value;
+        text = await request.text();
     } catch {
+        throw new Error("Request body stream could not be read.");
+    }
+    let value: unknown;
+    let reason: string | undefined;
+    if (!text.trim()) {
+        reason = "empty_body";
+    } else {
+        try {
+            value = JSON.parse(text);
+        } catch {
+            reason = "invalid_json";
+        }
+        if (!reason && (value === null || typeof value !== "object" || Array.isArray(value))) {
+            reason = value === null ? "json_null" : Array.isArray(value) ? "json_array" : `json_${typeof value}`;
+        }
+    }
+    if (reason) {
+        console.warn(JSON.stringify({ event: "request_body_invalid", reason }));
         throw new ApiError(400, "invalid_request", "The request body must be a JSON object.");
     }
+    return value as Json;
 }
 
 async function rateLimit(owner: string, operation: string, limit: number): Promise<void> {
