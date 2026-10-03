@@ -32,6 +32,25 @@ class DiagnosticEventTest {
         assertFalse(rendered.contains("exam.pdf"))
     }
 
+    @Test
+    fun `a sanitized failure message is quoted and remains safe to render`() {
+        val event =
+            diagnosticEvent(DiagnosticCode.MaterialUpload) {
+                putThrowableKind(DiagnosticThrowableKind.TRANSIENT_STORAGE)
+                putThrowableMessage(
+                    LogSanitizer.sanitizeDiagnosticFailureMessage(
+                        "stat failed https://bucket.example/object?signature=signed-value",
+                    ),
+                )
+            }
+
+        val rendered = event.render()
+
+        assertEquals("code=MaterialUpload throwable=TRANSIENT_STORAGE throwableMessage=\"stat failed [url]\"", rendered)
+        assertFalse(rendered.contains("signed-value"))
+        assertFalse(rendered.contains("?"))
+    }
+
     /**
      * The PII guarantee, asserted as the property it actually is.
      *

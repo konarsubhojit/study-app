@@ -201,9 +201,9 @@ public class StorageFunctionUrlSource(
             // Named, not attached: an engine exception can quote the request, and its headers
             // carry the user's token.
             throw if (failure.isHostResolutionFailure()) {
-                ObjectStoreException.BackendUnreachable("$operation for '$key' failed: ${failure::class.simpleName}")
+                ObjectStoreException.BackendUnreachable("$operation for '$key' failed (backend host resolution)")
             } else {
-                ObjectStoreException.Transient("$operation for '$key' failed: ${failure::class.simpleName}")
+                ObjectStoreException.Transient("$operation for '$key' failed (network transport)")
             }
         }
 

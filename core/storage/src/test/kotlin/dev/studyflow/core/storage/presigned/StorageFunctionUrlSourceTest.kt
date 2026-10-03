@@ -213,7 +213,7 @@ class StorageFunctionUrlSourceTest {
     }
 
     @Test
-    fun `an unresolved host is permanent and exposes only its failure type`() =
+    fun `an unresolved host is permanent and names the failure without retaining the engine cause`() =
         runTest {
             val secrets = listOf(BASE_URL, "project.supabase.co", TOKEN, "Authorization", "private-header")
             val source = source { throw UnknownHostException(secrets.joinToString()) }
@@ -224,7 +224,7 @@ class StorageFunctionUrlSourceTest {
                 }
 
             assertFalse(failure.retryable)
-            assertTrue(failure.message.orEmpty().contains("UnknownHostException"))
+            assertTrue(failure.message.orEmpty().contains("backend host resolution"))
             secrets.forEach { assertFalse(failure.stackTraceToString().contains(it), it) }
             assertNull(failure.cause)
         }

@@ -8,6 +8,14 @@ public object LogSanitizer {
     private val unixPath = Regex("""\B/(?:storage|sdcard|data|cache|mnt|system|vendor)(?:/[^\s/;:,]+)*""")
     private val windowsPath = Regex("""\b[A-Z]:\\(?:[^\s\\]+\\)*[^\s\\]+""", RegexOption.IGNORE_CASE)
     private val fileName = Regex("""\b[^\s/\\]+\.(?:csv|db|docx?|json|kt|md|mp3|mp4|pdf|png|txt|zip)\b""")
+    private val url = Regex("""\b(?:https?|ftp)://[^\s]+""", RegexOption.IGNORE_CASE)
+    private val headerValue =
+        Regex("""(?:^|[\s;])[A-Z][A-Z0-9-]*:[^\r\n]*""", RegexOption.IGNORE_CASE)
+    private val tokenValue =
+        Regex("""\b(access[_-]?token|refresh[_-]?token|id[_-]?token|jwt|token)\s*[:=]\s*[^\s,;]+""", RegexOption.IGNORE_CASE)
+    private val jwt = Regex("""\b[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b""")
+    private val query = Regex("""\?[^\s,;)]+""")
+    private val lineBreak = Regex("""[\r\n\t]+""")
 
     public fun scrubDebugMessage(message: String): String =
         message
@@ -15,6 +23,25 @@ public object LogSanitizer {
             .replace(windowsPath, "[path]")
             .replace(unixPath, "[path]")
             .replace(fileName, "[file]")
+
+    /**
+     * Scrubs a developer-authored failure message before it is admitted to a structured diagnostic.
+     *
+     * Unlike ordinary free text, the resulting message survives release logging, so credentials and
+     * signed URLs are removed before the existing PII scrubbers run.
+     */
+    public fun sanitizeDiagnosticFailureMessage(message: String): SanitizedDiagnosticMessage {
+        val safeMessage =
+            message
+                .replace(lineBreak, " ")
+                .replace(url, "[url]")
+                .replace(headerValue, " [headers redacted]")
+                .replace(tokenValue, "[token redacted]")
+                .replace(jwt, "[token]")
+                .replace(query, "[query]")
+                .let(::scrubDebugMessage)
+        return SanitizedDiagnosticMessage(safeMessage)
+    }
 
     /**
      * A throwable's class name with everything but letters, digits and underscores removed.
@@ -42,3 +69,8 @@ public object LogSanitizer {
 
     private val unsafeThrowableTypeCharacter = Regex("""[^A-Za-z0-9_]""")
 }
+
+/** A failure message that has passed [LogSanitizer.sanitizeDiagnosticFailureMessage]. */
+public class SanitizedDiagnosticMessage internal constructor(
+    internal val value: String,
+)
