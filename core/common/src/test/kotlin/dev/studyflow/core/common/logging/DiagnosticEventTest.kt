@@ -40,15 +40,21 @@ class DiagnosticEventTest {
                 putThrowableKind(DiagnosticThrowableKind.TRANSIENT_STORAGE)
                 putThrowableMessage(
                     LogSanitizer.sanitizeDiagnosticFailureMessage(
-                        "stat failed https://bucket.example/object?signature=signed-value",
+                        "stat failed https://bucket.example/object?signature=signed-value " +
+                            "response={\"Authorization\":\"json-secret\"}",
                     ),
                 )
             }
 
         val rendered = event.render()
 
-        assertEquals("code=MaterialUpload throwable=TRANSIENT_STORAGE throwableMessage=\"stat failed [url]\"", rendered)
+        assertEquals(
+            """code=MaterialUpload throwable=TRANSIENT_STORAGE throwableMessage="stat failed [url] response= [headers redacted]"""",
+            rendered,
+        )
         assertFalse(rendered.contains("signed-value"))
+        assertFalse(rendered.contains("json-secret"))
+        assertFalse(rendered.contains("Authorization"))
         assertFalse(rendered.contains("?"))
     }
 

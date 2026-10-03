@@ -10,7 +10,7 @@ public object LogSanitizer {
     private val fileName = Regex("""\b[^\s/\\]+\.(?:csv|db|docx?|json|kt|md|mp3|mp4|pdf|png|txt|zip)\b""")
     private val url = Regex("""\b(?:https?|ftp)://[^\s]+""", RegexOption.IGNORE_CASE)
     private val headerValue =
-        Regex("""(?:^|[\s;])[A-Z][A-Z0-9-]*:[^\r\n]*""", RegexOption.IGNORE_CASE)
+        Regex("""(?:^|[\s;,{\[])"?[A-Z][A-Z0-9-]*"?\s*[:=]\s*"?[^\r\n]*""", RegexOption.IGNORE_CASE)
     private val tokenValue =
         Regex(
             """\b(access[_-]?token|refresh[_-]?token|id[_-]?token|jwt|token)\s*[:=]\s*[^\s,;]+""",
