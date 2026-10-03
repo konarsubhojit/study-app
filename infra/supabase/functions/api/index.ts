@@ -752,7 +752,7 @@ function base64Url(bytes: Uint8Array): string {
     return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replace(/=+$/, "");
 }
 
-function decodeBase64Url(value: string): Uint8Array {
+function decodeBase64Url(value: string): Uint8Array<ArrayBuffer> {
     const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
     const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
     const binary = atob(padded);

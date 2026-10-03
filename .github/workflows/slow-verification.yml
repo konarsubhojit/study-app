@@ -17,6 +17,8 @@ jobs:
     name: Gradle Managed Device tests
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    env:
+      STUDYFLOW_SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
     steps:
       - uses: actions/checkout@v7
 
@@ -138,6 +140,8 @@ jobs:
         run: ./gradlew :core:domain:test -Pstudyflow.soak=true --tests dev.studyflow.core.domain.timer.TimerLongRunSoakTest --stacktrace
 
   quarantined-tests:
+    env:
+      STUDYFLOW_SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
     name: Quarantined flaky tests
     runs-on: ubuntu-latest
     timeout-minutes: 30

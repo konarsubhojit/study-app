@@ -126,50 +126,58 @@ public fun TaskDetailScreen(
                 }
 
                 DetailDisplayState.Content -> {
-                    val task = requireNotNull(state.task)
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(MaterialTheme.spacing.medium),
-                        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
-                    ) {
-                        item(
-                            key = "completion",
-                        ) { Box(Modifier.animateItem()) { CompletionRow(task = task, onEvent = onEvent) } }
-                        item(
-                            key = "title",
-                        ) { Box(Modifier.animateItem()) { TitleField(task = task, onEvent = onEvent) } }
-                        item(
-                            key = "notes",
-                        ) { Box(Modifier.animateItem()) { NotesField(task = task, onEvent = onEvent) } }
-                        item(key = "subject-material-links") {
-                            Box(Modifier.animateItem()) { SubjectMaterialLinks(task = task) }
-                        }
-                        item(key = "study-time") { Box(Modifier.animateItem()) { StudyTimeSection(state = state) } }
-                        item(key = "subtasks") {
-                            Box(Modifier.animateItem()) {
-                                SubtaskSection(
-                                    subtasks = task.subtasks,
-                                    newSubtaskTitle = state.newSubtaskTitle,
-                                    onEvent = onEvent,
-                                )
-                            }
-                        }
-                        item(key = "reminders") {
-                            Box(
-                                Modifier.animateItem(),
-                            ) { ReminderSection(reminders = task.reminders, onEvent = onEvent) }
-                        }
-                        item(key = "recurrence") {
-                            Box(
-                                Modifier.animateItem(),
-                            ) { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) }
-                        }
-                        item(key = "start-session") {
-                            Box(Modifier.animateItem()) { StartStudySessionButton(onEvent = onEvent) }
-                        }
-                    }
+                    TaskDetailContent(state = state, onEvent = onEvent)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun TaskDetailContent(
+    state: TaskDetailUiState,
+    onEvent: (TaskDetailUiEvent) -> Unit,
+) {
+    val task = requireNotNull(state.task)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(MaterialTheme.spacing.medium),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.large),
+    ) {
+        item(
+            key = "completion",
+        ) { Box(Modifier.animateItem()) { CompletionRow(task = task, onEvent = onEvent) } }
+        item(
+            key = "title",
+        ) { Box(Modifier.animateItem()) { TitleField(task = task, onEvent = onEvent) } }
+        item(
+            key = "notes",
+        ) { Box(Modifier.animateItem()) { NotesField(task = task, onEvent = onEvent) } }
+        item(key = "subject-material-links") {
+            Box(Modifier.animateItem()) { SubjectMaterialLinks(task = task) }
+        }
+        item(key = "study-time") { Box(Modifier.animateItem()) { StudyTimeSection(state = state) } }
+        item(key = "subtasks") {
+            Box(Modifier.animateItem()) {
+                SubtaskSection(
+                    subtasks = task.subtasks,
+                    newSubtaskTitle = state.newSubtaskTitle,
+                    onEvent = onEvent,
+                )
+            }
+        }
+        item(key = "reminders") {
+            Box(
+                Modifier.animateItem(),
+            ) { ReminderSection(reminders = task.reminders, onEvent = onEvent) }
+        }
+        item(key = "recurrence") {
+            Box(
+                Modifier.animateItem(),
+            ) { RecurrenceSection(recurrence = task.recurrence, onEvent = onEvent) }
+        }
+        item(key = "start-session") {
+            Box(Modifier.animateItem()) { StartStudySessionButton(onEvent = onEvent) }
         }
     }
 }

@@ -14,7 +14,7 @@ import dev.studyflow.core.network.model.SyncSessionDto
 import dev.studyflow.core.network.version.ClientVersion
 import io.ktor.client.engine.mock.toByteArray
 import io.ktor.http.HttpStatusCode
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -449,6 +449,8 @@ class KtorStudyFlowApiTest {
         runTest {
             val store = InMemoryTokenStore(AuthTokens("expired", "refresh"))
             val refreshes = AtomicInteger()
+            val expiredRequests = AtomicInteger()
+            val bothRequestsExpired = CompletableDeferred<Unit>()
             val api =
                 MockBackend.api(
                     tokenStore = store,
@@ -460,6 +462,8 @@ class KtorStudyFlowApiTest {
                     if (request.headers["Authorization"]?.endsWith("fresh") == true) {
                         json("""{"acceptedIds":[],"rejectedIds":[]}""")
                     } else {
+                        if (expiredRequests.incrementAndGet() == 2) bothRequestsExpired.complete(Unit)
+                        bothRequestsExpired.await()
                         json("""{"code":"authentication_required","message":"expired"}""", HttpStatusCode.Unauthorized)
                     }
                 }
@@ -467,8 +471,8 @@ class KtorStudyFlowApiTest {
             val results =
                 coroutineScope {
                     listOf(
-                        async(Dispatchers.Default) { api.pushSessionChanges(pushRequest()) },
-                        async(Dispatchers.Default) {
+                        async { api.pushSessionChanges(pushRequest()) },
+                        async {
                             api.pushRecordChanges(
                                 SyncRecordPushRequestDto(deviceId = "device-a", changes = emptyList()),
                             )

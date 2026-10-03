@@ -33,6 +33,23 @@ class BackendConfigurationTest {
     }
 
     @Test
+    fun `task discovery options do not require production backend settings`() {
+        assertTrue(runner("tasks", "--all").build().output.contains("backend=false api= storage="))
+    }
+
+    @Test
+    fun `a mock unit test filter does not require production backend settings`() {
+        val output = runner("testMockDebugUnitTest", "--tests", "dev.studyflow.ExampleTest").build().output
+        assertTrue(output.contains("backend=false api= storage="), output)
+    }
+
+    @Test
+    fun `tooling options do not hide an explicit production task`() {
+        val output = runner("tasks", "--all", "assembleProductionDebug").buildAndFail().output
+        assertTrue(output.contains("Production requires"), output)
+    }
+
+    @Test
     fun `a project ref resolves both services and per-service overrides win`() {
         val output =
             runner(
@@ -95,6 +112,7 @@ class BackendConfigurationTest {
             listOf("assembleMockDebug", "assembleProductionDebug", "assembleProductionRelease", "check").forEach {
                 tasks.register(it)
             }
+            tasks.register<Test>("testMockDebugUnitTest")
             """.trimIndent(),
         )
         val environment = System.getenv().filterKeys {
