@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 /**
@@ -39,6 +40,21 @@ class AlarmPlaybackPolicyTest {
         val volume = AlarmPlaybackPolicy.volumeAt(AlarmPlaybackPolicy.ESCALATION_DURATION + 30.seconds)
 
         assertEquals(1f, volume)
+    }
+
+    @Test
+    fun `volume updates stop after escalation and next wake is the timeout`() {
+        val nextUpdate =
+            AlarmPlaybackPolicy.delayUntilNextUpdate(AlarmPlaybackPolicy.ESCALATION_DURATION)
+
+        assertEquals(AlarmPlaybackPolicy.TIMEOUT_DURATION - AlarmPlaybackPolicy.ESCALATION_DURATION, nextUpdate)
+    }
+
+    @Test
+    fun `last escalation update never lands after the ramp completes`() {
+        val elapsed = AlarmPlaybackPolicy.ESCALATION_DURATION - 200.milliseconds
+
+        assertEquals(200.milliseconds, AlarmPlaybackPolicy.delayUntilNextUpdate(elapsed))
     }
 
     @Test

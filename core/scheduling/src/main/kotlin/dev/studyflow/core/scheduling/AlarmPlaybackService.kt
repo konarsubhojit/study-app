@@ -188,7 +188,7 @@ public class AlarmPlaybackService : Service() {
                         onTimedOut(reminderId, taskId, notificationId)
                         return@launch
                     }
-                    delay(AlarmPlaybackPolicy.TICK_INTERVAL)
+                    delay(AlarmPlaybackPolicy.delayUntilNextUpdate(elapsed))
                 }
             }
 

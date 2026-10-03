@@ -98,6 +98,9 @@ Timer controls are service `PendingIntent`s (pause/resume and stop) so they stil
 app process has died. Opening the notification uses `StudyFlowDeepLinks.uriFor(TimerRoute(...))` to
 return to the running-timer screen.
 
+See [Background work and battery reliability](background-reliability.md) for the complete scheduled
+work inventory, restricted-state behavior, and the device battery-validation protocol.
+
 ## Weekly summary digest
 
 Opt-in and off by default. The user picks a day and time; `WeeklySummaryScheduler` enqueues a
