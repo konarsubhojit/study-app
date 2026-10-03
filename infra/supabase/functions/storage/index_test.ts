@@ -137,31 +137,55 @@ Deno.test("operations newer than the observability table are recorded as unknown
 const OWNER = "00000000-0000-4000-8000-000000000001";
 const TOKEN = "valid-test-token";
 
-Deno.test("a well-formed stat request reads its body once and reports a missing object", async () => {
-    const request = statRequest();
-    let reads = 0;
-    const originalJson = request.json.bind(request);
-    request.json = () => {
-        reads++;
-        return originalJson();
+Deno.test("a well-formed stat request reads once and reports stored metadata or a missing object", async () => {
+    const upload = {
+        id: "upload-1",
+        user_id: OWNER,
+        object_key: objectKey(OWNER, "c".repeat(64)),
+        provider_upload_id: null,
+        content_hash: "c".repeat(64),
+        content_type: "application/pdf",
+        size_bytes: 12,
+        part_checksums: [checksum],
+        state: "ready",
+        completed_at: "2026-03-01T09:00:00+00:00",
     };
-    const original = request.text.bind(request);
-    request.text = () => {
-        reads++;
-        return original();
-    };
-    await withFetch((input) => {
-        if (String(input).includes("/rest/v1/storage_uploads")) return jsonResponse(200, []);
-        return storageBackend(200)(input);
-    }, async () => {
-        const response = await handleRequest(request);
-        const result = await response.json();
-        if (response.status !== 404 || result.code !== "object_not_found") {
-            throw new Error(`valid stat became ${response.status} ${result.code}`);
-        }
-        if (!request.bodyUsed) throw new Error("stat did not consume its body");
-        if (reads !== 1) throw new Error(`stat read its body ${reads} times`);
-    });
+    for (const rows of [[], [upload]]) {
+        const request = statRequest();
+        let reads = 0;
+        const originalJson = request.json.bind(request);
+        request.json = () => {
+            reads++;
+            return originalJson();
+        };
+        const original = request.text.bind(request);
+        request.text = () => {
+            reads++;
+            return original();
+        };
+        await withFetch((input) => {
+            const url = String(input);
+            if (url.includes("/rest/v1/storage_uploads")) {
+                if (!url.includes(`user_id=eq.${OWNER}`) || !url.includes(`object_key=eq.${encodeURIComponent(upload.object_key)}`)) {
+                    throw new Error("stat lookup was not owner scoped");
+                }
+                return jsonResponse(200, rows);
+            }
+            return storageBackend(200)(input);
+        }, async () => {
+            const response = await handleRequest(request);
+            const result = await response.json();
+            if (rows.length === 0) {
+                if (response.status !== 404 || result.code !== "object_not_found") {
+                    throw new Error(`valid stat became ${response.status} ${result.code}`);
+                }
+            } else if (response.status !== 200 || JSON.stringify(result) !== JSON.stringify(statResponse(upload))) {
+                throw new Error("stat did not return stored metadata");
+            }
+            if (!request.bodyUsed) throw new Error("stat did not consume its body");
+            if (reads !== 1) throw new Error(`stat read its body ${reads} times`);
+        });
+    }
 });
 
 Deno.test("storage distinguishes invalid body shapes without logging their contents", async () => {
@@ -208,6 +232,23 @@ Deno.test("a consumed storage request stream is a retryable server failure", asy
             throw new Error(`consumed stream became ${response.status} ${result.code}`);
         }
     });
+});
+
+Deno.test("a locked storage request stream is a retryable server failure", async () => {
+    const request = statRequest();
+    const reader = request.body!.getReader();
+    try {
+        await withFetch(storageBackend(200), async () => {
+            const response = await handleRequest(request);
+            const result = await response.json();
+            if (response.status !== 503 || result.code !== "storage_unavailable") {
+                throw new Error(`locked stream became ${response.status} ${result.code}`);
+            }
+        });
+    } finally {
+        reader.releaseLock();
+        await request.body!.cancel();
+    }
 });
 
 Deno.test("an upstream refusal is diagnosed separately from invalid client JSON", async () => {

@@ -78,6 +78,26 @@ Deno.test("a consumed api request stream is a retryable server failure", async (
     });
 });
 
+Deno.test("a locked api request stream is a retryable server failure", async () => {
+    const request = new Request("https://edge.test/v1/auth/refresh", {
+        method: "POST",
+        body: JSON.stringify({ refreshToken: "private-note" }),
+    });
+    const reader = request.body!.getReader();
+    try {
+        await withFetch(() => jsonResponse(201, {}), async () => {
+            const response = await handleRequest(request);
+            const result = await response.json();
+            if (response.status !== 503 || result.code !== "api_unavailable") {
+                throw new Error(`locked stream became ${response.status} ${result.code}`);
+            }
+        });
+    } finally {
+        reader.releaseLock();
+        await request.body!.cancel();
+    }
+});
+
 Deno.test("router falls back to direct v1 paths for local tests", () => {
     const route = resolveRoute("POST", routedPath("/v1/auth/refresh"));
     if (route?.operation !== "refreshTokens") throw new Error("refresh route was not resolved");
