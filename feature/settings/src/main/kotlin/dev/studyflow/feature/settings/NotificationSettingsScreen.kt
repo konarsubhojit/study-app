@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
@@ -128,27 +129,25 @@ public fun NotificationSettingsRoute(
         state = state,
         exactAlarmsDenied = exactAlarmsDenied,
         onEvent = viewModel::onEvent,
-        onOpenExactAlarmSettings = {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                context.start(
-                    Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                        .setData("package:${context.packageName}".toUri()),
-                )
-            }
-        },
+        onOpenExactAlarmSettings = context::requestExactAlarmPermission,
         modifier = modifier,
         onOpenDataPrivacy = onOpenDataPrivacy,
-        syncStatus = { SyncStatusRoute() },
-        logExport = { LogExportRoute() },
-        account = account,
+        slots = NotificationSettingsSlots(account = account, statusCards = { settingsStatusCards() }),
     )
 }
 
+private fun LazyListScope.settingsStatusCards() {
+    item(key = "settings-sync-status") {
+        Box(Modifier.animateItem()) { SyncStatusRoute() }
+    }
+    item(key = "settings-log-export") {
+        Box(Modifier.animateItem()) { LogExportRoute() }
+    }
+}
+
 /**
- * @param syncStatus the sync card (issue #55), passed as a slot so this screen stays renderable
+ * @param slots the account, sync and log export cards, passed as slots so this screen stays renderable
  *   without a ViewModel graph — the same reason the rest of it takes state rather than fetching it.
- * @param logExport the "Export logs" card, next to the sync card because the failure a user wants
- *   to report is usually the one the sync card just told them about.
  * @param onOpenDataPrivacy opens export, restore and account deletion (issue #78).
  */
 @Composable
@@ -159,9 +158,7 @@ public fun NotificationSettingsScreen(
     exactAlarmsDenied: Boolean = false,
     onOpenExactAlarmSettings: () -> Unit = {},
     onOpenDataPrivacy: () -> Unit = {},
-    syncStatus: @Composable () -> Unit = {},
-    logExport: @Composable () -> Unit = {},
-    account: @Composable () -> Unit = {},
+    slots: NotificationSettingsSlots = NotificationSettingsSlots(),
 ) {
     state.rationale?.let { key ->
         NotificationRationaleDialog(key = key, onEvent = onEvent)
@@ -183,7 +180,7 @@ public fun NotificationSettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.medium),
             ) {
                 item(key = "settings-account") {
-                    Box(Modifier.animateItem()) { account() }
+                    Box(Modifier.animateItem()) { slots.account() }
                 }
                 item(key = "settings-title") {
                     Text(
@@ -193,60 +190,8 @@ public fun NotificationSettingsScreen(
                     )
                 }
 
-                item(key = "settings-sync-status") {
-                    Box(Modifier.animateItem()) { syncStatus() }
-                }
-
-                item(key = "settings-log-export") {
-                    Box(Modifier.animateItem()) { logExport() }
-                }
-
-                if (state.notificationsBlocked) {
-                    item(key = "blocked-notifications") {
-                        Box(Modifier.animateItem()) {
-                            BlockedCard(state = state, onEvent = onEvent)
-                        }
-                    }
-                }
-
-                if (exactAlarmsDenied) {
-                    item(key = "exact-alarm-degradation") {
-                        Box(Modifier.animateItem()) {
-                            ExactAlarmDegradationCard(onOpenExactAlarmSettings)
-                        }
-                    }
-                }
-
-                item(key = "battery-diagnostics") {
-                    Box(Modifier.animateItem()) {
-                        BatteryDiagnosticsCard(state.batteryDiagnostics, onEvent)
-                    }
-                }
-
-                item(key = "weekly-summary") {
-                    Box(Modifier.animateItem()) {
-                        WeeklySummaryCard(schedule = state.weeklySummary, onEvent = onEvent)
-                    }
-                }
-
-                items(state.channels, key = { "channel-${it.channel.id}" }) { status ->
-                    ChannelCard(
-                        status = status,
-                        blockedAppWide = state.notificationsBlocked,
-                        onOpenSettings = { onEvent(NotificationSettingsUiEvent.OpenChannelSettings(status.channel)) },
-                        onPickAlarmRingtone = { onEvent(NotificationSettingsUiEvent.PickAlarmRingtone) },
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-
-                item(key = "open-system-settings") {
-                    TextButton(
-                        onClick = { onEvent(NotificationSettingsUiEvent.OpenAppSettings) },
-                        modifier = Modifier.animateItem(),
-                    ) {
-                        Text(text = "Open system notification settings")
-                    }
-                }
+                slots.statusCards(this)
+                notificationPreferences(state, onEvent, exactAlarmsDenied, onOpenExactAlarmSettings)
 
                 item(key = "data-privacy") {
                     Box(Modifier.animateItem()) {
@@ -254,6 +199,74 @@ public fun NotificationSettingsScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+public data class NotificationSettingsSlots(
+    val account: @Composable () -> Unit = {},
+    val statusCards: LazyListScope.() -> Unit = {},
+)
+
+private fun Context.requestExactAlarmPermission() {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+        start(
+            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
+                .setData("package:$packageName".toUri()),
+        )
+    }
+}
+
+private fun LazyListScope.notificationPreferences(
+    state: NotificationSettingsUiState,
+    onEvent: (NotificationSettingsUiEvent) -> Unit,
+    exactAlarmsDenied: Boolean,
+    onOpenExactAlarmSettings: () -> Unit,
+) {
+    if (state.notificationsBlocked) {
+        item(key = "blocked-notifications") {
+            Box(Modifier.animateItem()) {
+                BlockedCard(state = state, onEvent = onEvent)
+            }
+        }
+    }
+
+    if (exactAlarmsDenied) {
+        item(key = "exact-alarm-degradation") {
+            Box(Modifier.animateItem()) {
+                ExactAlarmDegradationCard(onOpenExactAlarmSettings)
+            }
+        }
+    }
+
+    item(key = "battery-diagnostics") {
+        Box(Modifier.animateItem()) {
+            BatteryDiagnosticsCard(state.batteryDiagnostics, onEvent)
+        }
+    }
+
+    item(key = "weekly-summary") {
+        Box(Modifier.animateItem()) {
+            WeeklySummaryCard(schedule = state.weeklySummary, onEvent = onEvent)
+        }
+    }
+
+    items(state.channels, key = { "channel-${it.channel.id}" }) { status ->
+        ChannelCard(
+            status = status,
+            blockedAppWide = state.notificationsBlocked,
+            onOpenSettings = { onEvent(NotificationSettingsUiEvent.OpenChannelSettings(status.channel)) },
+            onPickAlarmRingtone = { onEvent(NotificationSettingsUiEvent.PickAlarmRingtone) },
+            modifier = Modifier.animateItem(),
+        )
+    }
+
+    item(key = "open-system-settings") {
+        TextButton(
+            onClick = { onEvent(NotificationSettingsUiEvent.OpenAppSettings) },
+            modifier = Modifier.animateItem(),
+        ) {
+            Text(text = "Open system notification settings")
         }
     }
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
@@ -100,26 +101,33 @@ public fun HomeScreen(
                     )
                 }
             }
-            if (state.recentMaterials.isNotEmpty()) {
-                item(key = "recent-materials-header") {
-                    Text(
-                        "Recent materials",
-                        style = MaterialTheme.typography.titleLarge,
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-                items(state.recentMaterials, key = { "material-${it.id}" }) { material ->
-                    SummaryCard(
-                        title = material.displayName,
-                        detail =
-                            material.kind.name
-                                .lowercase()
-                                .replaceFirstChar(Char::uppercase),
-                        onClick = { actions.onOpenMaterial(material.id) },
-                        modifier = Modifier.animateItem(),
-                    )
-                }
-            }
+            recentMaterials(state, actions)
+        }
+    }
+}
+
+private fun LazyListScope.recentMaterials(
+    state: HomeUiState,
+    actions: HomeActions,
+) {
+    if (state.recentMaterials.isNotEmpty()) {
+        item(key = "recent-materials-header") {
+            Text(
+                "Recent materials",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.animateItem(),
+            )
+        }
+        items(state.recentMaterials, key = { "material-${it.id}" }) { material ->
+            SummaryCard(
+                title = material.displayName,
+                detail =
+                    material.kind.name
+                        .lowercase()
+                        .replaceFirstChar(Char::uppercase),
+                onClick = { actions.onOpenMaterial(material.id) },
+                modifier = Modifier.animateItem(),
+            )
         }
     }
 }

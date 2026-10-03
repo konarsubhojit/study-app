@@ -32,8 +32,12 @@ public class BackendConventionPlugin : Plugin<Project> {
                 ?: projectRef?.let { "https://$it.supabase.co/functions/v1/$service" }
 
         val configuration = BackendConfiguration(backendUrl("api"), backendUrl("storage"))
+        val requestedTasks = target.gradle.startParameter.taskNames
         val productionRequested =
-            target.gradle.startParameter.taskNames.any { path ->
+            requestedTasks.withIndex().any { (index, path) ->
+                if (path.startsWith("-") || (index > 0 && requestedTasks[index - 1] == "--tests")) {
+                    return@any false
+                }
                 val task = path.substringAfterLast(':')
                 val targetsApp = !path.contains(':') || path.removePrefix(":").startsWith("app:")
                 task.contains("production", ignoreCase = true) ||

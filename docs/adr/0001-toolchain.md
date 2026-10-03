@@ -12,7 +12,7 @@ turning into copy-pasted sludge.
 
 ## Decision
 
-**Gradle 9.7.1 via the wrapper, AGP 9.4.0, Kotlin 2.4.20 with the K2 compiler, Android API 37, and
+**Gradle 9.7.1 via the wrapper, AGP 9.4.1, Kotlin 2.4.20 with the K2 compiler, Android API 37, and
 JDK 21.**
 
 The wrapper is committed, so the Gradle version is part of the source tree rather than part of each

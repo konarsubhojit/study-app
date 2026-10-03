@@ -617,14 +617,9 @@ private fun FilterChipsRow(
                 .padding(vertical = MaterialTheme.spacing.small),
     ) {
         item(key = "task-sort") {
-            val sortedByPriority = state.filter.sort == TaskSort.PRIORITY
-            FilterChip(
-                selected = sortedByPriority,
-                onClick = {
-                    val nextSort = if (sortedByPriority) TaskSort.DUE_DATE else TaskSort.PRIORITY
-                    onEvent(TasksListUiEvent.SortChanged(nextSort))
-                },
-                label = { Text(text = if (sortedByPriority) "Sorted by priority" else "Sorted by due date") },
+            TaskSortChip(
+                sort = state.filter.sort,
+                onEvent = onEvent,
                 modifier = Modifier.animateItem(),
             )
         }
@@ -667,4 +662,22 @@ private fun FilterChipsRow(
             )
         }
     }
+}
+
+@Composable
+private fun TaskSortChip(
+    sort: TaskSort,
+    onEvent: (TasksListUiEvent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val sortedByPriority = sort == TaskSort.PRIORITY
+    FilterChip(
+        selected = sortedByPriority,
+        onClick = {
+            val nextSort = if (sortedByPriority) TaskSort.DUE_DATE else TaskSort.PRIORITY
+            onEvent(TasksListUiEvent.SortChanged(nextSort))
+        },
+        label = { Text(text = if (sortedByPriority) "Sorted by priority" else "Sorted by due date") },
+        modifier = modifier,
+    )
 }

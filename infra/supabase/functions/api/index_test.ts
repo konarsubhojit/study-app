@@ -998,7 +998,7 @@ Deno.test("a replayed passkey assertion is refused and mints no session", async 
     state.credentials[passkey.credentialId] = credentialRow(passkey, OWNER, 0);
     // The database claims the challenge atomically, so the second attempt matches no row at all.
     state.challenges.push({ challenge_hash: "hash", user_id: null });
-    const assertion = await assertionJson(passkey, { counter: 1 });
+    const assertion = await assertionJson(passkey, { counter: 1, userHandle: OWNER });
     await withFetch(passkeyFetch(state), async () => {
         const first = await handleRequest(passkeySignInRequest(assertion));
         if (first.status !== 200) throw new Error("the first use of the challenge was rejected");
@@ -1193,6 +1193,7 @@ async function expectPasskeySignInRejected(
         storedCounter?: number;
         storeCredential?: boolean;
         omitUserHandle?: boolean;
+        userHandle?: string;
         signWith?: Passkey;
     },
     message: string,
@@ -1364,7 +1365,7 @@ function cborMap(entries: [number | string, Uint8Array][]): Uint8Array {
     );
 }
 
-function concat(...parts: Uint8Array[]): Uint8Array {
+function concat(...parts: Uint8Array[]): Uint8Array<ArrayBuffer> {
     const joined = new Uint8Array(parts.reduce((total, part) => total + part.length, 0));
     parts.reduce((offset, part) => {
         joined.set(part, offset);
