@@ -47,8 +47,16 @@ public object AlarmPlaybackPolicy {
     /** True once [elapsed] has reached [TIMEOUT_DURATION] and playback should stop itself. */
     public fun hasTimedOut(elapsed: Duration): Boolean = elapsed >= TIMEOUT_DURATION
 
-    /** How often the volume ramp and the timeout check are re-evaluated. */
+    /** Maximum interval between volume-ramp updates while volume is increasing. */
     public val TICK_INTERVAL: Duration = 500.milliseconds
+
+    /** Delay until the next volume update, then directly until timeout once escalation is complete. */
+    public fun delayUntilNextUpdate(elapsed: Duration): Duration =
+        when {
+            elapsed < ESCALATION_DURATION -> minOf(TICK_INTERVAL, ESCALATION_DURATION - elapsed)
+            elapsed < TIMEOUT_DURATION -> TIMEOUT_DURATION - elapsed
+            else -> Duration.ZERO
+        }
 
     /**
      * What an alarm that nobody attended to should do once [TIMEOUT_DURATION] elapses.

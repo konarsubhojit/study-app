@@ -77,6 +77,7 @@ prompt deferred to a moment of value, and denials that are reported rather than 
 
 → [ADR 0004](docs/adr/0004-reminder-scheduling.md) ·
 [Notifications guide](docs/notifications.md) ·
+[Background work and battery reliability](docs/background-reliability.md) ·
 [Widgets guide](docs/widgets.md) ·
 [`ReminderScheduler`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/ReminderScheduler.kt) ·
 [`RecurrenceCalculator`](core/domain/src/main/kotlin/dev/studyflow/core/domain/reminder/RecurrenceCalculator.kt)
