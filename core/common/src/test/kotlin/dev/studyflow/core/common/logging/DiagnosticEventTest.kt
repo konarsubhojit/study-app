@@ -49,7 +49,8 @@ class DiagnosticEventTest {
         val rendered = event.render()
 
         assertEquals(
-            """code=MaterialUpload throwable=TRANSIENT_STORAGE throwableMessage="stat failed [url] response= [headers redacted]"""",
+            """code=MaterialUpload throwable=TRANSIENT_STORAGE """ +
+                """throwableMessage="stat failed [url] [headers redacted]"""",
             rendered,
         )
         assertFalse(rendered.contains("signed-value"))

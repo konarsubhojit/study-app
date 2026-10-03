@@ -7,6 +7,7 @@ import android.content.pm.ServiceInfo
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
+import androidx.work.ListenableWorker
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
@@ -121,7 +122,7 @@ public class MaterialUploadWorker
                 UploadOutcome.Synced -> {
                     syncScheduler.requestSync(SyncTrigger.OUTBOUND)
                     notifier.cancel(materialUploadNotificationId(materialId))
-                    Result.success()
+                    outcome.toWorkerResult()
                 }
 
                 is UploadOutcome.Retryable -> {
@@ -133,7 +134,7 @@ public class MaterialUploadWorker
                             message = "We'll retry when your connection is available.",
                         ),
                     )
-                    Result.retry()
+                    outcome.toWorkerResult()
                 }
 
                 is UploadOutcome.Permanent -> {
@@ -151,12 +152,12 @@ public class MaterialUploadWorker
                                 },
                         ),
                     )
-                    Result.failure()
+                    outcome.toWorkerResult()
                 }
 
                 UploadOutcome.MaterialMissing -> {
                     notifier.cancel(materialUploadNotificationId(materialId))
-                    Result.failure()
+                    outcome.toWorkerResult()
                 }
             }
 
@@ -232,4 +233,11 @@ public class MaterialUploadWorker
             const val TAG = "MaterialUploadWorker"
             const val PERCENT_TOTAL = 100
         }
+    }
+
+internal fun UploadOutcome.toWorkerResult(): ListenableWorker.Result =
+    when (this) {
+        UploadOutcome.Synced -> ListenableWorker.Result.success()
+        is UploadOutcome.Retryable -> ListenableWorker.Result.retry()
+        is UploadOutcome.Permanent, UploadOutcome.MaterialMissing -> ListenableWorker.Result.failure()
     }

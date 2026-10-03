@@ -55,6 +55,19 @@ class StorageFunctionContractTest {
         }
     }
 
+    @Test
+    fun `the function body helper rejects non-object JSON values`() {
+        val bodyParser =
+            Regex("""async function body\(request: Request\): Promise<Json> \{([\s\S]*?)\n\}""")
+                .find(source)
+                ?.groupValues
+                ?.get(1)
+                .orEmpty()
+
+        assertTrue(bodyParser.contains("typeof value !== \"object\""), bodyParser)
+        assertTrue(bodyParser.contains("Array.isArray(value)"), bodyParser)
+    }
+
     /** Evaluates `const NAME = a * b * c;` — the only form the function uses for its limits. */
     private fun constant(name: String): Long {
         val expression =

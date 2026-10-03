@@ -20,6 +20,7 @@ import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.content.TextContent
 import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.SerializationException
@@ -192,7 +193,7 @@ public class StorageFunctionUrlSource(
             val response =
                 client.post("$baseUrl/$operation") {
                     contentType(ContentType.Application.Json)
-                    setBody(body.toString())
+                    setBody(TextContent(body.toString(), ContentType.Application.Json))
                 }
             response.status to response.bodyAsText()
         } catch (cancellation: CancellationException) {
@@ -251,6 +252,9 @@ public class StorageFunctionUrlSource(
         internal const val OP_DELETE: String = "delete"
         internal const val OP_STAT: String = "stat"
 
+        private val CLIENT_REQUEST_FAILURE_CODES =
+            setOf("invalid_request", "invalid_content_hash", "invalid_size")
+
         /** How many parts — and so how many checksums — the function expects for [sizeBytes]. */
         public fun expectedPartCount(sizeBytes: Long): Int =
             ((sizeBytes + CloudStorageLimits.PART_SIZE_BYTES - 1) / CloudStorageLimits.PART_SIZE_BYTES).toInt()
@@ -272,6 +276,10 @@ public class StorageFunctionUrlSource(
             return when {
                 code == "object_not_found" -> {
                     ObjectStoreException.NotFound(key)
+                }
+
+                code in CLIENT_REQUEST_FAILURE_CODES -> {
+                    ObjectStoreException.AccessDenied(subject)
                 }
 
                 // Signed out or the session lapsed: the bearer plugin has already tried a refresh,

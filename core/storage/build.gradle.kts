@@ -14,6 +14,7 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
 
     testImplementation(projects.core.testing)
+    testImplementation(projects.core.network)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.kotlinx.coroutines.test)
 }
