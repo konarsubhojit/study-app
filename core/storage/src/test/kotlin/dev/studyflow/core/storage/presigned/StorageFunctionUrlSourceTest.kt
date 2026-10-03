@@ -3,7 +3,9 @@ package dev.studyflow.core.storage.presigned
 import dev.studyflow.core.domain.materials.CloudStorageLimits
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.network.ApiConfig
+import dev.studyflow.core.network.auth.AuthTokens
 import dev.studyflow.core.network.auth.InMemoryTokenStore
+import dev.studyflow.core.network.auth.TokenRefresher
 import dev.studyflow.core.network.http.studyFlowHttpClient
 import dev.studyflow.core.network.version.ClientVersion
 import dev.studyflow.core.storage.ObjectKey
@@ -201,6 +203,77 @@ class StorageFunctionUrlSourceTest {
         }
 
     @Test
+    fun `stat preserves its JSON object when bearer authentication refreshes the request`() =
+        runTest {
+            val tokens = InMemoryTokenStore(AuthTokens("expired-test-token", "refresh-test-token"))
+            var refreshes = 0
+            val authorizations = mutableListOf<String?>()
+            val source =
+                sourceWithSharedClient(
+                    tokenStore = tokens,
+                    tokenRefresher =
+                        TokenRefresher { refreshToken ->
+                            assertEquals("refresh-test-token", refreshToken)
+                            refreshes++
+                            AuthTokens("fresh-test-token", "next-refresh-test-token")
+                        },
+                ) { data ->
+                    authorizations += data.headers[HttpHeaders.Authorization]
+                    if (authorizations.size == 1) {
+                        respond(
+                            """{"code":"authentication_required"}""",
+                            HttpStatusCode.Unauthorized,
+                            headersOf(
+                                HttpHeaders.ContentType to listOf("application/json"),
+                                HttpHeaders.WWWAuthenticate to listOf("Bearer"),
+                            ),
+                        )
+                    } else {
+                        respondForOperation(data, requestFor(PAYLOAD))
+                    }
+                }
+
+            assertEquals(HASH, source.stat(ObjectKey.ofMaterial(HASH))?.contentHash)
+            assertEquals(1, refreshes)
+            assertEquals(
+                listOf("Bearer " + "expired-test-token", "Bearer " + "fresh-test-token"),
+                authorizations,
+            )
+            assertEquals(2, parsedRequestBodies.size)
+            parsedRequestBodies.forEach { body ->
+                val value = assertInstanceOf(JsonObject::class.java, body)
+                assertEquals(setOf("contentHash"), value.keys)
+                assertEquals(HASH.hex, value.string("contentHash"))
+            }
+        }
+
+    @Test
+    fun `stat preserves its JSON object on a caller retry without automatically replaying POST`() =
+        runTest {
+            var attempts = 0
+            val source =
+                sourceWithSharedClient { data ->
+                    attempts++
+                    if (attempts == 1) {
+                        respondJson("""{"code":"storage_unavailable"}""", HttpStatusCode.ServiceUnavailable)
+                    } else {
+                        respondForOperation(data, requestFor(PAYLOAD))
+                    }
+                }
+            val key = ObjectKey.ofMaterial(HASH)
+
+            assertFailsWith<ObjectStoreException.Transient> { source.stat(key) }
+            assertEquals(1, attempts, "the production retry plugin must not automatically replay POST")
+            assertEquals(HASH, source.stat(key)?.contentHash)
+            assertEquals(2, parsedRequestBodies.size)
+            parsedRequestBodies.forEach { body ->
+                val value = assertInstanceOf(JsonObject::class.java, body)
+                assertEquals(setOf("contentHash"), value.keys)
+                assertEquals(HASH.hex, value.string("contentHash"))
+            }
+        }
+
+    @Test
     fun `a key outside the materials namespace is never sent to the function`() =
         runTest {
             val source = source { respondJson("{}") }
@@ -375,6 +448,8 @@ class StorageFunctionUrlSourceTest {
         )
 
     private fun sourceWithSharedClient(
+        tokenStore: InMemoryTokenStore = InMemoryTokenStore(),
+        tokenRefresher: TokenRefresher? = null,
         handler: suspend MockRequestHandleScope.(HttpRequestData) -> HttpResponseData,
     ): StorageFunctionUrlSource {
         val engine = capturingEngine(handler)
@@ -387,7 +462,8 @@ class StorageFunctionUrlSourceTest {
                             baseUrl = "https://api.example.test",
                             clientVersion = ClientVersion(1, 0, 0),
                         ),
-                    tokenStore = InMemoryTokenStore(),
+                    tokenStore = tokenStore,
+                    tokenRefresher = tokenRefresher,
                 ),
             baseUrl = BASE_URL,
             clock = { NOW },

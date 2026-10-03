@@ -718,13 +718,32 @@ async function pushRecordChanges(request: Request, owner?: string): Promise<Resp
 }
 
 async function body(request: Request): Promise<Json> {
+    if (request.bodyUsed) throw new Error("Request body stream already consumed.");
+    let text: string;
     try {
-        const value = await request.json();
-        if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error();
-        return value;
+        text = await request.text();
     } catch {
+        throw new Error("Request body stream could not be read.");
+    }
+    let value: unknown;
+    let reason: string | undefined;
+    if (!text.trim()) {
+        reason = "empty_body";
+    } else {
+        try {
+            value = JSON.parse(text);
+        } catch {
+            reason = "invalid_json";
+        }
+        if (!reason && (value === null || typeof value !== "object" || Array.isArray(value))) {
+            reason = value === null ? "json_null" : Array.isArray(value) ? "json_array" : `json_${typeof value}`;
+        }
+    }
+    if (reason) {
+        console.warn(JSON.stringify({ event: "request_body_invalid", reason }));
         throw new ApiError(400, "invalid_request", "The request body must be a JSON object.");
     }
+    return value as Json;
 }
 
 function base64Url(bytes: Uint8Array): string {
