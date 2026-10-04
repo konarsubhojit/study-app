@@ -19,7 +19,7 @@ begin;
 
 create extension if not exists pgtap with schema extensions;
 
-select plan(7);
+select plan(10);
 
 insert into auth.users (id, email) values
   ('11111111-1111-1111-1111-111111111111', 'alice@example.com');
@@ -35,7 +35,12 @@ revoke all on
   public.sync_records,
   public.subjects,
   public.study_tasks,
-  public.auth_signin_challenges
+  public.auth_signin_challenges,
+  public.storage_uploads,
+  public.storage_url_audit,
+  public.backend_observability_events,
+  public.account_deletion_receipts,
+  public.passkey_credentials
   from service_role;
 select public.apply_service_role_table_grants();
 
@@ -106,6 +111,42 @@ select is(
   (select count(*) from public.sync_pull_records('11111111-1111-1111-1111-111111111111', 0, 50)),
   1::bigint,
   'the service role can read the record delta'
+);
+
+reset role;
+
+-- Independently enumerated from every direct database/databaseJson call in storage and api.
+-- Check after stripping defaults and replaying the manifest, not against local bootstrap grants.
+select is_empty(
+  $$
+    select required.table_name || ' needs ' || required.privilege
+    from (values
+      ('storage_uploads', 'select'), ('storage_uploads', 'update'),
+      ('storage_url_audit', 'insert'), ('backend_observability_events', 'insert'),
+      ('subjects', 'select'),
+      ('account_deletion_receipts', 'select'), ('account_deletion_receipts', 'insert'),
+      ('auth_signin_challenges', 'select'), ('auth_signin_challenges', 'insert'),
+      ('auth_signin_challenges', 'update'),
+      ('passkey_credentials', 'select'), ('passkey_credentials', 'insert'),
+      ('passkey_credentials', 'update')
+    ) as required(table_name, privilege)
+    where not has_table_privilege('service_role', 'public.' || required.table_name, required.privilege)
+  $$,
+  'service_role has every privilege required by direct storage and api queries'
+);
+
+set local role service_role;
+
+-- Exercise identity defaults without granting access to their sequences.
+select lives_ok(
+  $$insert into public.storage_url_audit (user_id, operation, object_key, expires_at)
+    values ('11111111-1111-1111-1111-111111111111', 'download', 'test-object', now() + interval '10 minutes')$$,
+  'storage can write its URL audit'
+);
+select lives_ok(
+  $$insert into public.backend_observability_events (request_id, operation, status, duration_ms)
+    values ('privilege-test', 'unknown', 503, 0)$$,
+  'both Edge Functions can write observability events'
 );
 
 reset role;

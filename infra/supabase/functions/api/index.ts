@@ -1264,8 +1264,9 @@ export async function handleRequest(request: Request): Promise<Response> {
         const response = await dispatch(request);
         status = response.status;
         return withTrace(response, requestId);
-    } catch (caught) {
-        const error = caught instanceof UpstreamError ? upstreamApiError(caught) ?? caught : caught;
+    } catch (error) {
+        // As in storage, only explicitly matched ApiErrors are client faults. Unmatched
+        // upstream 4xx can mean server misconfiguration and must remain retryable outages.
         if (error instanceof ApiError) {
             status = error.status;
             errorCode = error.code;
@@ -1296,21 +1297,6 @@ export async function handleRequest(request: Request): Promise<Response> {
             egressBytes: 0,
         });
     }
-}
-
-/**
- * How an upstream refusal is reported to the client.
- *
- * A 4xx means the upstream understood the request and rejected *it*: another identical attempt
- * cannot succeed, so it must not arrive as the retryable 503 that means "we are having a bad
- * moment". A 5xx or a transport failure is exactly that bad moment and is left to the catch-all.
- */
-function upstreamApiError(error: UpstreamError): ApiError | undefined {
-    if (error.status < 400 || error.status >= 500) return undefined;
-    if (error.status === 409) {
-        return new ApiError(409, "conflict", "This change conflicts with the stored data.");
-    }
-    return new ApiError(400, "invalid_request", "The request could not be processed.");
 }
 
 if (import.meta.main) Deno.serve(handleRequest);

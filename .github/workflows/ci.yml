@@ -59,6 +59,17 @@ jobs:
       - name: Test API and storage functions
         run: deno test --allow-env infra/supabase/functions/api/index_test.ts infra/supabase/functions/storage/index_test.ts
 
+      - name: Set up Supabase
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Test database migrations and service-role privileges
+        working-directory: infra
+        run: |
+          supabase db start
+          supabase test db --local supabase/tests/database/service_role_privileges.sql
+
   build:
     name: Build and verify
     # Pull requests stay on GitHub-hosted runners: this repository is public, so a

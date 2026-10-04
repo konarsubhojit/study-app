@@ -449,20 +449,21 @@ Deno.test("a GoTrue outage still reports an unavailable API", async () => {
     });
 });
 
-Deno.test("a database refusal of the caller's request is not a retryable outage", async () => {
-    for (const [upstreamStatus, expectedStatus, expectedCode] of [
-        [400, 400, "invalid_request"],
-        [403, 400, "invalid_request"],
-        [409, 409, "conflict"],
-        [500, 503, "api_unavailable"],
-        [502, 503, "api_unavailable"],
+Deno.test("unmatched database refusals are retryable API outages", async () => {
+    for (const [upstreamStatus, upstreamCode] of [
+        [400, "42P01"],
+        [403, "42501"],
+        [404, "PGRST202"],
+        [409, "23505"],
+        [500, "unknown"],
+        [502, "unknown"],
     ] as const) {
         await withFetch((input) => {
             const url = String(input);
             if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: ALICE });
             if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
             if (url.includes("/rest/v1/rpc/sync_push_study_sessions")) {
-                return jsonResponse(upstreamStatus, { message: "upstream said no" });
+                return jsonResponse(upstreamStatus, { code: upstreamCode, message: "upstream said no" });
             }
             throw new Error(`unexpected fetch ${url}`);
         }, async () => {
@@ -471,7 +472,7 @@ Deno.test("a database refusal of the caller's request is not a retryable outage"
                 changes: [stoppedSession()],
             }));
             const body = await response.json();
-            if (response.status !== expectedStatus || body.code !== expectedCode) {
+            if (response.status !== 503 || body.code !== "api_unavailable") {
                 throw new Error(`database ${upstreamStatus} became ${response.status} ${body.code}`);
             }
         });

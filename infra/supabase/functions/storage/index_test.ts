@@ -264,8 +264,8 @@ Deno.test("an upstream refusal is diagnosed separately from invalid client JSON"
         }, async () => {
             const response = await handleRequest(statRequest());
             const result = await response.json();
-            if (response.status !== 400 || result.code !== "invalid_request") {
-                throw new Error("upstream client-error mapping changed");
+            if (response.status !== 503 || result.code !== "storage_unavailable") {
+                throw new Error("a server query failure was reported as invalid client input");
             }
         });
     } finally {
@@ -281,19 +281,43 @@ Deno.test("an upstream refusal is diagnosed separately from invalid client JSON"
     }
 });
 
-Deno.test("a database refusal inside a storage operation is a client error, not a retryable outage", async () => {
-    for (const [upstreamStatus, expectedStatus, expectedCode] of [
-        [400, 400, "invalid_request"],
-        [403, 400, "invalid_request"],
-        [409, 409, "conflict"],
-        [500, 503, "storage_unavailable"],
-        [502, 503, "storage_unavailable"],
+Deno.test("unmatched database refusals are retryable storage outages", async () => {
+    for (const [upstreamStatus, upstreamCode] of [
+        [400, "42P01"],
+        [403, "42501"],
+        [404, "PGRST202"],
+        [409, "23505"],
+        [500, "unknown"],
+        [502, "unknown"],
     ] as const) {
-        await withFetch(storageBackend(upstreamStatus), async () => {
+        await withFetch(storageBackend(upstreamStatus, { code: upstreamCode }), async () => {
             const response = await handleRequest(statRequest());
             const body = await response.json();
-            if (response.status !== expectedStatus || body.code !== expectedCode) {
+            if (response.status !== 503 || body.code !== "storage_unavailable") {
                 throw new Error(`database ${upstreamStatus} became ${response.status} ${body.code}`);
+            }
+        });
+    }
+});
+
+Deno.test("explicit storage client errors keep their status and retry policy", async () => {
+    for (const [code, expectedStatus] of [
+        ["rate_limited", 429],
+        ["quota_exceeded", 413],
+        ["object_already_exists", 409],
+    ] as const) {
+        await withFetch(storageBackend(400, { message: code, details: "82" }), async () => {
+            const response = await handleRequest(statRequest());
+            const body = await response.json();
+            if (response.status !== expectedStatus || body.code !== code) {
+                throw new Error(`${code} became ${response.status} ${body.code}`);
+            }
+            const retryAfter = response.headers.get("retry-after");
+            if (retryAfter !== (code === "rate_limited" ? "60" : null)) {
+                throw new Error(`${code} changed its retry policy`);
+            }
+            if (code === "quota_exceeded" && body.details?.availableBytes !== "82") {
+                throw new Error("quota details were lost");
             }
         });
     }
@@ -345,13 +369,16 @@ function statRequest(): Request {
 }
 
 /** Auth and rate limiting succeed; the `storage_uploads` lookup answers [uploadsStatus]. */
-function storageBackend(uploadsStatus: number): (input: RequestInfo | URL) => Response {
+function storageBackend(
+    uploadsStatus: number,
+    uploadsBody: unknown = { message: "upstream said no" },
+): (input: RequestInfo | URL) => Response {
     return (input) => {
         const url = String(input);
         if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: OWNER });
         if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
         if (url.includes("/rest/v1/rpc/storage_consume_rate_limit")) return jsonResponse(200, null);
-        if (url.includes("/rest/v1/storage_uploads")) return jsonResponse(uploadsStatus, { message: "upstream said no" });
+        if (url.includes("/rest/v1/storage_uploads")) return jsonResponse(uploadsStatus, uploadsBody);
         throw new Error(`unexpected fetch ${url}`);
     };
 }
