@@ -80,10 +80,7 @@ public class StorageFunctionUrlSource(
             request.key.materialContentHash
                 ?: throw ObjectStoreException.AccessDenied("'${request.key}' is not a key the storage service stores")
         require(hash == request.contentHash) { "'${request.key}' does not address ${request.contentHash}" }
-        val expectedParts = expectedPartCount(request.sizeBytes)
-        require(request.partChecksums.size == expectedParts) {
-            "'${request.key}' needs $expectedParts part checksums but ${request.partChecksums.size} were computed"
-        }
+        requireValidPartChecksums(request)
 
         val response =
             call(
@@ -252,12 +249,32 @@ public class StorageFunctionUrlSource(
         internal const val OP_DELETE: String = "delete"
         internal const val OP_STAT: String = "stat"
 
+        /** The function's `SHA256_BASE64`: 32 bytes of digest are always 43 characters and one `=`. */
+        private val SHA256_BASE64 = Regex("^[A-Za-z0-9+/]{43}=$")
+
         private val CLIENT_REQUEST_FAILURE_CODES =
             setOf("invalid_request", "invalid_content_hash", "invalid_size")
 
         /** How many parts — and so how many checksums — the function expects for [sizeBytes]. */
         public fun expectedPartCount(sizeBytes: Long): Int =
             ((sizeBytes + CloudStorageLimits.PART_SIZE_BYTES - 1) / CloudStorageLimits.PART_SIZE_BYTES).toInt()
+
+        /**
+         * The function's `validateUpload` checksum rule, checked before anything is sent: exactly
+         * [expectedPartCount] checksums, each a base64 SHA-256. Public so that test doubles of the
+         * store impose the same contract as the real one instead of accepting what it rejects.
+         *
+         * @throws IllegalArgumentException when [request] would be refused with `invalid_part_checksums`.
+         */
+        public fun requireValidPartChecksums(request: UploadRequest) {
+            val expectedParts = expectedPartCount(request.sizeBytes)
+            require(request.partChecksums.size == expectedParts) {
+                "'${request.key}' needs $expectedParts part checksums but ${request.partChecksums.size} were computed"
+            }
+            require(request.partChecksums.all(SHA256_BASE64::matches)) {
+                "'${request.key}' has a part checksum that is not a base64 SHA-256"
+            }
+        }
 
         /**
          * The function's documented failures, translated into the store's vocabulary.

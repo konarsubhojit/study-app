@@ -2,6 +2,9 @@ package dev.studyflow.core.storage.presigned
 
 import dev.studyflow.core.domain.materials.CloudStorageLimits
 import dev.studyflow.core.domain.materials.MultipartLimits
+import dev.studyflow.core.domain.materials.UploadPart
+import dev.studyflow.core.domain.materials.UploadPlanner
+import dev.studyflow.core.model.ContentHash
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
@@ -28,6 +31,29 @@ class StorageFunctionContractTest {
     fun `the client plans parts of exactly the size the function checksums`() {
         assertEquals(constant("PART_SIZE_BYTES"), CloudStorageLimits.PART_SIZE_BYTES)
         assertEquals(CloudStorageLimits.PART_SIZE_BYTES, MultipartLimits.S3_COMPATIBLE.minPartSizeBytes)
+    }
+
+    @Test
+    fun `every file the function accepts is planned into exactly the parts the function signs`() {
+        // The function is authoritative: it signs part `index` at `index * PART_SIZE_BYTES`, sized
+        // `min(PART_SIZE_BYTES, sizeBytes - offset)`. The planner chooses its part size on its own,
+        // so its layout — not just its floor — must reproduce that for every accepted size, or the
+        // checksums the client hashes from it describe parts the function never signed.
+        val partSize = constant("PART_SIZE_BYTES")
+        val maxSize = constant("MAX_SIZE_BYTES")
+        val sizes = (1L..maxSize / partSize).flatMap { n -> listOf(n * partSize - 1, n * partSize, n * partSize + 1) }
+        (listOf(1L, maxSize) + sizes).filter { it in 1..maxSize }.forEach { sizeBytes ->
+            val functionParts =
+                (0 until StorageFunctionUrlSource.expectedPartCount(sizeBytes)).map { index ->
+                    val offset = index * partSize
+                    UploadPart(number = index + 1, offset = offset, size = minOf(partSize, sizeBytes - offset))
+                }
+            assertEquals(
+                functionParts,
+                UploadPlanner.plan(sizeBytes, ContentHash("a".repeat(64))).parts,
+                "$sizeBytes bytes",
+            )
+        }
     }
 
     @Test
