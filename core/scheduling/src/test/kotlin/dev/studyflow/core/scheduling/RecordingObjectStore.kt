@@ -6,12 +6,14 @@ import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStore
 import dev.studyflow.core.storage.ObjectStoreException
+import dev.studyflow.core.storage.PartChecksums
 import dev.studyflow.core.storage.PresignedUrl
 import dev.studyflow.core.storage.SignedPart
 import dev.studyflow.core.storage.StoredObject
 import dev.studyflow.core.storage.UploadRequest
 import dev.studyflow.core.storage.UploadSession
 import dev.studyflow.core.storage.UploadedPart
+import dev.studyflow.core.storage.presigned.StorageFunctionUrlSource
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlin.time.Duration
@@ -24,6 +26,11 @@ import kotlin.time.Instant
  * [initUpload] for the same key can still be completed with bytes a prior call already uploaded —
  * exactly what a real provider does for a resumed session, and what [MaterialUploadEngineTest]
  * needs to prove a resumed upload never resends an already-acknowledged part.
+ *
+ * It also holds the engine to the contract the production store imposes, rather than accepting
+ * requests that store rejects: [initUpload] applies [StorageFunctionUrlSource]'s own part-checksum
+ * precondition, and [uploadPart] verifies each part's bytes against the checksum declared for it,
+ * as S3 does with `x-amz-checksum-sha256`.
  */
 internal class RecordingObjectStore : ObjectStore {
     private val mutex = Mutex()
@@ -32,15 +39,30 @@ internal class RecordingObjectStore : ObjectStore {
     /** Every part number [uploadPart] was actually called with, in call order. */
     val uploadedPartNumbers = mutableListOf<Int>()
 
+    private val checksumsByKey = mutableMapOf<ObjectKey, List<String>>()
+
+    /** Every request [initUpload] accepted, in call order. */
+    val initRequests = mutableListOf<UploadRequest>()
+
     private val statResults = mutableMapOf<ObjectKey, StoredObject>()
 
     var failNextUploadPart: ObjectStoreException? = null
     var failCompleteUpload: ObjectStoreException? = null
     var failDownloadUrl: ObjectStoreException? = null
     var failStat: ObjectStoreException? = null
+    var failInitUpload: Throwable? = null
     val statted: MutableList<ObjectKey> = mutableListOf()
 
     override suspend fun initUpload(request: UploadRequest): UploadSession {
+        failInitUpload?.let { throw it }
+        require(ObjectKey.ofMaterial(request.contentHash) == request.key) {
+            "'${request.key}' does not address ${request.contentHash}"
+        }
+        StorageFunctionUrlSource.requireValidPartChecksums(request)
+        mutex.withLock {
+            initRequests += request
+            checksumsByKey[request.key] = request.partChecksums
+        }
         val plan = UploadPlanner.plan(request.sizeBytes, request.contentHash)
         val expiresAt = Instant.parse(FIXED_INSTANT)
         return UploadSession.of(request.key, "upload-${request.key}", plan, expiresAt) { part ->
@@ -58,6 +80,10 @@ internal class RecordingObjectStore : ObjectStore {
             failNextUploadPart?.let {
                 failNextUploadPart = null
                 throw it
+            }
+            val declared = checksumsByKey[session.key]?.getOrNull(part.number - 1)
+            if (declared != PartChecksums.sha256Base64(bytes)) {
+                throw ObjectStoreException.Integrity("part ${part.number} does not match its declared checksum")
             }
             partsByKey.getOrPut(session.key) { mutableMapOf() }[part.number] = bytes.copyOf()
             UploadedPart(number = part.number, etag = "etag-${part.number}", size = part.size)

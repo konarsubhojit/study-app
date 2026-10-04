@@ -113,6 +113,18 @@ class StorageFunctionUrlSourceTest {
         }
 
     @Test
+    fun `a checksum the function would reject as malformed never leaves the device`() =
+        runTest {
+            val source = source { respondJson("{}") }
+
+            assertFailsWith<IllegalArgumentException> {
+                source.createUpload(requestFor(PAYLOAD).copy(partChecksums = listOf("not-a-sha256")))
+            }
+
+            assertTrue(requests.isEmpty())
+        }
+
+    @Test
     fun `the part count matches the function's ceil of size over part size`() {
         assertEquals(1, StorageFunctionUrlSource.expectedPartCount(1))
         assertEquals(1, StorageFunctionUrlSource.expectedPartCount(CloudStorageLimits.PART_SIZE_BYTES))

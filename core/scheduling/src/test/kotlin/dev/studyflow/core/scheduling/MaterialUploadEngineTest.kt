@@ -2,24 +2,32 @@ package dev.studyflow.core.scheduling
 
 import dev.studyflow.core.common.logging.DiagnosticCode
 import dev.studyflow.core.common.logging.DiagnosticThrowableKind
+import dev.studyflow.core.domain.materials.CloudStorageLimits
 import dev.studyflow.core.domain.materials.CompletedUploadPart
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.model.Material
 import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStoreException
+import dev.studyflow.core.storage.presigned.StorageFunctionUrlSource
 import dev.studyflow.core.testing.data.FakeMaterialRepository
 import dev.studyflow.core.testing.data.FakeUploadProgressStore
 import dev.studyflow.core.testing.logging.RecordingAppLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertInstanceOf
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.ValueSource
 import java.io.FileNotFoundException
+import java.security.MessageDigest
+import java.util.Base64
 import kotlin.time.Instant
 
 @DisplayName("MaterialUploadEngine")
@@ -326,6 +334,73 @@ class MaterialUploadEngineTest {
             assertEquals(UploadOutcome.Synced, outcome)
             assertEquals(listOf(1, 2, 3), objectStore.uploadedPartNumbers, "a truncated object is not a valid re-link")
         }
+
+    @ParameterizedTest(name = "{0} bytes")
+    @ValueSource(longs = [1_000, 8L * 1024 * 1024, 16L * 1024 * 1024, 20L * 1024 * 1024])
+    fun `initUpload receives one base64 SHA-256 per part, of exactly that part's bytes`(sizeBytes: Long) =
+        runBlocking {
+            // Bytes that differ between parts, so a checksum of the wrong slice cannot pass.
+            val content = ByteArray(sizeBytes.toInt()) { index -> (index % 251).toByte() }
+            materialRepository.save(material().copy(sizeBytes = sizeBytes))
+            val checksummingEngine =
+                MaterialUploadEngine(
+                    materialRepository = materialRepository,
+                    uploadProgressStore = uploadProgressStore,
+                    objectStore = objectStore,
+                    readPart = { _, part -> content.copyOfRange(part.offset.toInt(), part.endExclusive.toInt()) },
+                )
+
+            assertEquals(UploadOutcome.Synced, checksummingEngine.upload("m1"))
+
+            val partSize = CloudStorageLimits.PART_SIZE_BYTES.toInt()
+            val expected =
+                (0 until content.size step partSize).map { start ->
+                    val slice = content.copyOfRange(start, minOf(content.size, start + partSize))
+                    Base64.getEncoder().encodeToString(MessageDigest.getInstance("SHA-256").digest(slice))
+                }
+            val checksums = objectStore.initRequests.single().partChecksums
+            assertEquals(StorageFunctionUrlSource.expectedPartCount(sizeBytes), checksums.size)
+            assertEquals(expected, checksums)
+        }
+
+    @Test
+    fun `an unexpected exception is logged as a failure of its stage and parks the material`() =
+        runBlocking {
+            val logger = RecordingAppLogger()
+            val materialId = "00000000-0000-0000-0000-000000000005"
+            materialRepository.save(material().copy(id = materialId))
+            objectStore.failInitUpload = IllegalStateException("programming error")
+            val diagnosticEngine =
+                MaterialUploadEngine(
+                    materialRepository = materialRepository,
+                    uploadProgressStore = uploadProgressStore,
+                    objectStore = objectStore,
+                    readPart = { _, part -> ByteArray(part.size.toInt()) },
+                    logger = logger,
+                )
+
+            assertInstanceOf(UploadOutcome.Permanent::class.java, diagnosticEngine.upload(materialId))
+
+            val failure =
+                logger.diagnosticsWith(DiagnosticCode.MaterialUpload).single { "outcome=FAILURE" in it }
+            assertTrue("stage=INIT outcome=FAILURE retryable=false" in failure, failure)
+            assertTrue("throwable=UNEXPECTED" in failure, failure)
+            val sync = materialRepository.observeById(materialId).first()?.sync
+            assertTrue(sync is SyncState.Failed && !sync.retryable, "an unexpected failure must not retry forever")
+        }
+
+    @Test
+    fun `cancellation propagates rather than being recorded as a failure`() {
+        materialRepository.saveBlocking(material())
+        objectStore.failInitUpload = CancellationException("worker stopped")
+
+        assertThrows(CancellationException::class.java) { runBlocking { engine.upload("m1") } }
+
+        val sync = runBlocking { materialRepository.observeById("m1").first()?.sync }
+        assertFalse(sync is SyncState.Failed, "a cancelled upload is not a failed one")
+    }
+
+    private fun FakeMaterialRepository.saveBlocking(material: Material) = runBlocking { save(material) }
 
     private fun material(): Material =
         Material(

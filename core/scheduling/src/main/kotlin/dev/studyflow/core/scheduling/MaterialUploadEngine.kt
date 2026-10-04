@@ -13,8 +13,10 @@ import dev.studyflow.core.model.SyncState
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStore
 import dev.studyflow.core.storage.ObjectStoreException
+import dev.studyflow.core.storage.PartChecksums
 import dev.studyflow.core.storage.UploadRequest
 import dev.studyflow.core.storage.UploadedPart
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import java.io.File
 import java.io.FileNotFoundException
@@ -152,6 +154,26 @@ public class MaterialUploadEngine(
             localFileFailure(latest.copy(localPath = null), exception)
         } catch (exception: IOException) {
             localFileFailure(latest, exception)
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (
+            @Suppress("TooGenericExceptionCaught") failure: Throwable,
+        ) {
+            // A bug in the upload path, not a transport fault. Escaping, it would end the worker
+            // with no stage outcome at all — indistinguishable from a hang — and resending the
+            // same request cannot fix it, so it is logged against its stage and parked.
+            val reason = "unexpected upload failure: ${failure::class.simpleName}"
+            latest.fail(reason, retryable = false)
+            log(
+                material.id,
+                stage,
+                MaterialTransferOutcome.FAILURE,
+                retryable = false,
+                part = partNumber,
+                partCount = partCount,
+                throwable = failure,
+            )
+            UploadOutcome.Permanent(reason)
         }
     }
 
@@ -210,9 +232,10 @@ public class MaterialUploadEngine(
         }
 
         val plan = UploadPlanner.plan(current.sizeBytes, current.contentHash)
+        val partChecksums = partChecksums(localPath, plan)
         log(materialId, MaterialTransferStage.PLAN, MaterialTransferOutcome.SUCCESS, retryable = false)
 
-        val request = UploadRequest.ofMaterial(current.contentHash, current.sizeBytes, current.mimeType)
+        val request = UploadRequest.ofMaterial(current.contentHash, current.sizeBytes, current.mimeType, partChecksums)
         onStage(MaterialTransferStage.INIT, null, null)
         val session = objectStore.initUpload(request)
         log(materialId, MaterialTransferStage.INIT, MaterialTransferOutcome.SUCCESS, retryable = false)
@@ -275,6 +298,19 @@ public class MaterialUploadEngine(
         uploadProgressStore.clear(materialId)
         return UploadOutcome.Synced
     }
+
+    /**
+     * The base64 SHA-256 of every part of [plan], in part order — including parts a resumed upload
+     * will skip, because the store signs the whole session from them before anything is sent.
+     *
+     * Each part is read through [readPart] and hashed on its own, so at most one part is held in
+     * memory. The store echoes each checksum back as a header on its signed part, so the transfer
+     * itself reuses these values rather than hashing again.
+     */
+    private fun partChecksums(
+        localPath: String,
+        plan: UploadPlan,
+    ): List<String> = plan.parts.map { part -> PartChecksums.sha256Base64(readPart(localPath, part)) }
 
     private fun log(
         materialId: String,
