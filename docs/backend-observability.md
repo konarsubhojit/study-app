@@ -43,6 +43,45 @@ Quarterly, deploy a staging-only `STORAGE_S3_ENDPOINT` that rejects requests, ca
 verify the `error_rate` alert routes to `primary-on-call`. Revert the setting immediately after the
 alert is acknowledged.
 
+### Edge Function database permissions and deployment
+
+Unmatched failures of the functions' own upstream queries, including `42501`, `42P01` and
+`PGRST202`, return retryable `503 storage_unavailable` (storage) or `503 api_unavailable` (api),
+not `400 invalid_request`. Explicit client errors such as `rate_limited` (429),
+`quota_exceeded` (413) and `object_already_exists` (409) retain their existing handling.
+The storage diagnostic records only the bounded database code, resource and status, never
+upstream details or request bodies.
+
+This fix requires **both** deployments from `infra/`:
+
+```sh
+supabase db push
+supabase functions deploy storage api
+```
+
+Merging alone, or deploying only the functions, does not apply the table grants. The migration
+extends `service_role_table_grants`, whose privileges CI replays after stripping local default
+grants. The direct-access inventory is:
+
+| Table | Privileges | Edge Function code paths | Grant status |
+| --- | --- | --- | --- |
+| `storage_uploads` | SELECT | storage `loadUpload`, `readyObject` (stat/download), `completeUpload`, `deleteObject` | New |
+| `storage_uploads` | UPDATE | storage `initUpload`, `completeUpload`, `deleteObject`, `reapOrphans`, failure cleanup | New |
+| `storage_url_audit` | INSERT | storage `audit` for upload-part/download URLs | New |
+| `backend_observability_events` | INSERT | both functions' `recordObservability` | Existing, now replay-tested |
+| `subjects` | SELECT | api `listSubjects` | Existing and already in manifest |
+| `account_deletion_receipts` | SELECT, INSERT | api `wasAlreadyDeleted`, `deleteAccount` respectively | Existing, now replay-tested |
+| `auth_signin_challenges` | INSERT | api `storeChallenge` for sign-in/registration | Existing, now replay-tested |
+| `passkey_credentials` | SELECT | api `passkeyCredential`, `beginPasskeyRegistration` | Existing, now replay-tested |
+| `passkey_credentials` | INSERT | api `registerPasskey` | Existing, now replay-tested |
+| `passkey_credentials` | UPDATE | api `signInWithPasskey` | Existing, now replay-tested |
+
+No direct INSERT privilege is needed on `storage_uploads`: reservation inserts run in the
+security-definer `storage_reserve_upload` RPC. Deletion tombstones rows, so no DELETE grant is
+needed. `storage_accounts`, `storage_rate_events` and `thumbnail_generation_queue` are accessed
+only by security-definer RPCs. Identity defaults for the two append-only logs do not need sequence
+grants. RLS remains enabled and unchanged.
+
 ## Cost guardrails
 
 - **Per-account quota:** `storage_accounts.quota_bytes` defaults to 1 GiB, and
