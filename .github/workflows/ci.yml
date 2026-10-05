@@ -60,7 +60,7 @@ jobs:
         run: deno test --allow-env --allow-sys=osRelease infra/supabase/functions/api/index_test.ts infra/supabase/functions/storage/index_test.ts
 
       - name: Set up Supabase
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
           version: latest
 
