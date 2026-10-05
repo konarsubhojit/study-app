@@ -68,7 +68,7 @@ jobs:
         working-directory: infra
         run: |
           supabase db start
-          supabase test db --local supabase/tests/database/service_role_privileges.sql
+          supabase test db --local supabase/tests/database/service_role_privileges.sql supabase/tests/database/storage_completion.sql
 
   build:
     name: Build and verify

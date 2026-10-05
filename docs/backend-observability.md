@@ -96,8 +96,9 @@ manufacture that request's response, and suppressing it would hide bugs rather t
 
 Diagnosis evidence and limits:
 
-- The authenticated AWS CLI probe could not run in the agent environment: AWS/S3 credentials were
-  absent. The underlying hosted endpoint trigger remains **unconfirmed**.
+- `aws s3 cp` with a 9 MB fixture, `--checksum-algorithm SHA256`, and the supplied endpoint/region
+  failed with `Unable to locate credentials`. No authenticated endpoint request was made.
+  The underlying hosted endpoint trigger remains **unconfirmed**.
 - A controlled HTTP response declaring 500 bytes but closing after
   `<CompleteMultipartUploadResult>` was tested against SDK 3.1135.0 on Deno 2.9.6. Both default
   Node transport and native fetch reached catch/finally (respectively `Error` and `TypeError`).
@@ -105,6 +106,9 @@ Diagnosis evidence and limits:
 - The regression suite drives the actual SDK through native fetch with a failing response stream
   and proves a structured, logged outage without an unhandled rejection. It also pins the creation
   checksum header, signed-part checksum, and exact completion XML.
+- A manual call of the actual function against a local TCP server with that truncated response
+  returned traced `503 storage_unavailable` and logged `storage_request` in 155 ms; no worker crash
+  or unhandled rejection occurred.
 - [Supabase's compatibility table](https://supabase.com/docs/guides/storage/s3/compatibility)
   lists `CreateMultipartUpload`, `UploadPart`, and `CompleteMultipartUpload` as supported.
   It does not explicitly settle SHA-256 checksums on these multipart operations. Unsupported
