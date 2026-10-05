@@ -89,7 +89,7 @@ class PresignedObjectStoreTest {
 
             assertEquals(HttpMethod.Put, seen?.method)
             assertEquals(PART_URL, seen?.url?.toString())
-            assertEquals(UploadedPart(number = 1, etag = "part-etag", size = PAYLOAD.size.toLong()), uploaded)
+            assertEquals(UploadedPart(number = 1, etag = "\"part-etag\"", size = PAYLOAD.size.toLong()), uploaded)
         }
 
     @Test
@@ -99,7 +99,7 @@ class PresignedObjectStoreTest {
             val store =
                 store { request ->
                     seen = request
-                    respond(content = "", status = HttpStatusCode.OK)
+                    respond(content = "", status = HttpStatusCode.OK, headers = etag("\"part-etag\""))
                 }
             val original = store.initUpload(REQUEST)
             val checksum = "base64-checksum"
@@ -114,12 +114,17 @@ class PresignedObjectStoreTest {
         }
 
     @Test
-    fun `a store that does not return an entity tag is still usable`() =
+    fun `a part without an entity tag fails permanently at capture`() =
         runTest {
             val store = store { respond(content = "", status = HttpStatusCode.OK) }
             val session = store.initUpload(REQUEST)
 
-            assertEquals("", store.uploadPart(session, session.parts.single(), PAYLOAD).etag)
+            val failure =
+                assertFailsWith<ObjectStoreException.Integrity> {
+                    store.uploadPart(session, session.parts.single(), PAYLOAD)
+                }
+            assertFalse(failure.retryable)
+            assertTrue(failure.message.orEmpty().contains("did not return an entity tag"))
         }
 
     @Test
@@ -264,7 +269,7 @@ class PresignedObjectStoreTest {
             val uploaded = store.uploadPart(session, session.parts.single(), PAYLOAD)
 
             assertEquals(listOf(PART_URL, RENEWED_URL), urls)
-            assertEquals("renewed", uploaded.etag)
+            assertEquals("\"renewed\"", uploaded.etag)
             assertEquals(listOf("createUpload", "createUpload"), source.calls)
         }
 
@@ -276,7 +281,7 @@ class PresignedObjectStoreTest {
             val store =
                 store(source, clock = { EXPIRY }) { request ->
                     urls += request.url.toString()
-                    respond("", HttpStatusCode.OK)
+                    respond("", HttpStatusCode.OK, etag("\"part-etag\""))
                 }
             val session = store.initUpload(REQUEST)
             source.partUrl = RENEWED_URL

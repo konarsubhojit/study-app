@@ -43,6 +43,7 @@ internal class RecordingObjectStore : ObjectStore {
 
     /** Every request [initUpload] accepted, in call order. */
     val initRequests = mutableListOf<UploadRequest>()
+    val completedParts = mutableListOf<UploadedPart>()
 
     private val statResults = mutableMapOf<ObjectKey, StoredObject>()
 
@@ -95,6 +96,8 @@ internal class RecordingObjectStore : ObjectStore {
     ): StoredObject =
         mutex.withLock {
             failCompleteUpload?.let { throw it }
+            completedParts.clear()
+            completedParts.addAll(parts)
             val stored = partsByKey[session.key]
             checkNotNull(stored) { "no parts were ever uploaded for '${session.key}'" }
             check(parts.map { it.number }.toSet() == stored.keys) {
