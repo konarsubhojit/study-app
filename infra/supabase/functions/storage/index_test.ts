@@ -487,7 +487,7 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
         completionXml = await request.text();
         const expected = '<?xml version="1.0" encoding="UTF-8"?>' +
             '<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">' +
-            `<Part><ETag>"part-etag"</ETag><ChecksumSHA256>${checksum}</ChecksumSHA256><PartNumber>1</PartNumber></Part>` +
+            `<Part><ETag>&quot;part-etag&quot;</ETag><ChecksumSHA256>${checksum}</ChecksumSHA256><PartNumber>1</PartNumber></Part>` +
             "</CompleteMultipartUpload>";
         if (completionXml !== expected || url.searchParams.get("uploadId") !== "provider-1") {
             throw new Error(`completion command shape drifted: ${completionXml}`);
