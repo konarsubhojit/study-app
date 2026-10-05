@@ -116,6 +116,36 @@ class MaterialUploadEngineTest {
         }
 
     @Test
+    fun `a permanent init conflict is surfaced and parked rather than retried forever`() =
+        runBlocking {
+            materialRepository.save(material())
+            val reason = "initUpload failed (409 object_already_exists)"
+            objectStore.failInitUpload = ObjectStoreException.AccessDenied(reason)
+
+            assertEquals(UploadOutcome.Permanent(reason), engine.upload("m1"))
+            assertEquals(
+                SyncState.Failed(reason, retryable = false),
+                materialRepository.observeById("m1").first()?.sync,
+            )
+            assertTrue(objectStore.uploadedPartNumbers.isEmpty())
+        }
+
+    @Test
+    fun `an active init claim remains retryable until completion or lease recovery`() =
+        runBlocking {
+            materialRepository.save(material())
+            val reason = "initUpload failed (409 upload_in_progress)"
+            objectStore.failInitUpload = ObjectStoreException.Transient(reason)
+
+            assertEquals(UploadOutcome.Retryable(reason), engine.upload("m1"))
+            assertEquals(
+                SyncState.Failed(reason, retryable = true),
+                materialRepository.observeById("m1").first()?.sync,
+            )
+            assertTrue(objectStore.uploadedPartNumbers.isEmpty())
+        }
+
+    @Test
     fun `a full upload from scratch completes every part exactly once and marks the material synced`() =
         runBlocking {
             materialRepository.save(material())

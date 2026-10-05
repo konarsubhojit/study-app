@@ -368,6 +368,252 @@ function statRequest(): Request {
     });
 }
 
+const pendingUpload = {
+    id: "upload-1",
+    user_id: OWNER,
+    object_key: objectKey(OWNER, "c".repeat(64)),
+    provider_upload_id: "provider-1",
+    content_hash: "c".repeat(64),
+    content_type: "application/pdf",
+    size_bytes: 12,
+    part_checksums: [checksum],
+    state: "pending",
+};
+const claimTime = "2026-10-05T00:00:00.000Z";
+
+function uploadRequest(operation: string, value: unknown): Request {
+    return new Request(`https://edge.test/functions/v1/storage/${operation}`, {
+        method: "POST",
+        headers: { authorization: "Bearer " + TOKEN, "x-request-id": "completion-test" },
+        body: JSON.stringify(value),
+    });
+}
+
+const completionRequest = () => uploadRequest("completeUpload", {
+    uploadId: pendingUpload.id,
+    parts: [{ number: 1, etag: "part-etag" }],
+});
+
+async function withUploadBackend(
+    provider: (request: Request) => Promise<Response> | Response,
+    block: (patches: Array<{ url: string; value: Record<string, unknown> }>) => Promise<void>,
+    options: { upload?: typeof pendingUpload; claim?: string | null; finalize?: boolean } = {},
+): Promise<void> {
+    const patches: Array<{ url: string; value: Record<string, unknown> }> = [];
+    await withFetch(async (input, init) => {
+        const url = input instanceof Request ? input.url : String(input);
+        if (input instanceof Request && !url.includes("/rest/v1/") && !url.endsWith("/auth/v1/user")) {
+            return await provider(input);
+        }
+        if (url.includes("/rpc/storage_claim_completion")) return jsonResponse(200, options.claim === null ? null : claimTime);
+        if (url.includes("/rest/v1/storage_url_audit")) return jsonResponse(201, {});
+        if (url.includes("/rpc/storage_finalize_upload")) return jsonResponse(200, options.finalize ?? true);
+        if (url.includes("/rpc/storage_reserve_upload")) {
+            return jsonResponse(200, [{
+                upload_id: pendingUpload.id,
+                created: true,
+                expires_at: "2026-10-06T00:00:00Z",
+                provider_upload_id: null,
+            }]);
+        }
+        if (url.includes("/rest/v1/storage_uploads")) {
+            if (init?.method === "PATCH") {
+                patches.push({ url, value: JSON.parse(String(init.body)) });
+                return jsonResponse(200, [{ ...pendingUpload, state: "completing" }]);
+            }
+            return jsonResponse(200, [options.upload ?? pendingUpload]);
+        }
+        return storageBackend(200)(input);
+    }, () => block(patches));
+}
+
+Deno.test("a broken completion response is awaited, logged and returned as structured JSON", async () => {
+    const logs: string[] = [];
+    const original = console.info;
+    console.info = (...args: unknown[]) => void logs.push(args.map(String).join(" "));
+    let completed = false;
+    try {
+        await withUploadBackend((request) => {
+            if (request.method === "HEAD") return new Response(null, { status: 404 });
+            if (request.method !== "POST") throw new Error("unexpected S3 command");
+            completed = true;
+            return new Response(new ReadableStream({
+                start(controller) {
+                    controller.enqueue(new TextEncoder().encode("<CompleteMultipartUploadResult>"));
+                    controller.error(new TypeError("reached unexpected EOF"));
+                },
+            }), { headers: { "content-type": "application/xml" } });
+        }, async (patches) => {
+            const response = await handleRequest(completionRequest());
+            const value = await response.json();
+            if (!completed) throw new Error("completion did not use the catchable fetch transport");
+            if (response.status !== 503 || value.code !== "storage_unavailable") {
+                throw new Error("completion did not return a structured outage");
+            }
+            if (response.headers.get("x-request-id") !== "completion-test") throw new Error("trace was lost");
+            const released = patches.at(-1);
+            if (released?.value.state !== "pending" || !released.url.includes("state=eq.completing") ||
+                !released.url.includes(`completing_at=eq.${encodeURIComponent(claimTime)}`)) {
+                throw new Error("unexpected failures must release only their own claim to pending");
+            }
+        });
+    } finally {
+        console.info = original;
+    }
+    const event = logs.map((line) => JSON.parse(line)).find((entry) => entry.event === "storage_request");
+    if (event?.status !== 503 || event.operation !== "completeUpload" || event.error_code !== "storage_unavailable") {
+        throw new Error("completion outage was not logged");
+    }
+});
+
+Deno.test("multipart creation, signing and completion keep the same SHA256 contract", async () => {
+    let creation = false;
+    let completion = false;
+    let exists = false;
+    await withUploadBackend(async (request) => {
+        const url = new URL(request.url);
+        if (request.method === "HEAD") {
+            return new Response(null, { status: exists ? 200 : 404, headers: exists ? { "content-length": "12" } : {} });
+        }
+        if (url.searchParams.has("uploads")) {
+            creation = true;
+            if (request.headers.get("x-amz-checksum-algorithm") !== "SHA256") {
+                throw new Error("creation checksum algorithm drifted");
+            }
+            return new Response("<InitiateMultipartUploadResult><UploadId>provider-1</UploadId></InitiateMultipartUploadResult>");
+        }
+        completion = true;
+        const xml = await request.text();
+        const expected = '<?xml version="1.0" encoding="UTF-8"?>' +
+            '<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">' +
+            `<Part><ETag>part-etag</ETag><ChecksumSHA256>${checksum}</ChecksumSHA256><PartNumber>1</PartNumber></Part>` +
+            "</CompleteMultipartUpload>";
+        if (xml !== expected || url.searchParams.get("uploadId") !== "provider-1") {
+            throw new Error(`completion command shape drifted: ${xml}`);
+        }
+        exists = true;
+        return new Response("<CompleteMultipartUploadResult><ETag>object-etag</ETag></CompleteMultipartUploadResult>");
+    }, async () => {
+        const response = await handleRequest(uploadRequest("initUpload", {
+            contentHash: pendingUpload.content_hash,
+            contentType: pendingUpload.content_type,
+            sizeBytes: pendingUpload.size_bytes,
+            partChecksums: [checksum],
+        }));
+        const value = await response.json();
+        if (response.status !== 200 || value.parts[0].requiredHeaders["x-amz-checksum-sha256"] !== checksum ||
+            new URL(value.parts[0].url).searchParams.get("x-amz-checksum-sha256") !== checksum) {
+            throw new Error("part signing checksum contract drifted");
+        }
+        const completed = await handleRequest(completionRequest());
+        await completed.body?.cancel();
+        if (completed.status !== 200 || !creation || !completion) throw new Error("multipart contract did not complete");
+    });
+});
+
+Deno.test("a second completion cannot proceed without winning a claim", async () => {
+    await withUploadBackend(() => {
+        throw new Error("a losing claimant touched S3");
+    }, async (patches) => {
+        const response = await handleRequest(completionRequest());
+        const value = await response.json();
+        if (response.status !== 409 || value.code !== "upload_in_progress" || patches.length !== 0) {
+            throw new Error("a losing claimant proceeded");
+        }
+    }, { upload: { ...pendingUpload, state: "completing" }, claim: null });
+});
+
+Deno.test("a completed provider object is recovered without completing again", async () => {
+    await withUploadBackend((request) => {
+        if (request.method !== "HEAD") throw new Error("recovery repeated provider completion");
+        return new Response(null, { headers: { "content-length": "12" } });
+    }, async () => {
+        const response = await handleRequest(completionRequest());
+        if (response.status !== 200) throw new Error("provider success was not recovered");
+        await response.body?.cancel();
+    });
+});
+
+Deno.test("provider success followed by a lost response is recovered on the next completion", async () => {
+    let exists = false;
+    let completions = 0;
+    await withUploadBackend((request) => {
+        if (request.method === "HEAD") {
+            return new Response(null, { status: exists ? 200 : 404, headers: exists ? { "content-length": "12" } : {} });
+        }
+        completions++;
+        exists = true;
+        return new Response(new ReadableStream({
+            start(controller) {
+                controller.error(new TypeError("reached unexpected EOF"));
+            }
+        }));
+    }, async (patches) => {
+        const failed = await handleRequest(completionRequest());
+        await failed.body?.cancel();
+        if (failed.status !== 503 || patches.at(-1)?.value.state !== "pending") {
+            throw new Error("ambiguous completion was not made retryable");
+        }
+        const recovered = await handleRequest(completionRequest());
+        await recovered.body?.cancel();
+        if (recovered.status !== 200 || completions !== 1) {
+            throw new Error("recovery repeated completion instead of finalizing the existing object");
+        }
+    });
+});
+
+Deno.test("a confirmed size mismatch deletes the object and fails only the owning claim", async () => {
+    let deleted = false;
+    await withUploadBackend((request) => {
+        if (request.method === "DELETE") {
+            deleted = true;
+            return new Response(null, { status: 204 });
+        }
+        return new Response(null, { headers: { "content-length": "13" } });
+    }, async (patches) => {
+        const response = await handleRequest(completionRequest());
+        const value = await response.json();
+        if (response.status !== 422 || value.code !== "integrity_mismatch" || !deleted ||
+            patches.at(-1)?.value.state !== "failed") {
+            throw new Error("confirmed integrity rejection was not cleaned up");
+        }
+    });
+});
+
+Deno.test("database finalization failure preserves a completed provider object for retry", async () => {
+    await withUploadBackend(() => new Response(null, { headers: { "content-length": "12" } }), async (patches) => {
+        const response = await handleRequest(completionRequest());
+        await response.body?.cancel();
+        if (response.status !== 503 || patches.at(-1)?.value.state !== "pending") {
+            throw new Error("provider success was discarded instead of made retryable");
+        }
+    }, { finalize: false });
+});
+
+Deno.test("stat distinguishes active completion from a reclaimable claim", async () => {
+    for (const state of ["completing", "reaping"]) {
+        for (const expired of [false, true]) {
+            const upload = {
+                ...pendingUpload,
+                state,
+                completing_at: new Date(Date.now() - (expired ? 16 : 1) * 60_000).toISOString(),
+            };
+            await withFetch((input) => {
+                if (String(input).includes("/rest/v1/storage_uploads")) return jsonResponse(200, [upload]);
+                return storageBackend(200)(input);
+            }, async () => {
+                const response = await handleRequest(statRequest());
+                const value = await response.json();
+                const reclaimable = state === "completing" && expired;
+                if (response.status !== (reclaimable ? 404 : 409) ||
+                    value.code !== (reclaimable ? "object_not_found" : "upload_in_progress")) {
+                    throw new Error("stat hid an active claim or blocked a reclaimable upload");
+                }
+            });
+        }
+    }
+});
+
 /** Auth and rate limiting succeed; the `storage_uploads` lookup answers [uploadsStatus]. */
 function storageBackend(
     uploadsStatus: number,

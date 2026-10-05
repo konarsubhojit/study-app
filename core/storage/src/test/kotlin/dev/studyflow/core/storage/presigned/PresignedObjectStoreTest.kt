@@ -5,6 +5,7 @@ import dev.studyflow.core.domain.materials.UploadPlanner
 import dev.studyflow.core.model.ContentHash
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStoreException
+import dev.studyflow.core.storage.PartChecksums
 import dev.studyflow.core.storage.PresignedUrl
 import dev.studyflow.core.storage.StoredObject
 import dev.studyflow.core.storage.UploadRequest
@@ -39,6 +40,40 @@ import kotlin.time.Instant
 
 @DisplayName("PresignedObjectStore")
 class PresignedObjectStoreTest {
+    @Test
+    fun `init conflicts preserve the BFF retry policy without sending any parts`() =
+        runTest {
+            for ((code, retryable) in listOf("object_already_exists" to false, "upload_in_progress" to true)) {
+                val apiClient =
+                    HttpClient(
+                        MockEngine {
+                            respond(
+                                """{"code":"$code"}""",
+                                HttpStatusCode.Conflict,
+                                Headers.build { append(HttpHeaders.ContentType, "application/json") },
+                            )
+                        },
+                    )
+                val partClient = HttpClient(MockEngine { error("a refused init must not send parts") })
+                try {
+                    val store =
+                        PresignedObjectStore(
+                            partClient,
+                            StorageFunctionUrlSource(apiClient, "https://edge.test/storage"),
+                        )
+                    val failure =
+                        assertFailsWith<ObjectStoreException> {
+                            store.initUpload(REQUEST.copy(partChecksums = listOf(PartChecksums.sha256Base64(PAYLOAD))))
+                        }
+                    assertEquals(retryable, failure.retryable)
+                    assertTrue(failure.message.orEmpty().contains("409 $code"))
+                } finally {
+                    apiClient.close()
+                    partClient.close()
+                }
+            }
+        }
+
     @Test
     fun `part bytes go straight to the signed URL, never through our API`() =
         runTest {

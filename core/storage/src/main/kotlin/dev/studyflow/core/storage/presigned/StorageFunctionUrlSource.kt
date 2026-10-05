@@ -305,10 +305,10 @@ public class StorageFunctionUrlSource(
                     ObjectStoreException.Transient("$subject: not signed in")
                 }
 
-                // `upload_initializing` is explicitly "retry shortly"; `object_already_exists` and
-                // `upload_not_completable` mean another attempt is finishing the same object, which
-                // the next run's `stat` will find.
-                status == HttpStatusCode.Conflict -> {
+                // Only bounded, recoverable claims warrant an automatic retry. A ready object or
+                // an incompatible reservation cannot be fixed by repeating initUpload.
+                status == HttpStatusCode.Conflict &&
+                    code in setOf("upload_initializing", "upload_in_progress") -> {
                     ObjectStoreException.Transient(subject)
                 }
 

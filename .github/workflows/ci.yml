@@ -57,7 +57,7 @@ jobs:
           deno-version: v2.x
 
       - name: Test API and storage functions
-        run: deno test --allow-env infra/supabase/functions/api/index_test.ts infra/supabase/functions/storage/index_test.ts
+        run: deno test --allow-env --allow-sys=osRelease infra/supabase/functions/api/index_test.ts infra/supabase/functions/storage/index_test.ts
 
       - name: Set up Supabase
         uses: supabase/setup-cli@v1
@@ -68,7 +68,7 @@ jobs:
         working-directory: infra
         run: |
           supabase db start
-          supabase test db --local supabase/tests/database/service_role_privileges.sql
+          supabase test db --local supabase/tests/database/service_role_privileges.sql supabase/tests/database/storage_completion.sql
 
   build:
     name: Build and verify

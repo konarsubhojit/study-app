@@ -6,5 +6,5 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-deno test --allow-env supabase/functions/api/index_test.ts supabase/functions/storage/index_test.ts
+deno test --allow-env --allow-sys=osRelease supabase/functions/api/index_test.ts supabase/functions/storage/index_test.ts
 supabase test db --local
