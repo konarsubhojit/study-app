@@ -149,12 +149,12 @@ class StorageFunctionUrlSourceTest {
                 }
             val session = source.createUpload(request)
 
-            val stored = source.finishUpload(session, listOf(UploadedPart(1, "etag-1", PAYLOAD.size.toLong())))
+            val stored = source.finishUpload(session, listOf(UploadedPart(1, "\"etag-1\"", PAYLOAD.size.toLong())))
 
             val body = requests.last().second
             assertEquals("upload-1", body?.string("uploadId"))
             assertEquals(
-                "etag-1",
+                "\"etag-1\"",
                 body
                     ?.get("parts")
                     ?.jsonArray
@@ -164,6 +164,38 @@ class StorageFunctionUrlSourceTest {
             )
             assertEquals(request.key, stored.key)
             assertEquals(request.contentHash, stored.contentHash)
+        }
+
+    @Test
+    fun `quoted part entity tag survives upload capture and the completion request`() =
+        runTest {
+            val request = requestFor(PAYLOAD)
+            val etag = "\"9f2b7a\""
+            val source =
+                source { data ->
+                    if (data.url.encodedPath.endsWith("initUpload")) {
+                        respondJson(initResponse(request.sizeBytes))
+                    } else {
+                        respondJson(
+                            """{"contentHash":"${request.contentHash.hex}","contentType":"application/pdf",""" +
+                                """"sizeBytes":${PAYLOAD.size}}""",
+                        )
+                    }
+                }
+            val partClient =
+                HttpClient(
+                    MockEngine {
+                        respond("", HttpStatusCode.OK, headersOf(HttpHeaders.ETag, etag))
+                    },
+                )
+            val store = PresignedObjectStore(partClient, source)
+
+            val session = store.initUpload(request)
+            val uploaded = store.uploadPart(session, session.parts.single(), PAYLOAD)
+            store.completeUpload(session, listOf(uploaded))
+
+            assertEquals(etag, uploaded.etag)
+            assertEquals(etag, requests.last().second?.get("parts")?.jsonArray?.single()?.jsonObject?.string("etag"))
         }
 
     @Test
@@ -446,7 +478,7 @@ class StorageFunctionUrlSourceTest {
             assertEquals(listOf("sig-1", "sig-2"), puts.map { it.url.parameters["X-Amz-Signature"] })
             puts.forEach { assertEquals(CHECKSUM, it.headers["x-amz-checksum-sha256"]) }
             puts.forEach { assertNull(it.headers[HttpHeaders.Authorization]) }
-            assertEquals("etag-1", uploaded.etag)
+            assertEquals("\"etag-1\"", uploaded.etag)
         }
 
     private fun source(
@@ -610,6 +642,7 @@ class StorageFunctionUrlSourceTest {
                 Arguments.of(413, "file_too_large", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(415, "unsupported_media_type", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(422, "integrity_mismatch", ObjectStoreException.Integrity::class.java, false),
+                Arguments.of(422, "invalid_parts", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(422, "scan_rejected", ObjectStoreException.Integrity::class.java, false),
                 Arguments.of(429, "rate_limited", ObjectStoreException.Transient::class.java, true),
                 Arguments.of(503, "storage_unavailable", ObjectStoreException.Transient::class.java, true),

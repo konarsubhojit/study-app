@@ -391,7 +391,7 @@ function uploadRequest(operation: string, value: unknown): Request {
 
 const completionRequest = () => uploadRequest("completeUpload", {
     uploadId: pendingUpload.id,
-    parts: [{ number: 1, etag: "part-etag" }],
+    parts: [{ number: 1, etag: "\"part-etag\"" }],
 });
 
 async function withUploadBackend(
@@ -486,7 +486,7 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
         const xml = await request.text();
         const expected = '<?xml version="1.0" encoding="UTF-8"?>' +
             '<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">' +
-            `<Part><ETag>part-etag</ETag><ChecksumSHA256>${checksum}</ChecksumSHA256><PartNumber>1</PartNumber></Part>` +
+            `<Part><ETag>"part-etag"</ETag><ChecksumSHA256>${checksum}</ChecksumSHA256><PartNumber>1</PartNumber></Part>` +
             "</CompleteMultipartUpload>";
         if (xml !== expected || url.searchParams.get("uploadId") !== "provider-1") {
             throw new Error(`completion command shape drifted: ${xml}`);
@@ -508,6 +508,22 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
         const completed = await handleRequest(completionRequest());
         await completed.body?.cancel();
         if (completed.status !== 200 || !creation || !completion) throw new Error("multipart contract did not complete");
+    });
+});
+
+Deno.test("an invalid S3 part identity is permanent and fails its completion claim", async () => {
+    await withUploadBackend((request) => {
+        if (request.method === "HEAD") return new Response(null, { status: 404 });
+        return new Response(
+            "<Error><Code>InvalidPart</Code><Message>entity tag mismatch</Message></Error>",
+            { status: 400, headers: { "content-type": "application/xml" } },
+        );
+    }, async (patches) => {
+        const response = await handleRequest(completionRequest());
+        const value = await response.json();
+        if (response.status !== 422 || value.code !== "invalid_parts" || patches.at(-1)?.value.state !== "failed") {
+            throw new Error("an invalid part identity was reported as retryable or left reserved");
+        }
     });
 });
 
@@ -584,8 +600,8 @@ Deno.test("database finalization failure preserves a completed provider object f
     await withUploadBackend(() => new Response(null, { headers: { "content-length": "12" } }), async (patches) => {
         const response = await handleRequest(completionRequest());
         await response.body?.cancel();
-        if (response.status !== 503 || patches.at(-1)?.value.state !== "pending") {
-            throw new Error("provider success was discarded instead of made retryable");
+        if (response.status !== 503 || patches.length !== 0) {
+            throw new Error("a completed provider object lost its completion lease");
         }
     }, { finalize: false });
 });
@@ -612,6 +628,38 @@ Deno.test("stat distinguishes active completion from a reclaimable claim", async
             });
         }
     }
+});
+
+Deno.test("stat and initUpload agree that an active completion is in progress", async () => {
+    const upload = {
+        ...pendingUpload,
+        state: "completing",
+        completing_at: new Date().toISOString(),
+    };
+    await withFetch((input) => {
+        const url = String(input);
+        if (url.endsWith("/auth/v1/user")) return jsonResponse(200, { id: OWNER });
+        if (url.includes("/rpc/storage_consume_rate_limit")) return jsonResponse(200, null);
+        if (url.includes("/rest/v1/storage_uploads")) return jsonResponse(200, [upload]);
+        if (url.includes("/rpc/storage_reserve_upload")) {
+            return jsonResponse(400, { message: "upload_in_progress" });
+        }
+        if (url.includes("/rest/v1/backend_observability_events")) return jsonResponse(201, {});
+        throw new Error(`unexpected fetch ${url}`);
+    }, async () => {
+        const stat = await handleRequest(statRequest());
+        const init = await handleRequest(uploadRequest("initUpload", {
+            contentHash: upload.content_hash,
+            contentType: upload.content_type,
+            sizeBytes: upload.size_bytes,
+            partChecksums: [checksum],
+        }));
+        const [statBody, initBody] = await Promise.all([stat.json(), init.json()]);
+        if (stat.status !== 409 || init.status !== stat.status ||
+            statBody.code !== "upload_in_progress" || initBody.code !== statBody.code) {
+            throw new Error("stat and initUpload disagreed about an active completion");
+        }
+    });
 });
 
 /** Auth and rate limiting succeed; the `storage_uploads` lookup answers [uploadsStatus]. */

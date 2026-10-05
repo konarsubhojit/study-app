@@ -60,7 +60,7 @@ class MaterialUploadEngineTest {
                 "m1",
                 CompletedUploadPart(
                     number = 1,
-                    etag = "etag-1",
+                    etag = "\"etag-1\"",
                     sizeBytes =
                         8 * 1024 * 1024,
                 ),
@@ -71,6 +71,7 @@ class MaterialUploadEngineTest {
             assertEquals(UploadOutcome.Synced, outcome)
             assertFalse(1 in objectStore.uploadedPartNumbers, "part 1 was already acknowledged and must not be re-sent")
             assertEquals(listOf(2, 3), objectStore.uploadedPartNumbers)
+            assertEquals("\"etag-1\"", objectStore.completedParts.single { it.number == 1 }.etag)
             assertEquals(SyncState.Synced, materialRepository.observeById("m1").first()?.sync)
         }
 

@@ -73,9 +73,13 @@ public class PresignedObjectStore(
         if (!response.status.isSuccess()) {
             throw response.status.toFailure("part ${part.number} of '${session.key}'")
         }
+        val etag = response.entityTag()
+        if (etag.isBlank()) {
+            throw ObjectStoreException.Integrity("storage provider did not return an entity tag for part ${part.number}")
+        }
         return UploadedPart(
             number = part.number,
-            etag = response.entityTag(),
+            etag = etag,
             size = part.size,
         )
     }
@@ -150,13 +154,8 @@ public class PresignedObjectStore(
 
     override suspend fun stat(key: ObjectKey): StoredObject? = urls.stat(key)
 
-    /**
-     * The provider's identifier for the part, quoted in the response as an entity tag.
-     *
-     * Empty when the provider does not send one — Supabase's storage API does not for a plain
-     * upload, and `completeUpload` there identifies parts by number.
-     */
-    private fun HttpResponse.entityTag(): String = headers[HttpHeaders.ETag].orEmpty().trim('"', ' ')
+    /** The provider's identifier for the part, preserved exactly as returned in the response. */
+    private fun HttpResponse.entityTag(): String = headers[HttpHeaders.ETag].orEmpty()
 }
 
 private fun HttpStatusCode.isRefusedSignature(): Boolean =

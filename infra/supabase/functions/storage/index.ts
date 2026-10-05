@@ -480,8 +480,10 @@ async function completeUpload(request: Request, owner: string): Promise<Response
     if (!claim) {
         throw new ApiError(409, "upload_in_progress", "This upload is already being completed. Retry shortly.");
     }
+    let providerCompleted = false;
     try {
         let object = await headObject(upload.object_key);
+        providerCompleted = object !== null;
         if (!object) {
             await s3.send(
                 new CompleteMultipartUploadCommand({
@@ -491,6 +493,7 @@ async function completeUpload(request: Request, owner: string): Promise<Response
                     MultipartUpload: { Parts: completedParts },
                 }),
             );
+            providerCompleted = true;
             object = await s3.send(new HeadObjectCommand({ Bucket: bucket, Key: upload.object_key }));
         }
         if (object.ContentLength !== upload.size_bytes) {
@@ -505,19 +508,29 @@ async function completeUpload(request: Request, owner: string): Promise<Response
         if (!finalized) throw new Error("Upload state changed before finalization");
         return json(200, storedObject({ ...upload, state: "ready" }));
     } catch (error) {
-        // Keep the same provider handle after an ambiguous failure: a retry checks HEAD first,
-        // so provider success followed by a lost response or database outage is not discarded.
-        const rejected = error instanceof ApiError && ["integrity_mismatch", "scan_rejected"].includes(error.code);
-        await databaseJson(
-            `storage_uploads?id=eq.${upload.id}&state=eq.completing&completing_at=eq.${encodeURIComponent(claim)}`,
-            {
-                method: "PATCH",
-                headers: { prefer: "return=minimal" },
-                body: JSON.stringify({ state: rejected ? "failed" : "pending", completing_at: null }),
-            },
-        ).catch(() => console.warn("completion_release_failed"));
-        throw error;
+        const failure = isInvalidMultipartPart(error)
+            ? new ApiError(422, "invalid_parts", "Storage rejected the uploaded part identifiers.")
+            : error;
+        const rejected = failure instanceof ApiError &&
+            ["integrity_mismatch", "invalid_parts", "scan_rejected"].includes(failure.code);
+        // Once HEAD or CompleteMultipartUpload confirms provider success, keep the fenced claim.
+        // The 15-minute lease recovers it if finalization fails; a retry will verify via HEAD.
+        if (rejected || !providerCompleted) {
+            await databaseJson(
+                `storage_uploads?id=eq.${upload.id}&state=eq.completing&completing_at=eq.${encodeURIComponent(claim)}`,
+                {
+                    method: "PATCH",
+                    headers: { prefer: "return=minimal" },
+                    body: JSON.stringify({ state: rejected ? "failed" : "pending", completing_at: null }),
+                },
+            ).catch(() => console.warn("completion_release_failed"));
+        }
+        throw failure;
     }
+}
+
+function isInvalidMultipartPart(error: unknown): boolean {
+    return error instanceof Error && ["InvalidPart", "InvalidPartOrder"].includes(error.name);
 }
 
 async function headObject(key: string) {

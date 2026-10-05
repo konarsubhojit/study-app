@@ -2,10 +2,13 @@ package dev.studyflow.core.database.dao
 
 import androidx.room.Room
 import dev.studyflow.core.database.DATABASE_ROBOLECTRIC_SDK
+import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.database.StudyFlowDatabase
 import dev.studyflow.core.database.entity.MaterialEntity
 import dev.studyflow.core.database.entity.MaterialSyncState
 import dev.studyflow.core.database.entity.MaterialUploadPartEntity
+import dev.studyflow.core.database.repository.RoomUploadProgressStore
+import dev.studyflow.core.domain.materials.CompletedUploadPart
 import dev.studyflow.core.model.ContentHash
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -65,6 +68,19 @@ class MaterialUploadPartDaoTest {
 
             assertEquals(1, parts.size)
             assertEquals("second-attempt", parts.single().etag)
+        }
+
+    @Test
+    fun `quoted entity tags survive durable progress storage`() =
+        runBlocking {
+            materialDao.save(material("lecture"))
+            val progress = RoomUploadProgressStore(dao, Clock { BASE_TIME })
+            val completed = CompletedUploadPart(1, "\"9f2b7a\"", 8 * 1024 * 1024L)
+
+            progress.recordCompletedPart("lecture", completed)
+
+            val afterRestart = RoomUploadProgressStore(dao, Clock { BASE_TIME })
+            assertEquals(completed, afterRestart.completedParts("lecture").single())
         }
 
     @Test
