@@ -82,6 +82,71 @@ needed. `storage_accounts`, `storage_rate_events` and `thumbnail_generation_queu
 only by security-definer RPCs. Identity defaults for the two append-only logs do not need sequence
 grants. RLS remains enabled and unchanged.
 
+## Multipart completion transport and recovery
+
+The reported hosted crash occurs in Deno's Node-compatible HTTP response reader
+(`IncomingMessageForClient._read`, `TypeError: reached unexpected EOF`), before the request catch
+or observability finally runs. Storage now explicitly uses Smithy's native-fetch request handler,
+with a 60-second request timeout and at most two SDK attempts. Response-body failures are awaited
+by the SDK and reach `503 storage_unavailable`, the request trace header, and `storage_request`.
+All function-owned asynchronous work is awaited or rejection-handled, including background
+observability writes. A global `error`/`unhandledrejection` listener is intentionally not used:
+it cannot associate an arbitrary worker failure with one of several concurrent requests or
+manufacture that request's response, and suppressing it would hide bugs rather than recover them.
+
+Diagnosis evidence and limits:
+
+- The authenticated AWS CLI probe could not run in the agent environment: AWS/S3 credentials were
+  absent. The underlying hosted endpoint trigger remains **unconfirmed**.
+- A controlled HTTP response declaring 500 bytes but closing after
+  `<CompleteMultipartUploadResult>` was tested against SDK 3.1135.0 on Deno 2.9.6. Both default
+  Node transport and native fetch reached catch/finally (respectively `Error` and `TypeError`).
+  Thus a generic short response alone did not reproduce the reported deployed-runtime crash.
+- The regression suite drives the actual SDK through native fetch with a failing response stream
+  and proves a structured, logged outage without an unhandled rejection. It also pins the creation
+  checksum header, signed-part checksum, and exact completion XML.
+- [Supabase's compatibility table](https://supabase.com/docs/guides/storage/s3/compatibility)
+  lists `CreateMultipartUpload`, `UploadPart`, and `CompleteMultipartUpload` as supported.
+  It does not explicitly settle SHA-256 checksums on these multipart operations. Unsupported
+  checksum entries on other operations are not evidence that these calls caused this crash.
+  Checksum incompatibility, endpoint-specific framing, and a deployed Deno bug have therefore
+  **not** been ruled out.
+
+SHA-256 is retained consistently on creation, part signing, and completion; no integrity guarantee
+is removed speculatively. The server additionally checks provider `ContentLength` against
+`size_bytes`. The device's VERIFY compares the returned hash and size with its local plan, not a
+fresh digest of remote bytes; without a configured scan hook, that comparison alone would not
+replace provider checksum validation. Before rollout verification, run the authenticated CLI
+check with a file larger than the CLI multipart threshold, then compare function completion on
+the same endpoint. Do not include credentials, object keys, or signed URLs in diagnostic logs.
+
+Completion ownership now has a **15-minute lease**, separate from the 24-hour upload-session
+expiry. This exceeds Supabase's hosted Edge worker wall-clock limits (including the 400-second
+paid-plan limit), with margin for a slow 50 MB provider completion and SDK retries. Active claims
+cannot be bypassed by a second completion or reaped merely because the upload session expired.
+An expired claim can be acquired again or reclaimed by reservation, retaining the same upload id
+and provider handle. Recovery checks HEAD first because S3 may have succeeded before the response
+was lost. Finalization and failure release are fenced by the claim timestamp, so an old worker
+cannot overwrite a newer claim. Failures return to pending, except confirmed integrity/scan
+rejections after provider deletion; cleanup failure retains the lease for timeout recovery.
+
+`stat` reports active `completing`/`reaping` rows as `409 upload_in_progress`, matching reservation.
+A reclaimable completion reads as absent and can be reserved again. Only explicitly recoverable
+conflicts (`upload_initializing`, `upload_in_progress`) are automatically retried by the client;
+`object_already_exists`, incompatible reservations and unknown conflicts are non-retryable.
+
+Rollout requires **both** commands from `infra/`, database first:
+
+```sh
+supabase db push
+supabase functions deploy storage api
+```
+
+The migration changes the finalization RPC signature; deploy the functions immediately after the
+database. Merged-but-undeployed code, or deploying only one side, is not a valid verification.
+The new SDK wire tests require Deno's narrowly scoped `--allow-sys=osRelease` permission in
+addition to `--allow-env`; no network permission or real provider credentials are needed.
+
 ## Cost guardrails
 
 - **Per-account quota:** `storage_accounts.quota_bytes` defaults to 1 GiB, and

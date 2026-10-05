@@ -57,7 +57,7 @@ jobs:
           deno-version: v2.x
 
       - name: Test API and storage functions
-        run: deno test --allow-env infra/supabase/functions/api/index_test.ts infra/supabase/functions/storage/index_test.ts
+        run: deno test --allow-env --allow-sys=osRelease infra/supabase/functions/api/index_test.ts infra/supabase/functions/storage/index_test.ts
 
       - name: Set up Supabase
         uses: supabase/setup-cli@v1

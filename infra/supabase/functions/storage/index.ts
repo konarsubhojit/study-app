@@ -9,11 +9,13 @@ import {
     UploadPartCommand,
 } from "npm:@aws-sdk/client-s3@3.1135.0";
 import { getSignedUrl } from "npm:@aws-sdk/s3-request-presigner@3.1135.0";
+import { FetchHttpHandler } from "npm:@smithy/fetch-http-handler@5.7.2";
 
 const MAX_SIZE_BYTES = 50 * 1024 * 1024;
 const PART_SIZE_BYTES = 8 * 1024 * 1024;
 const SIGNED_URL_TTL_SECONDS = 10 * 60;
 const UPLOAD_TTL_MS = 24 * 60 * 60 * 1000;
+const COMPLETION_TTL_MS = 15 * 60 * 1000;
 const HASH = /^[0-9a-f]{64}$/;
 const SHA256_BASE64 = /^[A-Za-z0-9+/]{43}=$/;
 const ALLOWED_MIME_TYPES = new Set([
@@ -44,6 +46,8 @@ type UploadRow = {
     part_checksums: string[];
     state: string;
     completed_at?: string | null;
+    completing_at?: string | null;
+    created_at?: string;
 };
 type Reservation = {
     upload_id: string;
@@ -102,6 +106,11 @@ const s3 = new S3Client({
     endpoint: env("STORAGE_S3_ENDPOINT"),
     region: Deno.env.get("STORAGE_S3_REGION") ?? "us-east-1",
     forcePathStyle: true,
+    requestHandler: new FetchHttpHandler({
+        requestTimeout: 60_000,
+        requestInit: () => ({ signal: AbortSignal.timeout(60_000) }),
+    }),
+    maxAttempts: 2,
     credentials: {
         accessKeyId: env("STORAGE_S3_ACCESS_KEY_ID"),
         secretAccessKey: env("STORAGE_S3_SECRET_ACCESS_KEY"),
@@ -155,7 +164,9 @@ async function recordObservability(event: ObservabilityEvent): Promise<void> {
 }
 
 function recordObservabilityAfterResponse(event: ObservabilityEvent): void {
-    const promise = recordObservability(event);
+    const promise = recordObservability(event).catch(() => {
+        console.warn("observability_write_failed");
+    });
     const runtime = (globalThis as { EdgeRuntime?: { waitUntil: (promise: Promise<unknown>) => void } }).EdgeRuntime;
     if (runtime) {
         runtime.waitUntil(promise);
@@ -208,7 +219,10 @@ async function databaseJson<T>(path: string, init: RequestInit = {}): Promise<T>
             );
         }
         if (detail.includes("object_already_exists")) {
-            throw new ApiError(409, "object_already_exists", "This file already exists or is being finalized.");
+            throw new ApiError(409, "object_already_exists", "This file already exists.");
+        }
+        if (detail.includes("upload_in_progress")) {
+            throw new ApiError(409, "upload_in_progress", "This file is being finalized. Retry shortly.");
         }
         throw new UpstreamError("Database", response.status);
     }
@@ -459,18 +473,12 @@ async function completeUpload(request: Request, owner: string): Promise<Response
         };
     });
 
-    if (upload.state === "pending") {
-        const claimed = await databaseJson<UploadRow[]>(
-            `storage_uploads?id=eq.${upload.id}&state=eq.pending&select=*`,
-            {
-                method: "PATCH",
-                headers: { prefer: "return=representation" },
-                body: JSON.stringify({ state: "completing" }),
-            },
-        );
-        if (claimed.length !== 1) {
-            throw new ApiError(409, "upload_not_completable", "This upload is already being completed.");
-        }
+    const claim = await databaseJson<string | null>("rpc/storage_claim_completion", {
+        method: "POST",
+        body: JSON.stringify({ p_upload_id: upload.id, p_user_id: owner }),
+    });
+    if (!claim) {
+        throw new ApiError(409, "upload_in_progress", "This upload is already being completed. Retry shortly.");
     }
     try {
         let object = await headObject(upload.object_key);
@@ -492,17 +500,22 @@ async function completeUpload(request: Request, owner: string): Promise<Response
         await scanIfConfigured(upload);
         const finalized = await databaseJson<boolean>("rpc/storage_finalize_upload", {
             method: "POST",
-            body: JSON.stringify({ p_upload_id: upload.id, p_user_id: owner }),
+            body: JSON.stringify({ p_upload_id: upload.id, p_user_id: owner, p_completing_at: claim }),
         });
         if (!finalized) throw new Error("Upload state changed before finalization");
         return json(200, storedObject({ ...upload, state: "ready" }));
     } catch (error) {
-        if (error instanceof ApiError) {
-            await database(`storage_uploads?id=eq.${upload.id}`, {
+        // Keep the same provider handle after an ambiguous failure: a retry checks HEAD first,
+        // so provider success followed by a lost response or database outage is not discarded.
+        const rejected = error instanceof ApiError && ["integrity_mismatch", "scan_rejected"].includes(error.code);
+        await databaseJson(
+            `storage_uploads?id=eq.${upload.id}&state=eq.completing&completing_at=eq.${encodeURIComponent(claim)}`,
+            {
                 method: "PATCH",
-                body: JSON.stringify({ state: "failed" }),
-            });
-        }
+                headers: { prefer: "return=minimal" },
+                body: JSON.stringify({ state: rejected ? "failed" : "pending", completing_at: null }),
+            },
+        ).catch(() => console.warn("completion_release_failed"));
         throw error;
     }
 }
@@ -548,16 +561,25 @@ async function scanIfConfigured(upload: UploadRow): Promise<void> {
     }
 }
 
-async function readyObject(owner: string, hash: unknown): Promise<UploadRow> {
+async function readyObject(owner: string, hash: unknown, includeInProgress = false): Promise<UploadRow> {
     if (typeof hash !== "string" || !HASH.test(hash)) {
         throw new ApiError(400, "invalid_content_hash", "contentHash must be a lowercase SHA-256 digest.");
     }
     const key = objectKey(owner, hash);
     const rows = await databaseJson<UploadRow[]>(
-        `storage_uploads?user_id=eq.${owner}&object_key=eq.${encodeURIComponent(key)}&state=eq.ready&select=*&limit=1`,
+        `storage_uploads?user_id=eq.${owner}&object_key=eq.${encodeURIComponent(key)}` +
+            `&state=${includeInProgress ? "in.(ready,completing,reaping)" : "eq.ready"}&select=*&limit=1`,
     );
     if (rows.length !== 1) throw new ApiError(404, "object_not_found", "File not found.");
-    return rows[0];
+    const upload = rows[0];
+    if (upload.state !== "ready") {
+        const claimTime = Date.parse(upload.completing_at ?? upload.created_at ?? "");
+        if (upload.state === "completing" && claimTime < Date.now() - COMPLETION_TTL_MS) {
+            throw new ApiError(404, "object_not_found", "File not found.");
+        }
+        throw new ApiError(409, "upload_in_progress", "This file is being finalized. Retry shortly.");
+    }
+    return upload;
 }
 
 async function getDownloadUrl(request: Request, owner: string): Promise<Response> {
@@ -587,7 +609,7 @@ export function statResponse(upload: UploadRow): Json {
 // `404 object_not_found` tells it to upload the bytes again.
 async function statObject(request: Request, owner: string): Promise<Response> {
     await rateLimit(owner, "stat", 60);
-    const upload = await readyObject(owner, (await body(request)).contentHash);
+    const upload = await readyObject(owner, (await body(request)).contentHash, true);
     return json(200, statResponse(upload));
 }
 
