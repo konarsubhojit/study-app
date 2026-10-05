@@ -195,7 +195,17 @@ class StorageFunctionUrlSourceTest {
             store.completeUpload(session, listOf(uploaded))
 
             assertEquals(etag, uploaded.etag)
-            assertEquals(etag, requests.last().second?.get("parts")?.jsonArray?.single()?.jsonObject?.string("etag"))
+            assertEquals(
+                etag,
+                requests
+                    .last()
+                    .second
+                    ?.get("parts")
+                    ?.jsonArray
+                    ?.single()
+                    ?.jsonObject
+                    ?.string("etag"),
+            )
         }
 
     @Test
