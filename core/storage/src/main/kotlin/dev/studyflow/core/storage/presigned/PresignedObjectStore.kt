@@ -75,7 +75,9 @@ public class PresignedObjectStore(
         }
         val etag = response.entityTag()
         if (etag.isBlank()) {
-            throw ObjectStoreException.Integrity("storage provider did not return an entity tag for part ${part.number}")
+            throw ObjectStoreException.Integrity(
+                "storage provider did not return an entity tag for part ${part.number}",
+            )
         }
         return UploadedPart(
             number = part.number,
