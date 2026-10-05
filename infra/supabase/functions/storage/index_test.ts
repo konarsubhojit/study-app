@@ -470,6 +470,7 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
     let creation = false;
     let completion = false;
     let exists = false;
+    let completionXml = "";
     await withUploadBackend(async (request) => {
         const url = new URL(request.url);
         if (request.method === "HEAD") {
@@ -483,13 +484,13 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
             return new Response("<InitiateMultipartUploadResult><UploadId>provider-1</UploadId></InitiateMultipartUploadResult>");
         }
         completion = true;
-        const xml = await request.text();
+        completionXml = await request.text();
         const expected = '<?xml version="1.0" encoding="UTF-8"?>' +
             '<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">' +
             `<Part><ETag>"part-etag"</ETag><ChecksumSHA256>${checksum}</ChecksumSHA256><PartNumber>1</PartNumber></Part>` +
             "</CompleteMultipartUpload>";
-        if (xml !== expected || url.searchParams.get("uploadId") !== "provider-1") {
-            throw new Error(`completion command shape drifted: ${xml}`);
+        if (completionXml !== expected || url.searchParams.get("uploadId") !== "provider-1") {
+            throw new Error(`completion command shape drifted: ${completionXml}`);
         }
         exists = true;
         return new Response("<CompleteMultipartUploadResult><ETag>object-etag</ETag></CompleteMultipartUploadResult>");
@@ -506,8 +507,13 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
             throw new Error("part signing checksum contract drifted");
         }
         const completed = await handleRequest(completionRequest());
-        await completed.body?.cancel();
-        if (completed.status !== 200 || !creation || !completion) throw new Error("multipart contract did not complete");
+        const completionResult = await completed.json();
+        if (completed.status !== 200 || !creation || !completion) {
+            throw new Error(
+                `multipart contract did not complete: status=${completed.status} body=${JSON.stringify(completionResult)} ` +
+                    `creation=${creation} completion=${completion} xml=${completionXml}`,
+            );
+        }
     });
 });
 
