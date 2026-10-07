@@ -111,6 +111,30 @@ class MaterialUploadEngineTest {
         }
 
     @Test
+    fun `a replaced provider handle on the same reservation invalidates every prior receipt`() =
+        runBlocking {
+            materialRepository.save(material())
+            val reservationId = "upload-${ObjectKey.ofMaterial(contentHash)}"
+            listOf(1, 2, 3).forEach { number ->
+                uploadProgressStore.recordCompletedPart(
+                    "m1",
+                    CompletedUploadPart(number, "stale-$number", 8 * 1024 * 1024, "dead-provider"),
+                )
+            }
+            objectStore.providerUploadId = "replacement-provider"
+            objectStore.failCompleteUpload = ObjectStoreException.Transient("completion interrupted")
+
+            assertInstanceOf(UploadOutcome.Retryable::class.java, engine.upload("m1"))
+            assertEquals(listOf(1, 2, 3), objectStore.uploadedPartNumbers)
+            assertTrue(uploadProgressStore.completedParts("m1").all { it.uploadId == "replacement-provider" })
+            assertTrue(uploadProgressStore.completedParts("m1").none { it.uploadId == reservationId })
+
+            objectStore.failCompleteUpload = null
+            assertEquals(UploadOutcome.Synced, engine.upload("m1"))
+            assertEquals(listOf(1, 2, 3), objectStore.uploadedPartNumbers, "new provider receipts remain resumable")
+        }
+
+    @Test
     fun `invalid parts after sending bytes clears receipts and retries a full transfer`() =
         runBlocking {
             materialRepository.save(material())
@@ -165,7 +189,37 @@ class MaterialUploadEngineTest {
             assertEquals(listOf(1, 2, 3), objectStore.uploadedPartNumbers)
             assertTrue(objectStore.completedParts.none { it.etag.startsWith("dead-provider-") })
             assertEquals(SyncState.Synced, materialRepository.observeById(materialId).first()?.sync)
-            assertTrue(logger.entries.any { it.message.contains("stage=COMPLETE outcome=SUCCESS") })
+            assertTrue(
+                logger.diagnosticsWith(DiagnosticCode.MaterialUpload).any {
+                    "stage=COMPLETE outcome=SUCCESS" in
+                        it
+                },
+            )
+        }
+
+    @Test
+    fun `cancellation during zero-part completion preserves acknowledged receipts`() =
+        runBlocking {
+            materialRepository.save(material())
+            val key = ObjectKey.ofMaterial(contentHash)
+            listOf(1, 2, 3).forEach { number ->
+                val size = if (number == 3) 4L * 1024 * 1024 else 8L * 1024 * 1024
+                objectStore.seedAcknowledgedPart(key, number, size)
+                uploadProgressStore.recordCompletedPart(
+                    "m1",
+                    CompletedUploadPart(number, "etag-$number", size, "upload-$key"),
+                )
+            }
+            val receipts = uploadProgressStore.completedParts("m1")
+            objectStore.failCompleteUpload = CancellationException("worker stopped")
+
+            assertThrows(CancellationException::class.java) { runBlocking { engine.upload("m1") } }
+            assertEquals(receipts, uploadProgressStore.completedParts("m1"))
+            assertTrue(objectStore.uploadedPartNumbers.isEmpty())
+
+            objectStore.failCompleteUpload = null
+            assertEquals(UploadOutcome.Synced, engine.upload("m1"))
+            assertTrue(objectStore.uploadedPartNumbers.isEmpty())
         }
 
     @Test

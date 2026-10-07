@@ -245,9 +245,13 @@ public class MaterialUploadEngine(
         val signedPartsByNumber = session.parts.associateBy { it.number }
 
         val receipts = uploadProgressStore.completedParts(materialId)
-        val completed = receipts.filter { it.uploadId == session.uploadId }.associateBy { it.number }.toMutableMap()
+        val completed =
+            receipts
+                .filter { it.uploadId == session.providerUploadId }
+                .associateBy { it.number }
+                .toMutableMap()
         if (completed.size != receipts.size) {
-            // ETags belong to a backend reservation, not to the material. Legacy or replaced
+            // ETags belong to a provider multipart handle, not to the material. Legacy or replaced
             // sessions must never contribute receipts to this session's completion request.
             uploadProgressStore.clear(materialId)
             completed.values.forEach { uploadProgressStore.recordCompletedPart(materialId, it) }
@@ -272,7 +276,8 @@ public class MaterialUploadEngine(
                     part = part.number,
                     partCount = plan.parts.size,
                 )
-                val completedPart = CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size, session.uploadId)
+                val completedPart =
+                    CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size, session.providerUploadId)
                 // Every part is durably recorded the instant it is acknowledged, so a process
                 // death never loses a receipt. The catalogue row's `Uploading` progress is a UI
                 // nicety rather than a resume source, so it is only rewritten every few parts —
@@ -290,18 +295,20 @@ public class MaterialUploadEngine(
 
         val orderedParts = plan.parts.map { part -> completed.getValue(part.number).asUploadedPart() }
         onStage(MaterialTransferStage.COMPLETE, null, null)
+        var discardReceipts = completeFromReceipts
         val stored =
             try {
-                objectStore.completeUpload(session, orderedParts)
+                objectStore.completeUpload(session, orderedParts).also { discardReceipts = false }
             } catch (cancellation: CancellationException) {
+                discardReceipts = false
                 throw cancellation
-            } catch (
-                @Suppress("TooGenericExceptionCaught") failure: Throwable,
-            ) {
-                if (completeFromReceipts || failure is ObjectStoreException.InvalidParts) {
+            } catch (failure: ObjectStoreException.InvalidParts) {
+                discardReceipts = true
+                throw failure
+            } finally {
+                if (discardReceipts) {
                     uploadProgressStore.clear(materialId)
                 }
-                throw failure
             }
         log(materialId, MaterialTransferStage.COMPLETE, MaterialTransferOutcome.SUCCESS, retryable = false)
         onStage(MaterialTransferStage.VERIFY, null, null)

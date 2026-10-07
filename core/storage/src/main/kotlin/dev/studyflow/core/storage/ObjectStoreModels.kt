@@ -156,9 +156,12 @@ public data class UploadSession(
     val uploadId: String,
     val parts: List<SignedPart>,
     val expiresAt: Instant,
+    /** Receipt identity changes when the backend replaces a dead multipart handle on the same row. */
+    val providerUploadId: String = uploadId,
 ) {
     init {
         require(uploadId.isNotBlank()) { "UploadSession.uploadId must not be blank" }
+        require(providerUploadId.isNotBlank()) { "UploadSession.providerUploadId must not be blank" }
         require(parts.isNotEmpty()) { "UploadSession must have at least one part" }
         require(parts.map { it.number } == parts.indices.map { it + 1 }) {
             "UploadSession parts must be numbered 1..${parts.size} in order"
