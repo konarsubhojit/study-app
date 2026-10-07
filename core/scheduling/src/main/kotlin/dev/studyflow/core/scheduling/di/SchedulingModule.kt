@@ -1,56 +1,26 @@
 package dev.studyflow.core.scheduling.di
 
 import android.content.Context
-import androidx.work.WorkManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import dagger.multibindings.IntoSet
-import dev.studyflow.core.common.coroutines.DispatcherProvider
 import dev.studyflow.core.common.logging.AppLogger
 import dev.studyflow.core.common.time.AnchoredClock
 import dev.studyflow.core.common.time.Clock
 import dev.studyflow.core.common.time.DefaultAnchoredClock
-import dev.studyflow.core.common.time.DeviceIdProvider
-import dev.studyflow.core.common.time.TimeZoneProvider
-import dev.studyflow.core.database.StudyFlowDatabase
-import dev.studyflow.core.database.dao.MaterialUploadPartDao
-import dev.studyflow.core.database.repository.RoomUploadProgressStore
 import dev.studyflow.core.datastore.UserSettingsStore
-import dev.studyflow.core.datastore.UserSettingsWeeklySummaryDeliveryLog
-import dev.studyflow.core.datastore.UserSettingsWeeklySummarySettings
-import dev.studyflow.core.datastore.WeeklySummaryDeliveryLog
-import dev.studyflow.core.datastore.WeeklySummarySettings
 import dev.studyflow.core.datastore.userSettingsStore
-import dev.studyflow.core.domain.materials.DownloadProgressStore
-import dev.studyflow.core.domain.materials.MaterialDownloadCoordinator
-import dev.studyflow.core.domain.materials.MaterialRepository
-import dev.studyflow.core.domain.materials.MaterialUploadCoordinator
-import dev.studyflow.core.domain.materials.UploadNetworkSettings
-import dev.studyflow.core.domain.materials.UploadProgressStore
-import dev.studyflow.core.domain.session.SessionCommandObserver
 import dev.studyflow.core.domain.session.SessionRepository
-import dev.studyflow.core.domain.stats.WeeklySummaryProvider
-import dev.studyflow.core.domain.stats.WeeklySummaryScheduling
 import dev.studyflow.core.domain.subjects.SubjectRepository
-import dev.studyflow.core.domain.sync.SyncEngine
-import dev.studyflow.core.domain.sync.SyncScheduler
-import dev.studyflow.core.domain.sync.SyncStore
-import dev.studyflow.core.domain.sync.SyncTransport
 import dev.studyflow.core.domain.tasks.TaskRepository
-import dev.studyflow.core.network.StudyFlowApi
 import dev.studyflow.core.notifications.StudyFlowNotificationFactory
 import dev.studyflow.core.notifications.StudyFlowNotifier
 import dev.studyflow.core.scheduling.AndroidBootIdProvider
 import dev.studyflow.core.scheduling.AndroidElapsedRealtimeSource
 import dev.studyflow.core.scheduling.AndroidReminderPlatformScheduler
 import dev.studyflow.core.scheduling.AndroidSchedulingCapabilitiesProvider
-import dev.studyflow.core.scheduling.ApiSyncTransport
-import dev.studyflow.core.scheduling.DownloadTransport
-import dev.studyflow.core.scheduling.MaterialRemoteVerifier
-import dev.studyflow.core.scheduling.MaterialUploadGate
 import dev.studyflow.core.scheduling.ReminderActionExecutor
 import dev.studyflow.core.scheduling.ReminderDeliveryCoordinator
 import dev.studyflow.core.scheduling.ReminderIntegrityCoordinator
@@ -58,17 +28,6 @@ import dev.studyflow.core.scheduling.ReminderPlatformScheduler
 import dev.studyflow.core.scheduling.ReminderSchedulingService
 import dev.studyflow.core.scheduling.RemoteChangesListener
 import dev.studyflow.core.scheduling.SchedulingCapabilitiesProvider
-import dev.studyflow.core.scheduling.SharedPreferencesDownloadProgressStore
-import dev.studyflow.core.scheduling.SharedPreferencesRemoteCopyLedger
-import dev.studyflow.core.scheduling.SyncOnSessionCommandObserver
-import dev.studyflow.core.scheduling.UrlConnectionDownloadTransport
-import dev.studyflow.core.scheduling.WeeklySummaryDelivery
-import dev.studyflow.core.scheduling.WeeklySummaryScheduler
-import dev.studyflow.core.scheduling.WorkManagerMaterialDownloadCoordinator
-import dev.studyflow.core.scheduling.WorkManagerMaterialUploadCoordinator
-import dev.studyflow.core.scheduling.WorkManagerSyncCoordinator
-import dev.studyflow.core.scheduling.WorkManagerUploadNetworkSettings
-import dev.studyflow.core.storage.ObjectStore
 import kotlinx.coroutines.flow.first
 import javax.inject.Singleton
 
@@ -88,7 +47,6 @@ import javax.inject.Singleton
  */
 @Module
 @InstallIn(SingletonComponent::class)
-@Suppress("TooManyFunctions")
 public object SchedulingModule {
     @Provides
     @Singleton
@@ -186,183 +144,8 @@ public object SchedulingModule {
             wallClock = clock,
         )
 
-    /**
-     * The weekly summary opt-in (issue #63). Bound here, beside [UserSettingsStore], because both
-     * the settings screen that writes the schedule and [WeeklySummaryScheduler] that acts on it
-     * need the same narrow view of it.
-     */
-    @Provides
-    @Singleton
-    public fun weeklySummarySettings(store: UserSettingsStore): WeeklySummarySettings =
-        UserSettingsWeeklySummarySettings(store)
-
-    @Provides
-    @Singleton
-    public fun weeklySummaryDeliveryLog(store: UserSettingsStore): WeeklySummaryDeliveryLog =
-        UserSettingsWeeklySummaryDeliveryLog(store)
-
-    @Provides
-    @Singleton
-    public fun weeklySummaryScheduling(
-        @ApplicationContext context: Context,
-        settings: WeeklySummarySettings,
-        clock: Clock,
-        timeZoneProvider: TimeZoneProvider,
-    ): WeeklySummaryScheduling =
-        WeeklySummaryScheduler(
-            settings = settings,
-            workManager = WorkManager.getInstance(context),
-            clock = clock,
-            timeZoneProvider = timeZoneProvider,
-        )
-
-    @Provides
-    @Singleton
-    @Suppress("LongParameterList")
-    public fun weeklySummaryDelivery(
-        @ApplicationContext context: Context,
-        settings: WeeklySummarySettings,
-        deliveryLog: WeeklySummaryDeliveryLog,
-        summaryProvider: WeeklySummaryProvider,
-        subjectRepository: SubjectRepository,
-        notifier: StudyFlowNotifier,
-        notificationFactory: StudyFlowNotificationFactory,
-        clock: Clock,
-    ): WeeklySummaryDelivery =
-        WeeklySummaryDelivery(
-            context = context,
-            settings = settings,
-            deliveryLog = deliveryLog,
-            summaryProvider = summaryProvider,
-            subjectRepository = subjectRepository,
-            notifier = notifier,
-            notificationFactory = notificationFactory,
-            clock = clock,
-        )
-
-    @Provides
-    @Singleton
-    public fun materialUploadPartDao(database: StudyFlowDatabase): MaterialUploadPartDao =
-        database.materialUploadPartDao()
-
-    @Provides
-    @Singleton
-    public fun uploadProgressStore(
-        dao: MaterialUploadPartDao,
-        clock: Clock,
-    ): UploadProgressStore = RoomUploadProgressStore(dao, clock)
-
-    @Provides
-    @Singleton
-    public fun workManagerMaterialUploadCoordinator(
-        @ApplicationContext context: Context,
-        materialRepository: MaterialRepository,
-        settingsStore: UserSettingsStore,
-        syncScheduler: SyncScheduler,
-        logger: AppLogger,
-    ): WorkManagerMaterialUploadCoordinator =
-        WorkManagerMaterialUploadCoordinator(
-            context = context,
-            materialRepository = materialRepository,
-            settingsStore = settingsStore,
-            syncScheduler = syncScheduler,
-            logger = logger,
-        )
-
-    @Provides
-    @Singleton
-    public fun materialUploadCoordinator(coordinator: WorkManagerMaterialUploadCoordinator): MaterialUploadCoordinator =
-        coordinator
-
-    @Provides
-    @Singleton
-    public fun uploadNetworkSettings(
-        settingsStore: UserSettingsStore,
-        coordinator: WorkManagerMaterialUploadCoordinator,
-    ): UploadNetworkSettings = WorkManagerUploadNetworkSettings(settingsStore, coordinator)
-
-    @Provides
-    @Singleton
-    public fun materialUploadGate(): MaterialUploadGate = MaterialUploadGate()
-
-    @Provides
-    @Singleton
-    public fun materialRemoteVerifier(
-        @ApplicationContext context: Context,
-        materialRepository: MaterialRepository,
-        objectStore: ObjectStore,
-        uploadCoordinator: MaterialUploadCoordinator,
-        logger: AppLogger,
-    ): MaterialRemoteVerifier =
-        MaterialRemoteVerifier(
-            materialRepository = materialRepository,
-            objectStore = objectStore,
-            uploadCoordinator = uploadCoordinator,
-            ledger =
-                SharedPreferencesRemoteCopyLedger(
-                    context.getSharedPreferences("studyflow-material-remote-copies", Context.MODE_PRIVATE),
-                ),
-            logger = logger,
-        )
-
-    @Provides
-    @Singleton
-    public fun downloadProgressStore(
-        @ApplicationContext context: Context,
-    ): DownloadProgressStore =
-        SharedPreferencesDownloadProgressStore(
-            context.getSharedPreferences("studyflow-download-progress", Context.MODE_PRIVATE),
-        )
-
-    @Provides
-    @Singleton
-    public fun downloadTransport(dispatcherProvider: DispatcherProvider): DownloadTransport =
-        UrlConnectionDownloadTransport(dispatcherProvider)
-
     @Provides
     @Singleton
     public fun remoteChangesListener(integrity: ReminderIntegrityCoordinator): RemoteChangesListener =
         RemoteChangesListener { integrity.checkNow() }
-
-    @Provides
-    @Singleton
-    public fun materialDownloadCoordinator(
-        @ApplicationContext context: Context,
-    ): MaterialDownloadCoordinator = WorkManagerMaterialDownloadCoordinator(context)
-
-    @Provides
-    @Singleton
-    public fun syncTransport(
-        api: StudyFlowApi,
-        deviceIdProvider: DeviceIdProvider,
-        logger: AppLogger,
-    ): SyncTransport = ApiSyncTransport(api, deviceIdProvider, logger)
-
-    @Provides
-    @Singleton
-    public fun syncEngine(
-        store: SyncStore,
-        transport: SyncTransport,
-        clock: Clock,
-    ): SyncEngine = SyncEngine(store = store, transport = transport, clock = clock)
-
-    @Provides
-    @Singleton
-    public fun syncCoordinator(
-        @ApplicationContext context: Context,
-    ): WorkManagerSyncCoordinator = WorkManagerSyncCoordinator(context)
-
-    @Provides
-    @Singleton
-    public fun syncScheduler(coordinator: WorkManagerSyncCoordinator): SyncScheduler = coordinator
-
-    /**
-     * Drains the outbound queue as soon as a session is stopped, rather than waiting for the next
-     * scheduled run — the change is already durable, so this only decides how quickly it travels.
-     */
-    @Provides
-    @IntoSet
-    @Singleton
-    public fun syncOnSessionCommand(coordinator: WorkManagerSyncCoordinator): SessionCommandObserver =
-        SyncOnSessionCommandObserver(coordinator)
 }
