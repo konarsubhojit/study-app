@@ -46,7 +46,7 @@ import dev.studyflow.core.database.entity.TaskTagEntity
         SyncQueueEntity::class,
         SyncStateEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 @TypeConverters(DatabaseConverters::class)
@@ -67,6 +67,6 @@ public abstract class StudyFlowDatabase : RoomDatabase() {
 
     public companion object {
         public const val NAME: String = "studyflow.db"
-        public const val VERSION: Int = 13
+        public const val VERSION: Int = 14
     }
 }

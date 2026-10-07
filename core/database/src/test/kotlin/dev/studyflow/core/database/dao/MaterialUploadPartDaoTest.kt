@@ -71,16 +71,29 @@ class MaterialUploadPartDaoTest {
         }
 
     @Test
-    fun `quoted entity tags survive durable progress storage`() =
+    fun `quoted entity tags and backend session ids survive durable progress storage`() =
         runBlocking {
             materialDao.save(material("lecture"))
             val progress = RoomUploadProgressStore(dao, Clock { BASE_TIME })
-            val completed = CompletedUploadPart(1, "\"9f2b7a\"", 8 * 1024 * 1024L)
+            val completed = CompletedUploadPart(1, "\"9f2b7a\"", 8 * 1024 * 1024L, uploadId = "session-1")
 
             progress.recordCompletedPart("lecture", completed)
 
             val afterRestart = RoomUploadProgressStore(dao, Clock { BASE_TIME })
             assertEquals(completed, afterRestart.completedParts("lecture").single())
+        }
+
+    @Test
+    fun `legacy receipts restore without a backend session id`() =
+        runBlocking {
+            materialDao.save(material("lecture"))
+            dao.upsert(part("lecture", number = 1))
+
+            val progress = RoomUploadProgressStore(dao, Clock { BASE_TIME })
+            assertEquals(
+                CompletedUploadPart(1, "etag-1", 8 * 1024 * 1024L),
+                progress.completedParts("lecture").single(),
+            )
         }
 
     @Test

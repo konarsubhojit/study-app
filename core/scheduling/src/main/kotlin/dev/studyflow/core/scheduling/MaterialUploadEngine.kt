@@ -241,7 +241,14 @@ public class MaterialUploadEngine(
         log(materialId, MaterialTransferStage.INIT, MaterialTransferOutcome.SUCCESS, retryable = false)
         val signedPartsByNumber = session.parts.associateBy { it.number }
 
-        val completed = uploadProgressStore.completedParts(materialId).associateBy { it.number }.toMutableMap()
+        val receipts = uploadProgressStore.completedParts(materialId)
+        val completed = receipts.filter { it.uploadId == session.uploadId }.associateBy { it.number }.toMutableMap()
+        if (completed.size != receipts.size) {
+            // ETags belong to a backend reservation, not to the material. Legacy or replaced
+            // sessions must never contribute receipts to this session's completion request.
+            uploadProgressStore.clear(materialId)
+            completed.values.forEach { uploadProgressStore.recordCompletedPart(materialId, it) }
+        }
         current = current.markUploading(plan, completed.values).also(onSnapshot)
 
         if (!plan.isComplete(completed.keys)) {
@@ -261,7 +268,7 @@ public class MaterialUploadEngine(
                     part = part.number,
                     partCount = plan.parts.size,
                 )
-                val completedPart = CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size)
+                val completedPart = CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size, session.uploadId)
                 // Every part is durably recorded the instant it is acknowledged, so a process
                 // death never loses a receipt. The catalogue row's `Uploading` progress is a UI
                 // nicety rather than a resume source, so it is only rewritten every few parts —

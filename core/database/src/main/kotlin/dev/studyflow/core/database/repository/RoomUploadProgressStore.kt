@@ -31,6 +31,7 @@ public class RoomUploadProgressStore(
                 etag = part.etag,
                 sizeBytes = part.sizeBytes,
                 completedAt = clock.now(),
+                uploadId = part.uploadId,
             ),
         )
     }
@@ -40,5 +41,5 @@ public class RoomUploadProgressStore(
     }
 
     private fun MaterialUploadPartEntity.asExternalModel(): CompletedUploadPart =
-        CompletedUploadPart(number = partNumber, etag = etag, sizeBytes = sizeBytes)
+        CompletedUploadPart(number = partNumber, etag = etag, sizeBytes = sizeBytes, uploadId = uploadId)
 }

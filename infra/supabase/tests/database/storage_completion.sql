@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 create extension if not exists dblink with schema extensions;
-select plan(22);
+select plan(28);
 
 insert into auth.users (id, email) values
   ('33333333-3333-4333-8333-333333333333', 'completion@example.com');
@@ -93,6 +93,48 @@ select ok(not has_function_privilege('authenticated', 'public.storage_claim_comp
   'clients cannot claim completion directly');
 select ok(not has_function_privilege('authenticated', 'public.storage_finalize_upload(uuid,uuid,timestamptz)', 'execute'),
   'clients cannot finalize completion directly');
+
+set local role service_role;
+create temporary table initializing as
+  select * from public.storage_reserve_upload(
+    '33333333-3333-4333-8333-333333333333',
+    '33333333-3333-4333-8333-333333333333/' || repeat('c', 64),
+    repeat('c', 64), 'application/pdf', 12, '["checksum"]'::jsonb, now() + interval '24 hours'
+  );
+update public.storage_uploads set created_at = now() - interval '14 minutes'
+  where id = (select upload_id from initializing);
+select is(
+  (select upload_id from public.storage_reserve_upload(
+    '33333333-3333-4333-8333-333333333333',
+    '33333333-3333-4333-8333-333333333333/' || repeat('c', 64),
+    repeat('c', 64), 'application/pdf', 12, '["checksum"]'::jsonb, now() + interval '24 hours')),
+  (select upload_id from initializing), 'a live initializer keeps its reservation'
+);
+update public.storage_uploads set created_at = now() - interval '16 minutes'
+  where id = (select upload_id from initializing);
+create temporary table reinitialized as
+  select * from public.storage_reserve_upload(
+    '33333333-3333-4333-8333-333333333333',
+    '33333333-3333-4333-8333-333333333333/' || repeat('c', 64),
+    repeat('c', 64), 'application/pdf', 12, '["checksum"]'::jsonb, now() + interval '24 hours'
+  );
+select isnt((select upload_id from reinitialized), (select upload_id from initializing),
+  'an abandoned initializer is replaced without waiting twenty-four hours');
+select is((select created from reinitialized), true, 'recovery opens a new provider upload');
+select is((select state from public.storage_uploads where id = (select upload_id from initializing)),
+  'failed', 'the abandoned initializer no longer holds the active key');
+select is(public.storage_remaining_quota('33333333-3333-4333-8333-333333333333'), 1073741800::bigint,
+  'the abandoned initializer does not reserve quota twice');
+update public.storage_uploads set provider_upload_id = 'provider-3', created_at = now() - interval '16 minutes'
+  where id = (select upload_id from reinitialized);
+select is(
+  (select upload_id from public.storage_reserve_upload(
+    '33333333-3333-4333-8333-333333333333',
+    '33333333-3333-4333-8333-333333333333/' || repeat('c', 64),
+    repeat('c', 64), 'application/pdf', 12, '["checksum"]'::jsonb, now() + interval '24 hours')),
+  (select upload_id from reinitialized), 'initialized multipart uploads retain their full session lifetime'
+);
+reset role;
 
 -- Real concurrent transactions: neither can see the other's claim until the row lock is released.
 -- Use a separate committed fixture because this suite's transaction is rolled back.

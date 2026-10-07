@@ -297,6 +297,14 @@ public object DatabaseMigrations {
             }
         }
 
+    /** Legacy receipts remain unscoped and are discarded when the next backend session opens. */
+    public val MIGRATION_13_14: Migration =
+        object : Migration(13, 14) {
+            override fun migrate(connection: SQLiteConnection) {
+                connection.execSQL("ALTER TABLE material_upload_parts ADD COLUMN upload_id TEXT")
+            }
+        }
+
     public val ALL: Array<Migration>
         get() =
             arrayOf(
@@ -312,6 +320,7 @@ public object DatabaseMigrations {
                 MIGRATION_10_11,
                 MIGRATION_11_12,
                 MIGRATION_12_13,
+                MIGRATION_13_14,
             )
 
     private fun SQLiteConnection.rebuildTasksForSync() {

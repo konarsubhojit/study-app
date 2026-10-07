@@ -24,6 +24,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.NullSource
 import org.junit.jupiter.params.provider.ValueSource
 import java.io.FileNotFoundException
 import java.security.MessageDigest
@@ -63,6 +64,7 @@ class MaterialUploadEngineTest {
                     etag = "\"etag-1\"",
                     sizeBytes =
                         8 * 1024 * 1024,
+                    uploadId = "upload-$key",
                 ),
             )
 
@@ -73,6 +75,80 @@ class MaterialUploadEngineTest {
             assertEquals(listOf(2, 3), objectStore.uploadedPartNumbers)
             assertEquals("\"etag-1\"", objectStore.completedParts.single { it.number == 1 }.etag)
             assertEquals(SyncState.Synced, materialRepository.observeById("m1").first()?.sync)
+        }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = ["expired-session"])
+    fun `replacement sessions and legacy receipts re-send every part without stale etags`(oldUploadId: String?) =
+        runBlocking {
+            materialRepository.save(material())
+            listOf(1, 2, 3, 99).forEach { number ->
+                uploadProgressStore.recordCompletedPart(
+                    "m1",
+                    CompletedUploadPart(number, "stale-$number", 8 * 1024 * 1024, oldUploadId),
+                )
+            }
+            objectStore.failCompleteUpload = ObjectStoreException.Transient("completion interrupted")
+
+            assertInstanceOf(UploadOutcome.Retryable::class.java, engine.upload("m1"))
+
+            assertEquals(listOf(1, 2, 3), objectStore.uploadedPartNumbers)
+            val receipts = uploadProgressStore.completedParts("m1")
+            assertEquals(listOf(1, 2, 3), receipts.map { it.number }.sorted())
+            assertTrue(receipts.all { it.uploadId == "upload-${ObjectKey.ofMaterial(contentHash)}" })
+            assertTrue(receipts.none { it.etag.startsWith("stale-") })
+
+            objectStore.failCompleteUpload = null
+            assertEquals(UploadOutcome.Synced, engine.upload("m1"))
+            assertEquals(
+                listOf(1, 2, 3),
+                objectStore.uploadedPartNumbers,
+                "same-session completion retries send no parts",
+            )
+            assertTrue(objectStore.completedParts.none { it.etag.startsWith("stale-") })
+            assertTrue(uploadProgressStore.completedParts("m1").isEmpty())
+        }
+
+    @Test
+    fun `stale receipt cleanup preserves current-session receipts before a part failure`() =
+        runBlocking {
+            materialRepository.save(material())
+            val key = ObjectKey.ofMaterial(contentHash)
+            val currentReceipt = CompletedUploadPart(1, "etag-1", 8 * 1024 * 1024, "upload-$key")
+            objectStore.seedAcknowledgedPart(key, number = 1, size = currentReceipt.sizeBytes)
+            uploadProgressStore.recordCompletedPart("m1", currentReceipt)
+            uploadProgressStore.recordCompletedPart("m1", CompletedUploadPart(2, "stale-2", 8 * 1024 * 1024))
+            objectStore.failNextUploadPart = ObjectStoreException.Transient("connection reset")
+
+            assertInstanceOf(UploadOutcome.Retryable::class.java, engine.upload("m1"))
+            assertEquals(listOf(currentReceipt), uploadProgressStore.completedParts("m1"))
+            assertEquals(listOf(2), objectStore.uploadedPartNumbers)
+
+            assertEquals(UploadOutcome.Synced, engine.upload("m1"))
+            assertEquals(listOf(2, 2, 3), objectStore.uploadedPartNumbers)
+        }
+
+    @Test
+    fun `a cancelled worker durably records the session before progress notification and resumes`() =
+        runBlocking {
+            materialRepository.save(material())
+            val interruptedEngine =
+                MaterialUploadEngine(
+                    materialRepository,
+                    uploadProgressStore,
+                    objectStore,
+                    readPart = { _, part -> ByteArray(part.size.toInt()) },
+                    onProgress = { _, _ -> throw CancellationException("worker stopped") },
+                )
+
+            assertThrows(CancellationException::class.java) { runBlocking { interruptedEngine.upload("m1") } }
+            val receipt = uploadProgressStore.completedParts("m1").single()
+            assertEquals(1, receipt.number)
+            assertEquals("upload-${ObjectKey.ofMaterial(contentHash)}", receipt.uploadId)
+
+            assertEquals(UploadOutcome.Synced, engine.upload("m1"))
+            assertEquals(listOf(1, 2, 3), objectStore.uploadedPartNumbers)
         }
 
     @Test
