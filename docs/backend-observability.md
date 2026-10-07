@@ -178,7 +178,7 @@ roll out the client so receipt identity tracks replacement handles.
 `stat` reports active `completing`/`reaping` rows as `409 upload_in_progress`, matching reservation.
 A reclaimable completion reads as absent and can be reserved again. Only explicitly recoverable
 conflicts (`upload_initializing`, `upload_in_progress`) are automatically retried by the client;
-`object_already_exists`, incompatible reservations and unknown conflicts are non-retryable.
+Ready-object conflicts (`object_already_exists`) and unknown conflicts remain non-retryable.
 
 Rollout requires **both** commands from `infra/`, database first:
 
