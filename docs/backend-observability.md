@@ -145,8 +145,11 @@ Other permanent errors (including integrity and scan rejection) remain non-retry
 Clearing app data does not retire a server reservation: the key is derived from owner and content
 hash, so importing the same bytes can return the same pending row. `initUpload` now validates a
 reused provider handle with `ListParts`. Only `NoSuchUpload` triggers replacement; provider outages
-must not discard a live upload. Replacement persists the new handle and current checksums with a
-conditional update fenced by the old handle and pending state, then signs URLs for the new handle.
+must not discard a live upload. If HEAD confirms the object already exists, initialization uses
+the existing fenced completion and verification path instead, then returns a recoverable conflict
+so the next client stat relinks the ready object without re-uploading. Otherwise, replacement
+persists the new handle and current checksums with a conditional update fenced by the old handle
+and pending state, then signs URLs for the new handle.
 A losing initializer aborts only its own unpersisted upload, never the winning handle. Failed
 signing retires a newly initialized pending row before aborting its provider handle.
 

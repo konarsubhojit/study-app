@@ -411,6 +411,7 @@ async function withUploadBackend(
         reuse?: boolean;
         loseReplacement?: boolean;
         failAudit?: boolean;
+        onFinalize?: () => void;
     } = {},
 ): Promise<void> {
     const patches: Array<{ url: string; value: Record<string, unknown> }> = [];
@@ -427,7 +428,10 @@ async function withUploadBackend(
             return jsonResponse(200, options.claim === null ? null : claimTime);
         }
         if (url.includes("/rest/v1/storage_url_audit")) return jsonResponse(options.failAudit ? 500 : 201, {});
-        if (url.includes("/rpc/storage_finalize_upload")) return jsonResponse(200, options.finalize ?? true);
+        if (url.includes("/rpc/storage_finalize_upload")) {
+            options.onFinalize?.();
+            return jsonResponse(200, options.finalize ?? true);
+        }
         if (url.includes("/rpc/storage_reserve_upload")) {
             return jsonResponse(200, [{
                 upload_id: pendingUpload.id,
@@ -578,6 +582,7 @@ Deno.test("reuse replaces a dead provider upload and signs every part with its n
     const operations: string[] = [];
     await withUploadBackend((request) => {
         const url = new URL(request.url);
+        if (request.method === "HEAD") return new Response(null, { status: 404 });
         if (request.method === "GET") {
             operations.push("list");
             return new Response("<Error><Code>NoSuchUpload</Code><Message>Upload is gone</Message></Error>", { status: 404 });
@@ -626,6 +631,7 @@ Deno.test("a replacement losing its fence aborts only its new upload and leaves 
     let aborted = false;
     await withUploadBackend((request) => {
         const url = new URL(request.url);
+        if (request.method === "HEAD") return new Response(null, { status: 404 });
         if (request.method === "GET") {
             throw Object.assign(new Error("Upload is gone"), { name: "S3Error", Code: "NoSuchUpload" });
         }
@@ -647,6 +653,7 @@ Deno.test("a replacement losing its fence aborts only its new upload and leaves 
 Deno.test("a replacement signing failure retires its row before aborting the new handle", async () => {
     let aborted = false;
     await withUploadBackend((request) => {
+        if (request.method === "HEAD") return new Response(null, { status: 404 });
         if (request.method === "GET") {
             throw Object.assign(new Error("Upload is gone"), { name: "S3Error", code: "NoSuchUpload" });
         }
@@ -662,6 +669,25 @@ Deno.test("a replacement signing failure retires its row before aborting the new
             throw new Error("failed initialization left a reused dead handle pending");
         }
     }, { reuse: true, failAudit: true });
+});
+
+Deno.test("reuse recovers an already completed provider object instead of creating a replacement", async () => {
+    let finalized = false;
+    await withUploadBackend((request) => {
+        if (request.method === "GET") {
+            throw Object.assign(new Error("Upload is gone"), { name: "S3Error", Code: "NoSuchUpload" });
+        }
+        if (request.method === "HEAD") {
+            return new Response(null, { status: 200, headers: { "content-length": "12" } });
+        }
+        throw new Error("completed object recovery must not create, complete or abort a multipart upload");
+    }, async (patches) => {
+        const response = await handleRequest(initializationRequest());
+        const value = await response.json();
+        if (response.status !== 409 || value.code !== "upload_in_progress" || patches.length !== 0 || !finalized) {
+            throw new Error("completed provider bytes were replaced instead of recovered for the next stat");
+        }
+    }, { reuse: true, onFinalize: () => { finalized = true; } });
 });
 
 for (const code of ["InvalidPart", "InvalidPartOrder", "NoSuchUpload"]) {

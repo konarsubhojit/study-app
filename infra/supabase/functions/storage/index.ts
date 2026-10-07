@@ -401,6 +401,10 @@ async function initUpload(request: Request, owner: string): Promise<Response> {
                 }));
             } catch (error) {
                 if (!isS3Fault(error, ["NoSuchUpload"])) throw error;
+                if (await headObject(key)) {
+                    await finishMultipartUpload(owner, existing, []);
+                    throw new ApiError(409, "upload_in_progress", "Upload recovered. Retry to link the stored object.");
+                }
                 replaceProvider = true;
             }
         }
@@ -536,7 +540,17 @@ async function completeUpload(request: Request, owner: string): Promise<Response
             ChecksumSHA256: upload.part_checksums[index],
         };
     });
+    return finishMultipartUpload(owner, upload, completedParts);
+}
 
+async function finishMultipartUpload(
+    owner: string,
+    upload: UploadRow,
+    completedParts: Array<{ PartNumber: number; ETag: string; ChecksumSHA256: string }>,
+): Promise<Response> {
+    if (!upload.provider_upload_id) {
+        throw new ApiError(409, "upload_not_completable", "This upload cannot be completed.");
+    }
     const claim = await databaseJson<string | null>("rpc/storage_claim_completion", {
         method: "POST",
         body: JSON.stringify({
