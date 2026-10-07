@@ -11,6 +11,8 @@ public data class CompletedUploadPart(
     val number: Int,
     val etag: String,
     val sizeBytes: Long,
+    /** Backend session that acknowledged this part; legacy receipts without one cannot be reused. */
+    val uploadId: String? = null,
 ) {
     init {
         require(number >= 1) { "CompletedUploadPart.number is 1-based, was $number" }

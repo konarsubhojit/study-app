@@ -347,6 +347,12 @@ The required deployment order is:
 3. Set `STORAGE_REAPER_URL` and `STORAGE_REAPER_TOKEN` as described above.
 4. The hourly `reap-storage-orphans.yml` workflow starts succeeding.
 
+Upload initialization reservations without a provider handle recover after fifteen minutes if
+the Edge Function stops mid-initialization. Initialized multipart sessions retain their
+twenty-four-hour lifetime. Apply `20261007140000_storage_initialization_recovery.sql` before
+shipping the Android session-scoped receipt fix: the app discards receipts when the backend
+replaces a session, while preserving progress when the session is resumed.
+
 Until step 3 is complete, the reaper workflow fails its `test -n` guard. This is expected and
 harmless. `ORPHAN_REAPER_TOKEN` and `STORAGE_REAPER_TOKEN` are two copies of one self-generated
 secret on opposite ends of the reaper's HTTP call; neither value can be looked up before it is

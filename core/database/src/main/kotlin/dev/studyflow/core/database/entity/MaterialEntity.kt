@@ -201,4 +201,6 @@ public data class MaterialUploadPartEntity(
     val sizeBytes: Long,
     @ColumnInfo(name = "completed_at")
     val completedAt: Instant,
+    @ColumnInfo(name = "upload_id")
+    val uploadId: String? = null,
 )

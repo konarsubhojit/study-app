@@ -292,19 +292,38 @@ class PresignedObjectStoreTest {
         }
 
     @Test
-    fun `renewal that opens a different upload is refused rather than mixing parts`() =
+    fun `renewal that opens a different upload retries the engine without mixing parts`() =
         runTest {
             val source = FakeUrlSource()
-            val store = store(source) { respondError(HttpStatusCode.Forbidden) }
+            var puts = 0
+            val store =
+                store(source) {
+                    puts++
+                    respondError(HttpStatusCode.Forbidden)
+                }
             val session = store.initUpload(REQUEST)
             source.uploadId = "upload-2"
 
             val failure =
-                assertFailsWith<ObjectStoreException.AccessDenied> {
+                assertFailsWith<ObjectStoreException.Transient> {
                     store.uploadPart(session, session.parts.single(), PAYLOAD)
                 }
 
-            assertFalse(failure.retryable)
+            assertTrue(failure.retryable)
+            assertEquals(1, puts, "the replacement session must not receive old-session parts")
+        }
+
+    @Test
+    fun `an expired URL whose upload was replaced retries before sending any bytes`() =
+        runTest {
+            val source = FakeUrlSource()
+            val store = store(source, clock = { EXPIRY }) { error("replaced session must not send bytes") }
+            val session = store.initUpload(REQUEST)
+            source.uploadId = "upload-2"
+
+            assertFailsWith<ObjectStoreException.Transient> {
+                store.uploadPart(session, session.parts.single(), PAYLOAD)
+            }
         }
 
     @Test

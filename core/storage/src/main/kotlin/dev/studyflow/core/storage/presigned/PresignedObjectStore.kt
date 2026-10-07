@@ -40,8 +40,9 @@ import kotlin.time.Duration
  * A part URL that has expired — known from its `expiresAt`, or learned from a `401`/`403` — is
  * renewed here rather than surfaced: the source is asked to open the same upload again, which for
  * an identical pending request returns the *same* `uploadId` with freshly signed URLs, and the
- * part is sent once more to its new URL. Only if that renewal fails, or yields a different upload,
- * does the caller see [ObjectStoreException.AccessDenied].
+ * part is sent once more to its new URL. An unavailable renewal is reported as
+ * [ObjectStoreException.AccessDenied]. A replaced upload is retryable so the upload engine can
+ * reopen it and discard receipts belonging to the old session.
  */
 public class PresignedObjectStore(
     private val client: HttpClient,
@@ -115,7 +116,7 @@ public class PresignedObjectStore(
             }
         }
 
-    /** A freshly signed copy of [part] in the same upload, or `AccessDenied` if none can be had. */
+    /** Re-signs [part] in the same upload; a replacement session must restart at the engine. */
     private suspend fun renew(
         session: UploadSession,
         part: SignedPart,
@@ -123,10 +124,13 @@ public class PresignedObjectStore(
         val subject = "part ${part.number} of '${session.key}'"
         val request = openRequests[session.uploadId]
         val fresh = request?.let { urls.createUpload(it) }
+        if (fresh != null && fresh.uploadId != session.uploadId) {
+            openRequests.remove(session.uploadId)
+            throw ObjectStoreException.Transient("$subject belongs to an upload that has been replaced")
+        }
         val problem =
             when {
                 fresh == null -> "has an expired URL; a fresh signed URL is needed"
-                fresh.uploadId != session.uploadId -> "belongs to an upload that has been replaced"
                 else -> "is no longer part of the upload"
             }
         val renewed =
