@@ -104,25 +104,39 @@ Diagnosis evidence and limits:
   Node transport and native fetch reached catch/finally (respectively `Error` and `TypeError`).
   Thus a generic short response alone did not reproduce the reported deployed-runtime crash.
 - The regression suite drives the actual SDK through native fetch with a failing response stream
-  and proves a structured, logged outage without an unhandled rejection. It also pins the creation
-  checksum header, signed-part checksum, and exact completion XML.
+  and proves a structured, logged outage without an unhandled rejection.
 - A manual call of the actual function against a local TCP server with that truncated response
   returned traced `503 storage_unavailable` and logged `storage_request` in 155 ms; no worker crash
   or unhandled rejection occurred.
-- [Supabase's compatibility table](https://supabase.com/docs/guides/storage/s3/compatibility)
-  lists `CreateMultipartUpload`, `UploadPart`, and `CompleteMultipartUpload` as supported.
-  It does not explicitly settle SHA-256 checksums on these multipart operations. Unsupported
-  checksum entries on other operations are not evidence that these calls caused this crash.
-  Checksum incompatibility, endpoint-specific framing, and a deployed Deno bug have therefore
-  **not** been ruled out.
 
-SHA-256 is retained consistently on creation, part signing, and completion; no integrity guarantee
-is removed speculatively. The server additionally checks provider `ContentLength` against
-`size_bytes`. The device's VERIFY compares the returned hash and size with its local plan, not a
-fresh digest of remote bytes; without a configured scan hook, that comparison alone would not
-replace provider checksum validation. Before rollout verification, run the authenticated CLI
-check with a file larger than the CLI multipart threshold, then compare function completion on
-the same endpoint. Do not include credentials, object keys, or signed URLs in diagnostic logs.
+### Provider checksums are not sent (root cause of `InvalidPart` on every completion)
+
+[Supabase's compatibility table](https://supabase.com/docs/guides/storage/s3/compatibility) marks
+the `x-amz-checksum-*` / `x-amz-sdk-checksum-algorithm` headers unsupported, and the
+[storage server source](https://github.com/supabase/storage/blob/master/src/storage/protocols/s3/s3-handler.ts)
+confirms what that means for multipart: `CreateMultipartUpload` and `UploadPart` are re-issued to
+the backing bucket **without** any checksum, while `CompleteMultipartUpload` forwards the caller's
+`<Part>` entries verbatim. The function used to create uploads with `ChecksumAlgorithm: SHA256`,
+sign `x-amz-checksum-sha256` into every part URL and complete with a per-part `ChecksumSHA256`.
+The backing bucket therefore held parts with no SHA-256 while completion claimed one, and answered
+every completion — including single-part uploads whose `PUT` had succeeded — with `InvalidPart`
+("One or more of the specified parts could not be found…"). Since `InvalidPart` makes the client
+clear its receipts and resend, uploads looped forever.
+
+The function now sends no provider checksums: the S3 client is pinned to
+`requestChecksumCalculation`/`responseChecksumValidation: "WHEN_REQUIRED"`, creation carries no
+`ChecksumAlgorithm`, part URLs sign only `host` (`requiredHeaders` is `{}`), and completion sends
+only `PartNumber` and `ETag`. The regression suite pins all three. The client↔function contract is
+unchanged — `initUpload` still requires `partChecksums`, which stay part of the reservation's
+identity — and the app already forwards whatever `requiredHeaders` the function returns, so
+installed builds recover as soon as the function is deployed; no app release is needed.
+
+Integrity after this change: TLS protects every transfer, the provider's per-part ETags are
+checked by `CompleteMultipartUpload`, and the server checks provider `ContentLength` against
+`size_bytes`. Verifying the stored bytes' SHA-256 against the content key is the job of the
+optional scan hook (`STORAGE_SCAN_HOOK_URL`), which already receives `expectedSha256`. If the
+provider is ever moved to one that honours S3 checksums (R2, AWS S3; ADR 0010's exit path), they
+can be re-enabled on all three calls together — never on a subset.
 
 Completion ownership now has a **15-minute lease**, separate from the 24-hour upload-session
 expiry. This exceeds Supabase's hosted Edge worker wall-clock limits (including the 400-second

@@ -826,7 +826,10 @@ components:
           format: date-time
         requiredHeaders:
           type: object
-          description: Headers covered by the URL signature and required on the part PUT.
+          description: >-
+            Headers covered by the URL signature and required on the part PUT. Clients must send
+            exactly these; the current Supabase Storage backend returns an empty object because it
+            supports no S3 checksum headers.
           additionalProperties:
             type: string
 

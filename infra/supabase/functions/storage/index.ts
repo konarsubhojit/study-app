@@ -112,6 +112,12 @@ const s3 = new S3Client({
         requestInit: () => ({ signal: AbortSignal.timeout(60_000) }),
     }),
     maxAttempts: 2,
+    // Supabase Storage's S3 protocol supports no `x-amz-checksum-*` / `x-amz-sdk-checksum-algorithm`
+    // headers: it creates its backing multipart upload without a checksum algorithm and records
+    // parts without one, so any checksum we add is either ignored or — on completion — turns every
+    // part into an `InvalidPart`. Only send checksums an operation strictly requires (none here).
+    requestChecksumCalculation: "WHEN_REQUIRED",
+    responseChecksumValidation: "WHEN_REQUIRED",
     credentials: {
         accessKeyId: env("STORAGE_S3_ACCESS_KEY_ID"),
         secretAccessKey: env("STORAGE_S3_SECRET_ACCESS_KEY"),
@@ -411,7 +417,6 @@ async function initUpload(request: Request, owner: string): Promise<Response> {
                     Key: key,
                     ContentType: upload.contentType,
                     Metadata: { sha256: upload.hash, owner },
-                    ChecksumAlgorithm: "SHA256",
                 }),
             );
             createdProviderId = created.UploadId;
@@ -437,7 +442,10 @@ async function initUpload(request: Request, owner: string): Promise<Response> {
         }
 
         const urlExpiresAt = new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString();
-        const parts = await Promise.all(upload.checksums.map(async (checksum, index) => {
+        // Part checksums stay part of the client contract (and of the reservation's identity), but
+        // are not sent to the provider: see the S3 client above. Signing them in would add a header
+        // the provider ignores, and completing with them makes the provider reject every part.
+        const parts = await Promise.all(upload.checksums.map(async (_checksum, index) => {
             const partNumber = index + 1;
             const size = Math.min(PART_SIZE_BYTES, upload.sizeBytes - index * PART_SIZE_BYTES);
             const url = await getSignedUrl(
@@ -447,7 +455,6 @@ async function initUpload(request: Request, owner: string): Promise<Response> {
                     Key: key,
                     UploadId: providerUploadId,
                     PartNumber: partNumber,
-                    ChecksumSHA256: checksum,
                 }),
                 { expiresIn: SIGNED_URL_TTL_SECONDS },
             );
@@ -458,7 +465,7 @@ async function initUpload(request: Request, owner: string): Promise<Response> {
                 size,
                 url,
                 expiresAt: urlExpiresAt,
-                requiredHeaders: { "x-amz-checksum-sha256": checksum },
+                requiredHeaders: {},
             };
         }));
         return json(200, { uploadId, providerUploadId, expiresAt, parts });
@@ -530,11 +537,7 @@ async function completeUpload(request: Request, owner: string): Promise<Response
         ) {
             throw new ApiError(400, "invalid_parts", "Parts must be complete and ordered by number.");
         }
-        return {
-            PartNumber: index + 1,
-            ETag: part.etag,
-            ChecksumSHA256: upload.part_checksums[index],
-        };
+        return { PartNumber: index + 1, ETag: part.etag };
     });
 
     const claim = await databaseJson<string | null>("rpc/storage_claim_completion", {
