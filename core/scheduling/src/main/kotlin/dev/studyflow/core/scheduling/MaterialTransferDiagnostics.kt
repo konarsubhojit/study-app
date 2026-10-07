@@ -101,6 +101,7 @@ internal fun Throwable.materialUploadFailureKind(): DiagnosticThrowableKind =
     when (this) {
         is ObjectStoreException.NotFound -> DiagnosticThrowableKind.OBJECT_NOT_FOUND
         is ObjectStoreException.AccessDenied -> DiagnosticThrowableKind.OBJECT_ACCESS_DENIED
+        is ObjectStoreException.InvalidParts -> DiagnosticThrowableKind.OBJECT_ACCESS_DENIED
         is ObjectStoreException.Integrity -> DiagnosticThrowableKind.OBJECT_INTEGRITY
         is ObjectStoreException.QuotaExceeded -> DiagnosticThrowableKind.OBJECT_QUOTA_EXCEEDED
         is ObjectStoreException.BackendUnreachable -> DiagnosticThrowableKind.BACKEND_UNREACHABLE

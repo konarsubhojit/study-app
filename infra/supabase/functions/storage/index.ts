@@ -5,6 +5,7 @@ import {
     DeleteObjectCommand,
     GetObjectCommand,
     HeadObjectCommand,
+    ListPartsCommand,
     S3Client,
     UploadPartCommand,
 } from "npm:@aws-sdk/client-s3@3.1135.0";
@@ -366,8 +367,44 @@ async function initUpload(request: Request, owner: string): Promise<Response> {
     const expiresAt = reservation.expires_at;
 
     let providerUploadId = reservation.provider_upload_id ?? undefined;
+    let createdProviderId: string | undefined;
+    let providerMayBePersisted = false;
     try {
-        if (reservation.created) {
+        let replaceProvider = reservation.created;
+        if (!reservation.created) {
+            if (!providerUploadId) {
+                throw new ApiError(409, "upload_initializing", "This upload is being initialized. Retry shortly.");
+            }
+            const existing = await ownedUpload(owner, uploadId);
+            if (existing.state !== "pending" || existing.provider_upload_id !== providerUploadId) {
+                throw new ApiError(409, "upload_in_progress", "This upload changed while being initialized. Retry shortly.");
+            }
+            if (existing.size_bytes !== upload.sizeBytes || existing.content_type !== upload.contentType ||
+                existing.part_checksums.length !== Math.ceil(upload.sizeBytes / PART_SIZE_BYTES) ||
+                JSON.stringify(existing.part_checksums) !== JSON.stringify(upload.checksums)) {
+                await databaseJson(
+                    `storage_uploads?id=eq.${uploadId}&state=eq.pending&provider_upload_id=eq.${encodeURIComponent(providerUploadId)}`,
+                    {
+                        method: "PATCH",
+                        headers: { prefer: "return=minimal" },
+                        body: JSON.stringify({ state: "failed" }),
+                    },
+                );
+                throw new ApiError(409, "upload_initializing", "Upload metadata changed. Retry with a fresh reservation.");
+            }
+            try {
+                await s3.send(new ListPartsCommand({
+                    Bucket: bucket,
+                    Key: key,
+                    UploadId: providerUploadId,
+                    MaxParts: 1,
+                }));
+            } catch (error) {
+                if (!isS3Fault(error, ["NoSuchUpload"])) throw error;
+                replaceProvider = true;
+            }
+        }
+        if (replaceProvider) {
             const created = await s3.send(
                 new CreateMultipartUploadCommand({
                     Bucket: bucket,
@@ -377,15 +414,26 @@ async function initUpload(request: Request, owner: string): Promise<Response> {
                     ChecksumAlgorithm: "SHA256",
                 }),
             );
-            providerUploadId = created.UploadId;
-            if (!providerUploadId) throw new Error("Storage provider returned no upload id");
-            await databaseJson(`storage_uploads?id=eq.${uploadId}`, {
-                method: "PATCH",
-                headers: { prefer: "return=minimal" },
-                body: JSON.stringify({ provider_upload_id: providerUploadId }),
-            });
-        } else if (!providerUploadId) {
-            throw new ApiError(409, "upload_initializing", "This upload is being initialized. Retry shortly.");
+            createdProviderId = created.UploadId;
+            if (!createdProviderId) throw new Error("Storage provider returned no upload id");
+            const previousHandle = providerUploadId
+                ? `eq.${encodeURIComponent(providerUploadId)}`
+                : "is.null";
+            // A lost PATCH response does not prove the provider handle was left unreferenced.
+            providerMayBePersisted = true;
+            const updated = await databaseJson<UploadRow[]>(
+                `storage_uploads?id=eq.${uploadId}&state=eq.pending&provider_upload_id=${previousHandle}`,
+                {
+                    method: "PATCH",
+                    headers: { prefer: "return=representation" },
+                    body: JSON.stringify({ provider_upload_id: createdProviderId, part_checksums: upload.checksums }),
+                },
+            );
+            if (updated.length !== 1) {
+                providerMayBePersisted = false;
+                throw new ApiError(409, "upload_in_progress", "This upload changed while being initialized. Retry shortly.");
+            }
+            providerUploadId = createdProviderId;
         }
 
         const urlExpiresAt = new Date(Date.now() + SIGNED_URL_TTL_SECONDS * 1000).toISOString();
@@ -413,22 +461,35 @@ async function initUpload(request: Request, owner: string): Promise<Response> {
                 requiredHeaders: { "x-amz-checksum-sha256": checksum },
             };
         }));
-        return json(200, { uploadId, expiresAt, parts });
+        return json(200, { uploadId, providerUploadId, expiresAt, parts });
     } catch (error) {
-        if (reservation.created && providerUploadId) {
+        // Never abort a persisted handle unless its pending row was successfully retired.
+        // A completion or replacement may have acquired ownership while signing was in flight.
+        let abortCreated = !!createdProviderId && !providerMayBePersisted;
+        if (createdProviderId && providerMayBePersisted) {
+            const retired = await databaseJson<UploadRow[]>(
+                `storage_uploads?id=eq.${uploadId}&state=eq.pending&provider_upload_id=eq.${encodeURIComponent(createdProviderId)}`,
+                {
+                    method: "PATCH",
+                    headers: { prefer: "return=representation" },
+                    body: JSON.stringify({ state: "failed" }),
+                },
+            ).catch(() => []);
+            abortCreated = retired.length === 1;
+        } else if (reservation.created && !createdProviderId) {
+            await database(`storage_uploads?id=eq.${uploadId}&state=eq.pending&provider_upload_id=is.null`, {
+                method: "PATCH",
+                body: JSON.stringify({ state: "failed" }),
+            });
+        }
+        if (abortCreated) {
             await s3.send(
                 new AbortMultipartUploadCommand({
                     Bucket: bucket,
                     Key: key,
-                    UploadId: providerUploadId,
+                    UploadId: createdProviderId,
                 }),
             ).catch(() => undefined);
-        }
-        if (reservation.created) {
-            await database(`storage_uploads?id=eq.${uploadId}`, {
-                method: "PATCH",
-                body: JSON.stringify({ state: "failed" }),
-            });
         }
         throw error;
     }
@@ -451,6 +512,9 @@ async function completeUpload(request: Request, owner: string): Promise<Response
     const upload = await ownedUpload(owner, value.uploadId);
     if (upload.state === "ready") {
         return json(200, storedObject(upload));
+    }
+    if (value.providerUploadId !== undefined && value.providerUploadId !== upload.provider_upload_id) {
+        throw new ApiError(422, "invalid_parts", "These part receipts belong to a replaced upload.");
     }
     if (!["pending", "completing"].includes(upload.state) || !upload.provider_upload_id) {
         throw new ApiError(409, "upload_not_completable", "This upload cannot be completed.");
@@ -475,7 +539,11 @@ async function completeUpload(request: Request, owner: string): Promise<Response
 
     const claim = await databaseJson<string | null>("rpc/storage_claim_completion", {
         method: "POST",
-        body: JSON.stringify({ p_upload_id: upload.id, p_user_id: owner }),
+        body: JSON.stringify({
+            p_upload_id: upload.id,
+            p_user_id: owner,
+            p_provider_upload_id: upload.provider_upload_id,
+        }),
     });
     if (!claim) {
         throw new ApiError(409, "upload_in_progress", "This upload is already being completed. Retry shortly.");
@@ -530,7 +598,15 @@ async function completeUpload(request: Request, owner: string): Promise<Response
 }
 
 function isInvalidMultipartPart(error: unknown): boolean {
-    return error instanceof Error && ["InvalidPart", "InvalidPartOrder"].includes(error.name);
+    return isS3Fault(error, ["InvalidPart", "InvalidPartOrder", "NoSuchUpload"]);
+}
+
+function isS3Fault(error: unknown, codes: string[]): boolean {
+    if (!error || typeof error !== "object") return false;
+    const fault = error as { Code?: unknown; code?: unknown; name?: unknown };
+    return [fault.Code, fault.code, fault.name].some((code) =>
+        typeof code === "string" && codes.includes(code)
+    );
 }
 
 async function headObject(key: string) {

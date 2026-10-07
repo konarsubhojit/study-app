@@ -1,7 +1,7 @@
 begin;
 create extension if not exists pgtap with schema extensions;
 create extension if not exists dblink with schema extensions;
-select plan(28);
+select plan(36);
 
 insert into auth.users (id, email) values
   ('33333333-3333-4333-8333-333333333333', 'completion@example.com');
@@ -135,6 +135,55 @@ select is(
   (select upload_id from reinitialized), 'initialized multipart uploads retain their full session lifetime'
 );
 reset role;
+
+set local role service_role;
+update public.storage_uploads set part_checksums = '["old", "extra"]'
+  where id = (select upload_id from reinitialized);
+create temporary table compatible as
+  select * from public.storage_reserve_upload(
+    '33333333-3333-4333-8333-333333333333',
+    '33333333-3333-4333-8333-333333333333/' || repeat('c', 64),
+    repeat('c', 64), 'application/pdf', 12, '["checksum"]'::jsonb, now() + interval '24 hours'
+  );
+select isnt((select upload_id from compatible), (select upload_id from reinitialized),
+  'mismatched stored checksums cannot trap the content key');
+select is((select created from compatible), true, 'incompatible metadata opens a fresh provider upload');
+select is((select state from public.storage_uploads where id = (select upload_id from reinitialized)),
+  'failed', 'incompatible pending metadata is retired');
+update public.storage_uploads set size_bytes = 13, content_type = 'text/plain'
+  where id = (select upload_id from compatible);
+select is(
+  (select created from public.storage_reserve_upload(
+    '33333333-3333-4333-8333-333333333333',
+    '33333333-3333-4333-8333-333333333333/' || repeat('c', 64),
+    repeat('c', 64), 'application/pdf', 12, '["checksum"]'::jsonb, now() + interval '24 hours')),
+  true, 'size and content type mismatches also create a fresh reservation'
+);
+reset role;
+select ok(not has_function_privilege('authenticated',
+  'public.storage_reserve_upload(uuid,text,text,text,bigint,jsonb,timestamptz)', 'execute'),
+  'clients cannot replace reservations directly');
+
+set local role service_role;
+update public.storage_uploads set provider_upload_id = 'replacement-provider'
+  where object_key = '33333333-3333-4333-8333-333333333333/' || repeat('c', 64) and state = 'pending';
+select is(
+  public.storage_claim_completion(
+    (select id from public.storage_uploads
+      where object_key = '33333333-3333-4333-8333-333333333333/' || repeat('c', 64) and state = 'pending'),
+    '33333333-3333-4333-8333-333333333333', 'provider-3'),
+  null::timestamptz, 'a stale completion reader cannot claim a replacement provider upload'
+);
+select ok(
+  public.storage_claim_completion(
+    (select id from public.storage_uploads
+      where object_key = '33333333-3333-4333-8333-333333333333/' || repeat('c', 64) and state = 'pending'),
+    '33333333-3333-4333-8333-333333333333', 'replacement-provider') is not null,
+  'the current provider identity can claim completion'
+);
+reset role;
+select ok(not has_function_privilege('authenticated', 'public.storage_claim_completion(uuid,uuid,text)', 'execute'),
+  'clients cannot claim provider-fenced completion directly');
 
 -- Real concurrent transactions: neither can see the other's claim until the row lock is released.
 -- Use a separate committed fixture because this suite's transaction is rolled back.

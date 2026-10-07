@@ -394,10 +394,24 @@ const completionRequest = () => uploadRequest("completeUpload", {
     parts: [{ number: 1, etag: "\"part-etag\"" }],
 });
 
+const initializationRequest = () => uploadRequest("initUpload", {
+    contentHash: pendingUpload.content_hash,
+    contentType: pendingUpload.content_type,
+    sizeBytes: pendingUpload.size_bytes,
+    partChecksums: [checksum],
+});
+
 async function withUploadBackend(
     provider: (request: Request) => Promise<Response> | Response,
     block: (patches: Array<{ url: string; value: Record<string, unknown> }>) => Promise<void>,
-    options: { upload?: typeof pendingUpload; claim?: string | null; finalize?: boolean } = {},
+    options: {
+        upload?: typeof pendingUpload;
+        claim?: string | null;
+        finalize?: boolean;
+        reuse?: boolean;
+        loseReplacement?: boolean;
+        failAudit?: boolean;
+    } = {},
 ): Promise<void> {
     const patches: Array<{ url: string; value: Record<string, unknown> }> = [];
     await withFetch(async (input, init) => {
@@ -405,20 +419,27 @@ async function withUploadBackend(
         if (input instanceof Request && !url.includes("/rest/v1/") && !url.endsWith("/auth/v1/user")) {
             return await provider(input);
         }
-        if (url.includes("/rpc/storage_claim_completion")) return jsonResponse(200, options.claim === null ? null : claimTime);
-        if (url.includes("/rest/v1/storage_url_audit")) return jsonResponse(201, {});
+        if (url.includes("/rpc/storage_claim_completion")) {
+            const value = JSON.parse(String(init?.body));
+            if (value.p_provider_upload_id !== (options.upload ?? pendingUpload).provider_upload_id) {
+                throw new Error("completion did not fence its claim on the provider handle it read");
+            }
+            return jsonResponse(200, options.claim === null ? null : claimTime);
+        }
+        if (url.includes("/rest/v1/storage_url_audit")) return jsonResponse(options.failAudit ? 500 : 201, {});
         if (url.includes("/rpc/storage_finalize_upload")) return jsonResponse(200, options.finalize ?? true);
         if (url.includes("/rpc/storage_reserve_upload")) {
             return jsonResponse(200, [{
                 upload_id: pendingUpload.id,
-                created: true,
+                created: !options.reuse,
                 expires_at: "2026-10-06T00:00:00Z",
-                provider_upload_id: null,
+                provider_upload_id: options.reuse ? pendingUpload.provider_upload_id : null,
             }]);
         }
         if (url.includes("/rest/v1/storage_uploads")) {
             if (init?.method === "PATCH") {
                 patches.push({ url, value: JSON.parse(String(init.body)) });
+                if (options.loseReplacement && patches.at(-1)?.value.provider_upload_id) return jsonResponse(200, []);
                 return jsonResponse(200, [{ ...pendingUpload, state: "completing" }]);
             }
             return jsonResponse(200, [options.upload ?? pendingUpload]);
@@ -533,6 +554,143 @@ Deno.test("an invalid S3 part identity is permanent and fails its completion cla
     });
 });
 
+Deno.test("reuse validates a live provider upload before signing without replacing it", async () => {
+    let listed = false;
+    await withUploadBackend((request) => {
+        const url = new URL(request.url);
+        if (request.method !== "GET" || url.searchParams.get("uploadId") !== "provider-1") {
+            throw new Error("live reuse should only list parts");
+        }
+        listed = true;
+        return new Response("<ListPartsResult><UploadId>provider-1</UploadId></ListPartsResult>");
+    }, async (patches) => {
+        const response = await handleRequest(initializationRequest());
+        const value = await response.json();
+        if (response.status !== 200 || !listed || patches.length !== 0 ||
+            value.providerUploadId !== "provider-1" ||
+            new URL(value.parts[0].url).searchParams.get("uploadId") !== "provider-1") {
+            throw new Error("live provider reuse changed its handle or skipped validation");
+        }
+    }, { reuse: true });
+});
+
+Deno.test("reuse replaces a dead provider upload and signs every part with its new handle", async () => {
+    const operations: string[] = [];
+    await withUploadBackend((request) => {
+        const url = new URL(request.url);
+        if (request.method === "GET") {
+            operations.push("list");
+            return new Response("<Error><Code>NoSuchUpload</Code><Message>Upload is gone</Message></Error>", { status: 404 });
+        }
+        if (url.searchParams.has("uploads")) {
+            operations.push("create");
+            return new Response("<InitiateMultipartUploadResult><UploadId>provider-2</UploadId></InitiateMultipartUploadResult>");
+        }
+        throw new Error("unexpected provider operation");
+    }, async (patches) => {
+        const response = await handleRequest(initializationRequest());
+        const value = await response.json();
+        const replaced = patches[0];
+        if (response.status !== 200 || operations.join(",") !== "list,create" ||
+            value.uploadId !== pendingUpload.id || value.providerUploadId !== "provider-2" ||
+            new URL(value.parts[0].url).searchParams.get("uploadId") !== "provider-2" ||
+            replaced.value.provider_upload_id !== "provider-2" ||
+            JSON.stringify(replaced.value.part_checksums) !== JSON.stringify([checksum]) ||
+            !replaced.url.includes("state=eq.pending&provider_upload_id=eq.provider-1")) {
+            throw new Error("dead provider reuse did not atomically replace its handle and checksums");
+        }
+    }, { reuse: true });
+});
+
+for (const incompatible of [
+    { part_checksums: [checksum, checksum] },
+    { part_checksums: ["different-checksum"] },
+    { size_bytes: 13 },
+    { content_type: "text/plain" },
+]) {
+    Deno.test(`reuse retires incompatible stored metadata: ${Object.keys(incompatible)[0]} ${JSON.stringify(incompatible)}`, async () => {
+        await withUploadBackend(() => {
+            throw new Error("incompatible metadata must not reach the provider");
+        }, async (patches) => {
+            const response = await handleRequest(initializationRequest());
+            const value = await response.json();
+            if (response.status !== 409 || value.code !== "upload_initializing" ||
+                patches.at(-1)?.value.state !== "failed") {
+                throw new Error("incompatible pending metadata was reused or permanently blocked the next initialization");
+            }
+        }, { reuse: true, upload: { ...pendingUpload, ...incompatible } });
+    });
+}
+
+Deno.test("a replacement losing its fence aborts only its new upload and leaves the winning row alone", async () => {
+    let aborted = false;
+    await withUploadBackend((request) => {
+        const url = new URL(request.url);
+        if (request.method === "GET") {
+            throw Object.assign(new Error("Upload is gone"), { name: "S3Error", Code: "NoSuchUpload" });
+        }
+        if (request.method === "DELETE" && url.searchParams.get("uploadId") === "provider-2") {
+            aborted = true;
+            return new Response(null, { status: 204 });
+        }
+        return new Response("<InitiateMultipartUploadResult><UploadId>provider-2</UploadId></InitiateMultipartUploadResult>");
+    }, async (patches) => {
+        const response = await handleRequest(initializationRequest());
+        const value = await response.json();
+        if (response.status !== 409 || value.code !== "upload_in_progress" || !aborted ||
+            patches.some((patch) => patch.value.state === "failed")) {
+            throw new Error("a losing replacement aborted the wrong upload or failed the winning row");
+        }
+    }, { reuse: true, loseReplacement: true });
+});
+
+Deno.test("a replacement signing failure retires its row before aborting the new handle", async () => {
+    let aborted = false;
+    await withUploadBackend((request) => {
+        if (request.method === "GET") {
+            throw Object.assign(new Error("Upload is gone"), { name: "S3Error", code: "NoSuchUpload" });
+        }
+        if (request.method === "DELETE") {
+            aborted = true;
+            return new Response(null, { status: 204 });
+        }
+        return new Response("<InitiateMultipartUploadResult><UploadId>provider-2</UploadId></InitiateMultipartUploadResult>");
+    }, async (patches) => {
+        const response = await handleRequest(initializationRequest());
+        if (response.status !== 503 || !aborted || patches.at(-1)?.value.state !== "failed" ||
+            !patches.at(-1)?.url.includes("state=eq.pending&provider_upload_id=eq.provider-2")) {
+            throw new Error("failed initialization left a reused dead handle pending");
+        }
+    }, { reuse: true, failAudit: true });
+});
+
+for (const code of ["InvalidPart", "InvalidPartOrder", "NoSuchUpload"]) {
+    for (const field of ["Code", "code"]) {
+        Deno.test(`S3Error ${field}=${code} rejects stale parts and fails only its completion claim`, async () => {
+            await withUploadBackend((request) => {
+                if (request.method === "HEAD") return new Response(null, { status: 404 });
+                throw Object.assign(new Error(
+                    "One or more of the specified parts could not be found. " +
+                        "The part may not have been uploaded, or the specified entity tag may not match the part's entity tag.",
+                ), {
+                    name: "S3Error",
+                    [field]: code,
+                    $metadata: { httpStatusCode: code === "NoSuchUpload" ? 404 : 400 },
+                });
+            }, async (patches) => {
+                const response = await handleRequest(completionRequest());
+                const value = await response.json();
+                const released = patches.at(-1);
+                if (response.status !== 422 || value.code !== "invalid_parts" ||
+                    released?.value.state !== "failed" || released.value.completing_at !== null ||
+                    !released.url.includes("state=eq.completing&completing_at=eq." + encodeURIComponent(claimTime))) {
+                    throw new Error("S3Error was reported as an outage or its completion claim was not failed");
+                }
+            });
+        });
+    }
+}
+
 Deno.test("a second completion cannot proceed without winning a claim", async () => {
     await withUploadBackend(() => {
         throw new Error("a losing claimant touched S3");
@@ -543,6 +701,22 @@ Deno.test("a second completion cannot proceed without winning a claim", async ()
             throw new Error("a losing claimant proceeded");
         }
     }, { upload: { ...pendingUpload, state: "completing" }, claim: null });
+});
+
+Deno.test("stale provider receipts cannot fail a replacement reservation", async () => {
+    await withUploadBackend(() => {
+        throw new Error("stale receipts touched the replacement provider");
+    }, async (patches) => {
+        const response = await handleRequest(uploadRequest("completeUpload", {
+            uploadId: pendingUpload.id,
+            providerUploadId: "dead-provider",
+            parts: [{ number: 1, etag: "dead-etag" }],
+        }));
+        const value = await response.json();
+        if (response.status !== 422 || value.code !== "invalid_parts" || patches.length !== 0) {
+            throw new Error("stale receipts changed or failed the replacement reservation");
+        }
+    });
 });
 
 Deno.test("a completed provider object is recovered without completing again", async () => {

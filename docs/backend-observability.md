@@ -131,8 +131,46 @@ cannot be bypassed by a second completion or reaped merely because the upload se
 An expired claim can be acquired again or reclaimed by reservation, retaining the same upload id
 and provider handle. Recovery checks HEAD first because S3 may have succeeded before the response
 was lost. Finalization and failure release are fenced by the claim timestamp, so an old worker
-cannot overwrite a newer claim. Failures return to pending, except confirmed integrity/scan
-rejections after provider deletion; cleanup failure retains the lease for timeout recovery.
+cannot overwrite a newer claim. Failures return to pending, except confirmed invalid-part,
+integrity or scan rejections, which fail the reservation; cleanup failure retains the lease for
+timeout recovery.
+
+When `completeUpload` rejects `InvalidPart`, `InvalidPartOrder` or `NoSuchUpload`, inspect the
+provider's `Code`/`code`, not just its JavaScript error name (`S3Error`). These faults return
+`422 invalid_parts`, not `503 storage_unavailable`. The client clears its multipart receipts and
+retries from `initUpload`, resending bytes instead of repeatedly completing stale ETags. A
+completion failure after a resume sent **zero parts** also clears receipts before any retry.
+Other permanent errors (including integrity and scan rejection) remain non-retryable.
+
+Clearing app data does not retire a server reservation: the key is derived from owner and content
+hash, so importing the same bytes can return the same pending row. `initUpload` now validates a
+reused provider handle with `ListParts`. Only `NoSuchUpload` triggers replacement; provider outages
+must not discard a live upload. Replacement persists the new handle and current checksums with a
+conditional update fenced by the old handle and pending state, then signs URLs for the new handle.
+A losing initializer aborts only its own unpersisted upload, never the winning handle. Failed
+signing retires a newly initialized pending row before aborting its provider handle.
+
+Receipt identity is now `UploadSession.providerUploadId`, separate from the reservation id used
+for completion. Replacing a dead handle on the same row invalidates every prior receipt.
+Completion rejects an obsolete provider identity without failing the replacement row, and claims
+are fenced by the provider handle read from the row as well as the completion lease.
+Older function deployments without this response field retain reservation-id compatibility.
+The reservation migration retires incompatible pending rows (size, content type, checksum values
+or checksum count vs `ceil(size_bytes / 8 MiB)`) so they cannot permanently hold the content key.
+The function also rejects mismatched stored metadata defensively before signing. Integrity/scan
+and invalid-part failures fail their completion row so the next reservation can start fresh.
+Use stage diagnostics to confirm that recovery sends every PART and reaches COMPLETE SUCCESS;
+do not log ETags, provider handles, user content or signed URLs. No observability operation or
+error vocabulary is added by this recovery.
+
+Before any operator cleanup, capture only the affected rows' state, creation/completion timestamps
+and checksum count vs expected part count in an access-controlled diagnostic session. Inspect
+the provider handle there to confirm liveness, but never copy it into application logs. A
+same-length checksum mismatch requires comparing values as well, not just counts. Manual
+`storage/delete` resets both the multipart upload and metadata and is destructive; use only with
+the owner's authorization after preserving the diagnosis. Deploy
+`20261007170000_storage_reservation_compatibility.sql` before the updated storage function, then
+roll out the client so receipt identity tracks replacement handles.
 
 `stat` reports active `completing`/`reaping` rows as `409 upload_in_progress`, matching reservation.
 A reclaimable completion reads as absent and can be reserved again. Only explicitly recoverable

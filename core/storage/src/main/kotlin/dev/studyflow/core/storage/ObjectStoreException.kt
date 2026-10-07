@@ -34,6 +34,11 @@ public sealed class ObjectStoreException(
         message: String,
     ) : ObjectStoreException(message, retryable = false)
 
+    /** Multipart receipts are no longer valid; recovery requires clearing them and resending bytes. */
+    public class InvalidParts(
+        message: String,
+    ) : ObjectStoreException(message, retryable = false)
+
     /** The user is out of storage allowance. Retrying wastes battery until they free something. */
     public class QuotaExceeded(
         message: String,

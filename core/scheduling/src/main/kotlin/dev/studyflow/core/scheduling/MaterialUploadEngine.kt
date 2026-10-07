@@ -116,17 +116,20 @@ public class MaterialUploadEngine(
             exception: ObjectStoreException,
             reason: String = exception.message ?: exception::class.simpleName.orEmpty(),
         ): UploadOutcome {
-            latest.fail(reason, exception.retryable)
+            val retryable =
+                exception.retryable ||
+                    (stage == MaterialTransferStage.COMPLETE && exception is ObjectStoreException.InvalidParts)
+            latest.fail(reason, retryable)
             log(
                 material.id,
                 stage,
                 MaterialTransferOutcome.FAILURE,
-                exception.retryable,
+                retryable,
                 partNumber,
                 partCount,
                 exception,
             )
-            return if (exception.retryable) UploadOutcome.Retryable(reason) else UploadOutcome.Permanent(reason)
+            return if (retryable) UploadOutcome.Retryable(reason) else UploadOutcome.Permanent(reason)
         }
 
         return try {
@@ -242,16 +245,21 @@ public class MaterialUploadEngine(
         val signedPartsByNumber = session.parts.associateBy { it.number }
 
         val receipts = uploadProgressStore.completedParts(materialId)
-        val completed = receipts.filter { it.uploadId == session.uploadId }.associateBy { it.number }.toMutableMap()
+        val completed =
+            receipts
+                .filter { it.uploadId == session.providerUploadId }
+                .associateBy { it.number }
+                .toMutableMap()
         if (completed.size != receipts.size) {
-            // ETags belong to a backend reservation, not to the material. Legacy or replaced
+            // ETags belong to a provider multipart handle, not to the material. Legacy or replaced
             // sessions must never contribute receipts to this session's completion request.
             uploadProgressStore.clear(materialId)
             completed.values.forEach { uploadProgressStore.recordCompletedPart(materialId, it) }
         }
         current = current.markUploading(plan, completed.values).also(onSnapshot)
 
-        if (!plan.isComplete(completed.keys)) {
+        val completeFromReceipts = plan.isComplete(completed.keys)
+        if (!completeFromReceipts) {
             val remaining = plan.remaining(completed.keys)
             remaining.forEachIndexed { index, part ->
                 onStage(MaterialTransferStage.PART, part.number, plan.parts.size)
@@ -268,7 +276,8 @@ public class MaterialUploadEngine(
                     part = part.number,
                     partCount = plan.parts.size,
                 )
-                val completedPart = CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size, session.uploadId)
+                val completedPart =
+                    CompletedUploadPart(uploaded.number, uploaded.etag, uploaded.size, session.providerUploadId)
                 // Every part is durably recorded the instant it is acknowledged, so a process
                 // death never loses a receipt. The catalogue row's `Uploading` progress is a UI
                 // nicety rather than a resume source, so it is only rewritten every few parts —
@@ -286,7 +295,21 @@ public class MaterialUploadEngine(
 
         val orderedParts = plan.parts.map { part -> completed.getValue(part.number).asUploadedPart() }
         onStage(MaterialTransferStage.COMPLETE, null, null)
-        val stored = objectStore.completeUpload(session, orderedParts)
+        var discardReceipts = completeFromReceipts
+        val stored =
+            try {
+                objectStore.completeUpload(session, orderedParts).also { discardReceipts = false }
+            } catch (cancellation: CancellationException) {
+                discardReceipts = false
+                throw cancellation
+            } catch (failure: ObjectStoreException.InvalidParts) {
+                discardReceipts = true
+                throw failure
+            } finally {
+                if (discardReceipts) {
+                    uploadProgressStore.clear(materialId)
+                }
+            }
         log(materialId, MaterialTransferStage.COMPLETE, MaterialTransferOutcome.SUCCESS, retryable = false)
         onStage(MaterialTransferStage.VERIFY, null, null)
         if (stored.sizeBytes != material.sizeBytes || stored.contentHash != material.contentHash) {

@@ -48,10 +48,11 @@ internal class RecordingObjectStore : ObjectStore {
     private val statResults = mutableMapOf<ObjectKey, StoredObject>()
 
     var failNextUploadPart: ObjectStoreException? = null
-    var failCompleteUpload: ObjectStoreException? = null
+    var failCompleteUpload: Throwable? = null
     var failDownloadUrl: ObjectStoreException? = null
     var failStat: ObjectStoreException? = null
     var failInitUpload: Throwable? = null
+    var providerUploadId: String? = null
     val statted: MutableList<ObjectKey> = mutableListOf()
 
     override suspend fun initUpload(request: UploadRequest): UploadSession {
@@ -66,9 +67,11 @@ internal class RecordingObjectStore : ObjectStore {
         }
         val plan = UploadPlanner.plan(request.sizeBytes, request.contentHash)
         val expiresAt = Instant.parse(FIXED_INSTANT)
-        return UploadSession.of(request.key, "upload-${request.key}", plan, expiresAt) { part ->
-            PresignedUrl("${PresignedUrl.LOCAL_SCHEME}${request.key}/parts/${part.number}", expiresAt)
-        }
+        val session =
+            UploadSession.of(request.key, "upload-${request.key}", plan, expiresAt) { part ->
+                PresignedUrl("${PresignedUrl.LOCAL_SCHEME}${request.key}/parts/${part.number}", expiresAt)
+            }
+        return providerUploadId?.let { session.copy(providerUploadId = it) } ?: session
     }
 
     override suspend fun uploadPart(

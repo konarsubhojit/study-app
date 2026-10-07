@@ -103,6 +103,8 @@ public class StorageFunctionUrlSource(
                 uploadId = response.string("uploadId"),
                 parts = response.getValue("parts").jsonArray.map { it.jsonObject.toSignedPart() },
                 expiresAt = response.instant("expiresAt"),
+                providerUploadId =
+                    response["providerUploadId"]?.jsonPrimitive?.contentOrNull ?: response.string("uploadId"),
             )
         }
     }
@@ -118,6 +120,7 @@ public class StorageFunctionUrlSource(
                 body =
                     buildJsonObject {
                         put("uploadId", session.uploadId)
+                        put("providerUploadId", session.providerUploadId)
                         put(
                             "parts",
                             buildJsonArray {
@@ -293,6 +296,10 @@ public class StorageFunctionUrlSource(
             return when {
                 code == "object_not_found" -> {
                     ObjectStoreException.NotFound(key)
+                }
+
+                code == "invalid_parts" -> {
+                    ObjectStoreException.InvalidParts(subject)
                 }
 
                 code in CLIENT_REQUEST_FAILURE_CODES -> {

@@ -11,7 +11,7 @@ public data class CompletedUploadPart(
     val number: Int,
     val etag: String,
     val sizeBytes: Long,
-    /** Backend session that acknowledged this part; legacy receipts without one cannot be reused. */
+    /** Provider multipart handle that acknowledged this part; legacy receipts cannot be reused. */
     val uploadId: String? = null,
 ) {
     init {

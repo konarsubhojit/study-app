@@ -85,6 +85,23 @@ class StorageFunctionUrlSourceTest {
             assertEquals(PartChecksums.sha256Base64(payload.copyOfRange(PART, payload.size)), checksums[1])
             assertEquals(ObjectKey.ofMaterial(request.contentHash), session.key)
             assertEquals("upload-1", session.uploadId)
+            assertEquals("provider-1", session.providerUploadId)
+        }
+
+    @Test
+    fun `older deployments without a provider receipt identity retain reservation compatibility`() =
+        runTest {
+            val request = requestFor(PAYLOAD)
+            val source =
+                source {
+                    respondJson(
+                        initResponse(request.sizeBytes).replace("\"providerUploadId\":\"provider-1\",", ""),
+                    )
+                }
+
+            val session = source.createUpload(request)
+
+            assertEquals(session.uploadId, session.providerUploadId)
         }
 
     @Test
@@ -554,7 +571,7 @@ class StorageFunctionUrlSourceTest {
             setOf("contentHash", "contentType", "sizeBytes", "partChecksums"),
             bodies[1].keys,
         )
-        assertEquals(setOf("uploadId", "parts"), bodies[2].keys)
+        assertEquals(setOf("uploadId", "providerUploadId", "parts"), bodies[2].keys)
         assertEquals(setOf("contentHash"), bodies[3].keys)
         assertEquals(setOf("contentHash"), bodies[4].keys)
         assertEquals(request.contentHash.hex, bodies[0].string("contentHash"))
@@ -566,6 +583,7 @@ class StorageFunctionUrlSourceTest {
             bodies[1]["partChecksums"]?.jsonArray?.map { it.jsonPrimitive.content },
         )
         assertEquals("upload-1", bodies[2].string("uploadId"))
+        assertEquals("provider-1", bodies[2].string("providerUploadId"))
         val uploadedPart = bodies[2]["parts"]?.jsonArray?.single()?.jsonObject
         assertEquals("1", uploadedPart?.get("number")?.jsonPrimitive?.content)
         assertEquals("etag-1", uploadedPart?.string("etag"))
@@ -630,7 +648,8 @@ class StorageFunctionUrlSourceTest {
                         """"expiresAt":"2026-03-01T09:10:00.000Z",""" +
                         """"requiredHeaders":{"x-amz-checksum-sha256":"$CHECKSUM"}}"""
                 }
-            return """{"uploadId":"upload-1","expiresAt":"2026-03-02T09:00:00.000+00:00","parts":[$parts]}"""
+            return """{"uploadId":"upload-1","providerUploadId":"provider-1",""" +
+                """"expiresAt":"2026-03-02T09:00:00.000+00:00","parts":[$parts]}"""
         }
 
         @JvmStatic
@@ -652,7 +671,7 @@ class StorageFunctionUrlSourceTest {
                 Arguments.of(413, "file_too_large", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(415, "unsupported_media_type", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(422, "integrity_mismatch", ObjectStoreException.Integrity::class.java, false),
-                Arguments.of(422, "invalid_parts", ObjectStoreException.AccessDenied::class.java, false),
+                Arguments.of(422, "invalid_parts", ObjectStoreException.InvalidParts::class.java, false),
                 Arguments.of(422, "scan_rejected", ObjectStoreException.Integrity::class.java, false),
                 Arguments.of(429, "rate_limited", ObjectStoreException.Transient::class.java, true),
                 Arguments.of(503, "storage_unavailable", ObjectStoreException.Transient::class.java, true),
