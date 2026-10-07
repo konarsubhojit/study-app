@@ -533,6 +533,33 @@ Deno.test("an invalid S3 part identity is permanent and fails its completion cla
     });
 });
 
+for (const code of ["InvalidPart", "InvalidPartOrder", "NoSuchUpload"]) {
+    for (const field of ["Code", "code"]) {
+        Deno.test(`S3Error ${field}=${code} rejects stale parts and fails only its completion claim`, async () => {
+            await withUploadBackend((request) => {
+                if (request.method === "HEAD") return new Response(null, { status: 404 });
+                throw Object.assign(new Error(
+                    "One or more of the specified parts could not be found. " +
+                        "The part may not have been uploaded, or the specified entity tag may not match the part's entity tag.",
+                ), {
+                    name: "S3Error",
+                    [field]: code,
+                    $metadata: { httpStatusCode: code === "NoSuchUpload" ? 404 : 400 },
+                });
+            }, async (patches) => {
+                const response = await handleRequest(completionRequest());
+                const value = await response.json();
+                const released = patches.at(-1);
+                if (response.status !== 422 || value.code !== "invalid_parts" ||
+                    released?.value.state !== "failed" || released.value.completing_at !== null ||
+                    !released.url.includes("state=eq.completing&completing_at=eq." + encodeURIComponent(claimTime))) {
+                    throw new Error("S3Error was reported as an outage or its completion claim was not failed");
+                }
+            });
+        });
+    }
+}
+
 Deno.test("a second completion cannot proceed without winning a claim", async () => {
     await withUploadBackend(() => {
         throw new Error("a losing claimant touched S3");

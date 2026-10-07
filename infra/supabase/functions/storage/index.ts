@@ -530,7 +530,11 @@ async function completeUpload(request: Request, owner: string): Promise<Response
 }
 
 function isInvalidMultipartPart(error: unknown): boolean {
-    return error instanceof Error && ["InvalidPart", "InvalidPartOrder"].includes(error.name);
+    if (!error || typeof error !== "object") return false;
+    const fault = error as { Code?: unknown; code?: unknown; name?: unknown };
+    return [fault.Code, fault.code, fault.name].some((code) =>
+        typeof code === "string" && ["InvalidPart", "InvalidPartOrder", "NoSuchUpload"].includes(code)
+    );
 }
 
 async function headObject(key: string) {

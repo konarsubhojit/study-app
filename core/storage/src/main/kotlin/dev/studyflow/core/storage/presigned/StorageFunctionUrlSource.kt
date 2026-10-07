@@ -295,6 +295,10 @@ public class StorageFunctionUrlSource(
                     ObjectStoreException.NotFound(key)
                 }
 
+                code == "invalid_parts" -> {
+                    ObjectStoreException.InvalidParts(subject)
+                }
+
                 code in CLIENT_REQUEST_FAILURE_CODES -> {
                     ObjectStoreException.AccessDenied(subject)
                 }

@@ -131,8 +131,26 @@ cannot be bypassed by a second completion or reaped merely because the upload se
 An expired claim can be acquired again or reclaimed by reservation, retaining the same upload id
 and provider handle. Recovery checks HEAD first because S3 may have succeeded before the response
 was lost. Finalization and failure release are fenced by the claim timestamp, so an old worker
-cannot overwrite a newer claim. Failures return to pending, except confirmed integrity/scan
-rejections after provider deletion; cleanup failure retains the lease for timeout recovery.
+cannot overwrite a newer claim. Failures return to pending, except confirmed invalid-part,
+integrity or scan rejections, which fail the reservation; cleanup failure retains the lease for
+timeout recovery.
+
+When `completeUpload` rejects `InvalidPart`, `InvalidPartOrder` or `NoSuchUpload`, inspect the
+provider's `Code`/`code`, not just its JavaScript error name (`S3Error`). These faults return
+`422 invalid_parts`, not `503 storage_unavailable`. The client clears its multipart receipts and
+retries from `initUpload`, resending bytes instead of repeatedly completing stale ETags. A
+completion failure after a resume sent **zero parts** also clears receipts before any retry.
+Other permanent errors (including integrity and scan rejection) remain non-retryable.
+
+Receipt identity remains the reservation id: provider handles are written only when reservation
+returns `created = true`; normal initialization cleanup and reaping mark the row failed, and a
+replacement reservation has a new id. Reservation does not check whether a persisted provider
+handle is still live, so an externally aborted upload or failed cleanup can leave a pending row
+with a dead handle. Adding that same handle to receipt identity would not detect its death.
+The invalid-parts response fails that row so the next initialization creates a new reservation.
+Use stage diagnostics to confirm that recovery sends every PART and reaches COMPLETE SUCCESS;
+do not log ETags, provider handles, user content or signed URLs. No observability operation or
+error vocabulary is added by this recovery.
 
 `stat` reports active `completing`/`reaping` rows as `409 upload_in_progress`, matching reservation.
 A reclaimable completion reads as absent and can be reserved again. Only explicitly recoverable

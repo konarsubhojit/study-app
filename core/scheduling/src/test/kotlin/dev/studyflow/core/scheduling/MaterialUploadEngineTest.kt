@@ -111,6 +111,64 @@ class MaterialUploadEngineTest {
         }
 
     @Test
+    fun `invalid parts after sending bytes clears receipts and retries a full transfer`() =
+        runBlocking {
+            materialRepository.save(material())
+            objectStore.failCompleteUpload = ObjectStoreException.InvalidParts("invalid_parts")
+
+            assertInstanceOf(UploadOutcome.Retryable::class.java, engine.upload("m1"))
+            assertTrue(uploadProgressStore.completedParts("m1").isEmpty())
+            val sync = materialRepository.observeById("m1").first()?.sync
+            assertTrue(sync is SyncState.Failed && sync.retryable)
+
+            objectStore.failCompleteUpload = null
+            assertEquals(UploadOutcome.Synced, engine.upload("m1"))
+            assertEquals(listOf(1, 2, 3, 1, 2, 3), objectStore.uploadedPartNumbers)
+        }
+
+    @ParameterizedTest
+    @ValueSource(strings = ["invalid_parts", "storage_unavailable"])
+    fun `completion with dead provider receipts clears them before retry and sends every part`(code: String) =
+        runBlocking {
+            val materialId = "00000000-0000-0000-0000-000000000001"
+            materialRepository.save(material().copy(id = materialId))
+            val logger = RecordingAppLogger()
+            val loggedEngine =
+                MaterialUploadEngine(
+                    materialRepository,
+                    uploadProgressStore,
+                    objectStore,
+                    readPart = { _, part -> ByteArray(part.size.toInt()) },
+                    logger = logger,
+                )
+            val uploadId = "upload-${ObjectKey.ofMaterial(contentHash)}"
+            listOf(1, 2, 3).forEach { number ->
+                val size = if (number == 3) 4L * 1024 * 1024 else 8L * 1024 * 1024
+                uploadProgressStore.recordCompletedPart(
+                    materialId,
+                    CompletedUploadPart(number, "dead-provider-etag-$number", size, uploadId),
+                )
+            }
+            objectStore.failCompleteUpload =
+                if (code == "invalid_parts") {
+                    ObjectStoreException.InvalidParts(code)
+                } else {
+                    ObjectStoreException.Transient(code)
+                }
+
+            assertInstanceOf(UploadOutcome.Retryable::class.java, loggedEngine.upload(materialId))
+            assertTrue(objectStore.uploadedPartNumbers.isEmpty(), "the first attempt must reproduce the no-PART path")
+            assertTrue(uploadProgressStore.completedParts(materialId).isEmpty())
+
+            objectStore.failCompleteUpload = null
+            assertEquals(UploadOutcome.Synced, loggedEngine.upload(materialId))
+            assertEquals(listOf(1, 2, 3), objectStore.uploadedPartNumbers)
+            assertTrue(objectStore.completedParts.none { it.etag.startsWith("dead-provider-") })
+            assertEquals(SyncState.Synced, materialRepository.observeById(materialId).first()?.sync)
+            assertTrue(logger.entries.any { it.message.contains("stage=COMPLETE outcome=SUCCESS") })
+        }
+
+    @Test
     fun `stale receipt cleanup preserves current-session receipts before a part failure`() =
         runBlocking {
             materialRepository.save(material())
@@ -343,6 +401,7 @@ class MaterialUploadEngineTest {
                 ObjectStoreException.NotFound(ObjectKey("materials/${contentHash.hex}")) to
                     DiagnosticThrowableKind.OBJECT_NOT_FOUND,
                 ObjectStoreException.AccessDenied("denied") to DiagnosticThrowableKind.OBJECT_ACCESS_DENIED,
+                ObjectStoreException.InvalidParts("invalid parts") to DiagnosticThrowableKind.OBJECT_ACCESS_DENIED,
                 ObjectStoreException.Integrity("integrity failed") to DiagnosticThrowableKind.OBJECT_INTEGRITY,
                 ObjectStoreException.QuotaExceeded("quota exceeded") to DiagnosticThrowableKind.OBJECT_QUOTA_EXCEEDED,
                 ObjectStoreException.BackendUnreachable("host unreachable") to

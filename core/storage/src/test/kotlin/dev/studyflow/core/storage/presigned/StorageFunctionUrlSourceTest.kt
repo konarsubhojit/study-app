@@ -652,7 +652,7 @@ class StorageFunctionUrlSourceTest {
                 Arguments.of(413, "file_too_large", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(415, "unsupported_media_type", ObjectStoreException.AccessDenied::class.java, false),
                 Arguments.of(422, "integrity_mismatch", ObjectStoreException.Integrity::class.java, false),
-                Arguments.of(422, "invalid_parts", ObjectStoreException.AccessDenied::class.java, false),
+                Arguments.of(422, "invalid_parts", ObjectStoreException.InvalidParts::class.java, false),
                 Arguments.of(422, "scan_rejected", ObjectStoreException.Integrity::class.java, false),
                 Arguments.of(429, "rate_limited", ObjectStoreException.Transient::class.java, true),
                 Arguments.of(503, "storage_unavailable", ObjectStoreException.Transient::class.java, true),
