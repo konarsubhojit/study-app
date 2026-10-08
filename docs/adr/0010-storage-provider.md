@@ -85,6 +85,17 @@ line — not a change to the materials feature, the upload worker, the cache or 
 The trigger is a number, not a feeling: when monthly storage egress exceeds the cost of operating a
 bucket ourselves, migrate.
 
+### Amendment (2026-10-07): no S3 checksums against Supabase Storage
+
+Supabase Storage's S3 protocol supports no `x-amz-checksum-*` headers: it re-issues multipart
+creation and part uploads to its backing bucket without a checksum, but forwards completion parts
+verbatim. Requesting SHA-256 checksums therefore made every `CompleteMultipartUpload` fail with
+`InvalidPart`. The storage function sends no provider checksums on any multipart call; part
+checksums remain in the client contract and the reservation, and content-digest verification is
+delegated to the optional scan hook. Re-enable provider checksums only together with a provider
+that honours them, on creation, signing and completion at once. See
+[backend observability](../backend-observability.md#provider-checksums-are-not-sent-root-cause-of-invalidpart-on-every-completion).
+
 ## Consequences
 
 - The provider decision costs one file to reverse. Nothing outside `:core:storage` names a provider.

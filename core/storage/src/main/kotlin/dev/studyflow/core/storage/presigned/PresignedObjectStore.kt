@@ -22,6 +22,7 @@ import io.ktor.http.isSuccess
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 
 /**
  * The production [ObjectStore]: our BFF signs, the device transfers (issue #36).
@@ -43,6 +44,22 @@ import kotlin.time.Duration
  * part is sent once more to its new URL. An unavailable renewal is reported as
  * [ObjectStoreException.AccessDenied]. A replaced upload is retryable so the upload engine can
  * reopen it and discard receipts belonging to the old session.
+ *
+ * ### Download URL reuse
+ *
+ * [getDownloadUrl] keeps the last URL signed for each key in memory and hands it out again
+ * instead of asking the BFF to sign another, as long as it is still valid for at least
+ * [DOWNLOAD_URL_REUSE_MARGIN] (so a transfer that starts now cannot meet an expired signature)
+ * and it expires no later than the caller's requested TTL (so a caller asking for a short-lived
+ * URL never receives a longer-lived one). [delete] drops the key's entry. The cache only ever
+ * holds what callers could already receive, is never persisted, and — like everything else
+ * here — never reaches a log line or an exception message.
+ *
+ * A download refused with `401`/`403` cannot evict its URL through [ObjectStore], whose
+ * interface stays provider-neutral. Expiry cannot cause that refusal, because of the margin
+ * above. A signature the provider *revokes* early (a key rotation) can: the URL may then be
+ * handed out again until it falls inside the margin, at most [ObjectStore.MAX_PRESIGNED_URL_TTL]
+ * after it was signed, after which a freshly signed URL is fetched.
  */
 public class PresignedObjectStore(
     private val client: HttpClient,
@@ -51,6 +68,9 @@ public class PresignedObjectStore(
 ) : ObjectStore {
     /** The request behind each open session, so an expired part URL can be re-signed. */
     private val openRequests = ConcurrentHashMap<String, UploadRequest>()
+
+    /** The last download URL signed per key; reused while [isReusable] says it still fits. */
+    private val downloadUrls = ConcurrentHashMap<ObjectKey, PresignedUrl>()
 
     override suspend fun initUpload(request: UploadRequest): UploadSession =
         urls.createUpload(request).also { session -> openRequests[session.uploadId] = request }
@@ -151,17 +171,34 @@ public class PresignedObjectStore(
         ttl: Duration,
     ): PresignedUrl {
         require(ttl > Duration.ZERO) { "download URL TTL must be positive" }
-        return urls.downloadUrl(key, minOf(ttl, ObjectStore.MAX_PRESIGNED_URL_TTL))
+        val effectiveTtl = minOf(ttl, ObjectStore.MAX_PRESIGNED_URL_TTL)
+        downloadUrls[key]?.takeIf { it.isReusable(effectiveTtl) }?.let { return it }
+        return urls.downloadUrl(key, effectiveTtl).also { fresh -> downloadUrls[key] = fresh }
+    }
+
+    private fun PresignedUrl.isReusable(ttl: Duration): Boolean {
+        val now = clock.now()
+        return expiresAt >= now + DOWNLOAD_URL_REUSE_MARGIN && expiresAt <= now + ttl
     }
 
     override suspend fun delete(key: ObjectKey) {
-        urls.delete(key)
+        // Evicted even when the delete fails, and after it, so a URL signed meanwhile is not kept.
+        try {
+            urls.delete(key)
+        } finally {
+            downloadUrls.remove(key)
+        }
     }
 
     override suspend fun stat(key: ObjectKey): StoredObject? = urls.stat(key)
 
     /** The provider's identifier for the part, preserved exactly as returned in the response. */
     private fun HttpResponse.entityTag(): String = headers[HttpHeaders.ETag].orEmpty()
+
+    public companion object {
+        /** How long a cached download URL must stay valid to be handed out again. */
+        public val DOWNLOAD_URL_REUSE_MARGIN: Duration = 2.minutes
+    }
 }
 
 private fun HttpStatusCode.isRefusedSignature(): Boolean =

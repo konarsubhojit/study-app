@@ -30,10 +30,10 @@ import dev.studyflow.core.network.auth.TokenStore
 import dev.studyflow.core.scheduling.ApiAccountEraser
 import dev.studyflow.core.storage.ObjectKey
 import dev.studyflow.core.storage.ObjectStore
+import dev.studyflow.core.storage.lifecycle.FileMaterialFileStore
 import dev.studyflow.core.storage.lifecycle.ObjectStoreEraser
 import dev.studyflow.core.storage.lifecycle.StoredObjectKeys
 import dev.studyflow.feature.settings.ArchiveNaming
-import dev.studyflow.feature.settings.data.FileMaterialFileStore
 import dev.studyflow.feature.settings.data.SafZipArchiveSinkFactory
 import dev.studyflow.feature.settings.data.SafZipArchiveSourceFactory
 import java.io.File

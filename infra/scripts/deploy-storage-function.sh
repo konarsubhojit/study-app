@@ -3,6 +3,10 @@
 #
 # SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided by the hosted Edge Function runtime.
 #
+# Pending repository migrations are pushed before any function is deployed. The functions call
+# RPC signatures introduced by those migrations; deploying code ahead of its schema makes PostgREST
+# answer PGRST202 (function not found) and every affected request fail as storage_unavailable.
+#
 # Usage: ./deploy-storage-function.sh <project-ref> [storage|api|all]
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -11,6 +15,7 @@ project_ref="${1:?usage: deploy-storage-function.sh <project-ref> [storage|api|a
 function_name="${2:-storage}"
 
 : "${SUPABASE_ACCESS_TOKEN:?SUPABASE_ACCESS_TOKEN must be set (from a managed secret store)}"
+: "${SUPABASE_DB_PASSWORD:?SUPABASE_DB_PASSWORD must be set so pending migrations deploy before the function}"
 
 storage_secrets=()
 api_secrets=()
@@ -84,7 +89,10 @@ case "$function_name" in
         ;;
 esac
 
+bash scripts/check-migration-versions.sh
 supabase link --project-ref "$project_ref"
+# No-op when the database is current; otherwise applies the schema the new code depends on.
+supabase db push --yes
 supabase secrets set "${function_secrets[@]}"
 for deployed_function in "${functions[@]}"; do
     supabase functions deploy "$deployed_function"

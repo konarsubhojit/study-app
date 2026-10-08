@@ -300,6 +300,24 @@ Deno.test("unmatched database refusals are retryable storage outages", async () 
     }
 });
 
+Deno.test("a missing RPC signature is diagnosed as pending migrations", async () => {
+    const lines: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    try {
+        await withFetch(storageBackend(404, { code: "PGRST202" }), async () => {
+            const response = await handleRequest(statRequest());
+            await response.body?.cancel();
+        });
+    } finally {
+        console.warn = original;
+    }
+    const diagnostic = JSON.parse(lines[0] ?? "{}");
+    if (diagnostic.code !== "PGRST202" || diagnostic.hint !== "database_migrations_pending") {
+        throw new Error("schema drift was not named in the diagnostic");
+    }
+});
+
 Deno.test("explicit storage client errors keep their status and retry policy", async () => {
     for (const [code, expectedStatus] of [
         ["rate_limited", 429],
@@ -487,7 +505,7 @@ Deno.test("a broken completion response is awaited, logged and returned as struc
     }
 });
 
-Deno.test("multipart creation, signing and completion keep the same SHA256 contract", async () => {
+Deno.test("multipart creation, signing and completion send no provider checksums", async () => {
     let creation = false;
     let completion = false;
     let exists = false;
@@ -499,8 +517,11 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
         }
         if (url.searchParams.has("uploads")) {
             creation = true;
-            if (request.headers.get("x-amz-checksum-algorithm") !== "SHA256") {
-                throw new Error("creation checksum algorithm drifted");
+            // Supabase Storage creates its backing upload without a checksum algorithm; asking for
+            // one here is what made every completion fail with InvalidPart.
+            const checksumHeaders = [...request.headers.keys()].filter((name) => name.includes("checksum"));
+            if (checksumHeaders.length > 0) {
+                throw new Error(`creation sent provider checksum headers: ${checksumHeaders}`);
             }
             return new Response("<InitiateMultipartUploadResult><UploadId>provider-1</UploadId></InitiateMultipartUploadResult>");
         }
@@ -508,7 +529,7 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
         completionXml = await request.text();
         const expected = '<?xml version="1.0" encoding="UTF-8"?>' +
             '<CompleteMultipartUpload xmlns="http://s3.amazonaws.com/doc/2006-03-01/">' +
-            `<Part><ETag>&quot;part-etag&quot;</ETag><ChecksumSHA256>${checksum}</ChecksumSHA256><PartNumber>1</PartNumber></Part>` +
+            "<Part><ETag>&quot;part-etag&quot;</ETag><PartNumber>1</PartNumber></Part>" +
             "</CompleteMultipartUpload>";
         if (completionXml !== expected || url.searchParams.get("uploadId") !== "provider-1") {
             throw new Error(`completion command shape drifted: ${completionXml}`);
@@ -523,9 +544,13 @@ Deno.test("multipart creation, signing and completion keep the same SHA256 contr
             partChecksums: [checksum],
         }));
         const value = await response.json();
-        if (response.status !== 200 || value.parts[0].requiredHeaders["x-amz-checksum-sha256"] !== checksum ||
-            new URL(value.parts[0].url).searchParams.get("x-amz-checksum-sha256") !== checksum) {
-            throw new Error("part signing checksum contract drifted");
+        const signed = new URL(value.parts[0].url);
+        const signedChecksums = [...signed.searchParams.keys()].filter((name) => name.includes("checksum"));
+        if (response.status !== 200 || Object.keys(value.parts[0].requiredHeaders).length !== 0 ||
+            signedChecksums.length > 0 || !signed.searchParams.get("X-Amz-SignedHeaders")?.split(";").every(
+                (header) => header === "host",
+            )) {
+            throw new Error(`part signing must not require provider checksums: ${signed.search}`);
         }
         const completed = await handleRequest(completionRequest());
         const completionResult = await completed.json();

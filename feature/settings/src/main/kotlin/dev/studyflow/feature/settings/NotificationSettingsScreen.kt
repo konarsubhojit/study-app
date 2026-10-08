@@ -2,14 +2,8 @@ package dev.studyflow.feature.settings
 
 import android.Manifest
 import android.annotation.SuppressLint
-import android.app.Activity
 import android.app.AlarmManager
-import android.content.ActivityNotFoundException
-import android.content.Context
-import android.content.Intent
-import android.media.RingtoneManager
 import android.os.Build
-import android.provider.Settings
 import androidx.activity.compose.LocalActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -19,47 +13,29 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TimePicker
-import androidx.compose.material3.rememberTimePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.core.app.ActivityCompat
-import androidx.core.net.toUri
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.studyflow.core.datastore.WeeklySummarySchedule
 import dev.studyflow.core.designsystem.motion.StudyFlowMotion
 import dev.studyflow.core.designsystem.theme.spacing
-import dev.studyflow.core.notifications.NotificationChannelStatus
 import dev.studyflow.core.notifications.NotificationMessageKey
-import dev.studyflow.core.notifications.StudyFlowNotificationChannel
 import dev.studyflow.core.ui.state.LoadingState
 
 /**
@@ -208,15 +184,6 @@ public data class NotificationSettingsSlots(
     val statusCards: LazyListScope.() -> Unit = {},
 )
 
-private fun Context.requestExactAlarmPermission() {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        start(
-            Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
-                .setData("package:$packageName".toUri()),
-        )
-    }
-}
-
 private fun LazyListScope.notificationPreferences(
     state: NotificationSettingsUiState,
     onEvent: (NotificationSettingsUiEvent) -> Unit,
@@ -271,31 +238,6 @@ private fun LazyListScope.notificationPreferences(
     }
 }
 
-/**
- * The way into "Data & privacy" (issue #78).
- *
- * A card rather than a buried menu item: a user who wants their data out — or gone — should not
- * have to hunt for the control, and the deletion route has to be findable to be honest.
- */
-@Composable
-private fun DataPrivacyCard(onOpen: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Text(text = DataPrivacyCopy.TITLE, style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = "Export your data, restore it from an archive, or delete your account.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            TextButton(onClick = onOpen) {
-                Text(text = "Open data & privacy")
-            }
-        }
-    }
-}
-
 /** The one-time explanation shown before requesting the notification permission. */
 @Composable
 private fun NotificationRationaleDialog(
@@ -318,293 +260,3 @@ private fun NotificationRationaleDialog(
         },
     )
 }
-
-/**
- * The weekly recap opt-in, with the day and time it is delivered at (issue #63).
- *
- * Off by default and switched off again with one tap, which cancels the scheduled work rather than
- * leaving it queued to do nothing — "opting out stops it immediately and permanently".
- */
-@Composable
-private fun WeeklySummaryCard(
-    schedule: WeeklySummarySchedule,
-    onEvent: (NotificationSettingsUiEvent) -> Unit,
-) {
-    var showTimePicker by remember { mutableStateOf(false) }
-
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(text = "Weekly summary", style = MaterialTheme.typography.titleMedium)
-                Switch(
-                    checked = schedule.enabled,
-                    onCheckedChange = { onEvent(NotificationSettingsUiEvent.WeeklySummaryEnabled(it)) },
-                    modifier = Modifier.semantics { contentDescription = "Weekly summary" },
-                )
-            }
-            Text(
-                text = "A recap of your hours, top subjects, streak and goal — once a week.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (schedule.enabled) {
-                WeeklySummaryDayRow(schedule = schedule, onEvent = onEvent)
-                TextButton(onClick = { showTimePicker = true }) {
-                    Text(text = "Delivered at ${schedule.timeLabel()}")
-                }
-            }
-        }
-    }
-
-    if (showTimePicker) {
-        WeeklySummaryTimePickerDialog(
-            schedule = schedule,
-            onDismissRequest = { showTimePicker = false },
-            onConfirm = { hour, minute ->
-                showTimePicker = false
-                onEvent(
-                    NotificationSettingsUiEvent.WeeklySummaryTimeChanged(
-                        isoDayOfWeek = schedule.isoDayOfWeek,
-                        hour = hour,
-                        minute = minute,
-                    ),
-                )
-            },
-        )
-    }
-}
-
-@Composable
-private fun WeeklySummaryDayRow(
-    schedule: WeeklySummarySchedule,
-    onEvent: (NotificationSettingsUiEvent) -> Unit,
-) {
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small)) {
-        items(DAY_NAMES.size, key = { it }) { index ->
-            val isoDay = index + 1
-            FilterChip(
-                selected = schedule.isoDayOfWeek == isoDay,
-                onClick = {
-                    onEvent(
-                        NotificationSettingsUiEvent.WeeklySummaryTimeChanged(
-                            isoDayOfWeek = isoDay,
-                            hour = schedule.hour,
-                            minute = schedule.minute,
-                        ),
-                    )
-                },
-                label = { Text(DAY_NAMES[index]) },
-                modifier = Modifier.animateItem(),
-            )
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun WeeklySummaryTimePickerDialog(
-    schedule: WeeklySummarySchedule,
-    onDismissRequest: () -> Unit,
-    onConfirm: (hour: Int, minute: Int) -> Unit,
-) {
-    val pickerState = rememberTimePickerState(initialHour = schedule.hour, initialMinute = schedule.minute)
-    AlertDialog(
-        onDismissRequest = onDismissRequest,
-        title = { Text(text = "Delivery time") },
-        text = { TimePicker(state = pickerState) },
-        confirmButton = {
-            TextButton(onClick = { onConfirm(pickerState.hour, pickerState.minute) }) {
-                Text(text = "Save")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismissRequest) {
-                Text(text = "Cancel")
-            }
-        },
-    )
-}
-
-private fun WeeklySummarySchedule.timeLabel(): String =
-    "${DAY_NAMES[isoDayOfWeek - 1]} ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}"
-
-/** ISO order: index 0 is Monday, matching [WeeklySummarySchedule.isoDayOfWeek] minus one. */
-private val DAY_NAMES = listOf("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
-
-@Composable
-private fun BatteryDiagnosticsCard(
-    diagnostics: BatteryDiagnosticsSnapshot,
-    onEvent: (NotificationSettingsUiEvent) -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Text(text = "Battery diagnostics", style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = diagnostics.impactText(),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (diagnostics.needsAttention) {
-                Text(
-                    text = diagnostics.oemGuidance(),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                TextButton(onClick = { onEvent(NotificationSettingsUiEvent.OpenBatterySettings) }) {
-                    Text(text = "Open battery settings")
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ExactAlarmDegradationCard(onOpenSettings: () -> Unit) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Text(text = "Reminders may be less precise", style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = "Allow exact alarms to receive reminders closer to their scheduled time.",
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            TextButton(onClick = onOpenSettings) {
-                Text(text = "Open exact alarm settings")
-            }
-        }
-    }
-}
-
-@Composable
-private fun BlockedCard(
-    state: NotificationSettingsUiState,
-    onEvent: (NotificationSettingsUiEvent) -> Unit,
-) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.small),
-        ) {
-            Text(text = "Notifications are off", style = MaterialTheme.typography.titleMedium)
-            state.degradation?.let {
-                Text(
-                    text = NotificationCopy.degradation(it),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            }
-            TextButton(onClick = { onEvent(NotificationSettingsUiEvent.EnableNotifications) }) {
-                Text(text = if (state.canRequestPermission) "Turn on" else "Open settings")
-            }
-        }
-    }
-}
-
-@Composable
-private fun ChannelCard(
-    status: NotificationChannelStatus,
-    blockedAppWide: Boolean,
-    onOpenSettings: () -> Unit,
-    onPickAlarmRingtone: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Card(modifier = modifier.fillMaxWidth()) {
-        Column(
-            modifier = Modifier.padding(MaterialTheme.spacing.medium),
-            verticalArrangement = Arrangement.spacedBy(MaterialTheme.spacing.extraSmall),
-        ) {
-            Text(text = status.channel.channelName, style = MaterialTheme.typography.titleMedium)
-            Text(
-                text = NotificationCopy.channelPurpose(status.channel),
-                style = MaterialTheme.typography.bodyMedium,
-            )
-            if (status.channel == StudyFlowNotificationChannel.ALARMS) {
-                Text(
-                    text = NotificationCopy.ALARM_DND_EXPLANATION,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            Text(
-                text =
-                    if (blockedAppWide) {
-                        "Blocked while notifications are off"
-                    } else {
-                        NotificationCopy.channelState(status)
-                    },
-                style = MaterialTheme.typography.labelLarge,
-            )
-            TextButton(
-                onClick = onOpenSettings,
-                modifier =
-                    Modifier.semantics {
-                        contentDescription = "Change ${status.channel.channelName} in system settings"
-                    },
-            ) {
-                Text(text = "Change in system settings")
-            }
-            if (status.channel == StudyFlowNotificationChannel.ALARMS) {
-                TextButton(onClick = onPickAlarmRingtone) {
-                    Text(text = "Choose alarm sound")
-                }
-            }
-        }
-    }
-}
-
-/** The picker's own `EXTRA_RINGTONE_PICKED_URI`, wherever `RingtoneManager` put it in [this]. */
-private fun Intent.getParcelableRingtoneUri(): android.net.Uri? =
-    @Suppress("DEPRECATION")
-    getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
-
-private fun ringtonePickerIntent(currentUri: String): Intent =
-    Intent(RingtoneManager.ACTION_RINGTONE_PICKER).apply {
-        putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_ALARM)
-        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
-        putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
-        putExtra(
-            RingtoneManager.EXTRA_RINGTONE_DEFAULT_URI,
-            RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM),
-        )
-        if (currentUri.isNotBlank()) {
-            putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, currentUri.toUri())
-        }
-    }
-
-/**
- * Asks the platform whether a refusal can still be explained.
- *
- * `false` outside an activity and below Android 13, which is correct in both cases: there is
- * nothing to explain when there is no permission to ask for, and no window to explain it in.
- */
-private fun Activity?.shouldExplainNotifications(): Boolean =
-    this != null &&
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-        ActivityCompat.shouldShowRequestPermissionRationale(this, Manifest.permission.POST_NOTIFICATIONS)
-
-/**
- * Opens a system settings page, tolerating the ones that do not exist.
- *
- * Per-channel settings are missing on some OEM builds. Losing the shortcut is survivable; crashing
- * on the way to a settings screen is not, so the app-level page is tried next and a device with
- * neither simply leaves the user where they were.
- */
-private fun Context.startSettings(effect: NotificationSettingsUiEffect.OpenSystemSettings) {
-    if (start(effect.intent)) return
-    effect.fallbackIntent?.let(::start)
-}
-
-private fun Context.start(intent: Intent): Boolean =
-    try {
-        startActivity(intent)
-        true
-    } catch (_: ActivityNotFoundException) {
-        false
-    }
