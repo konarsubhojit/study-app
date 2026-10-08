@@ -237,6 +237,67 @@ class PresignedObjectStoreTest {
         }
 
     @Test
+    fun `a download URL still valid beyond the margin is reused without asking the BFF again`() =
+        runTest {
+            val source = FakeUrlSource()
+            var now = NOW
+            val store = store(source, clock = { now }) { respond("", HttpStatusCode.OK) }
+
+            val first = store.getDownloadUrl(REQUEST.key)
+            now = EXPIRY - 5.minutes
+            val second = store.getDownloadUrl(REQUEST.key)
+
+            assertEquals(first, second, "a URL with five minutes left should be reused")
+            assertEquals(1, source.downloadUrlCalls, "only the first request should reach the BFF")
+        }
+
+    @Test
+    fun `a cached download URL about to expire is signed again`() =
+        runTest {
+            val source = FakeUrlSource()
+            var now = NOW
+            val store = store(source, clock = { now }) { respond("", HttpStatusCode.OK) }
+
+            store.getDownloadUrl(REQUEST.key)
+            now = EXPIRY - 1.minutes
+            store.getDownloadUrl(REQUEST.key)
+
+            assertEquals(2, source.downloadUrlCalls, "a URL inside the reuse margin should be re-signed")
+        }
+
+    @Test
+    fun `a cached download URL outliving a shorter requested lifetime is signed again`() =
+        runTest {
+            val source = FakeUrlSource()
+            var now = NOW
+            val store = store(source, clock = { now }) { respond("", HttpStatusCode.OK) }
+
+            store.getDownloadUrl(REQUEST.key)
+            now = NOW + 1.minutes
+            store.getDownloadUrl(REQUEST.key, ttl = 5.minutes)
+
+            assertEquals(2, source.downloadUrlCalls, "a URL living past the requested TTL should not be reused")
+            assertEquals(5.minutes, source.downloadTtl, "the re-signed URL should carry the shorter TTL")
+        }
+
+    @Test
+    fun `deleting an object drops its cached download URL`() =
+        runTest {
+            val source = FakeUrlSource()
+            val store = store(source) { respond("", HttpStatusCode.OK) }
+
+            store.getDownloadUrl(REQUEST.key)
+            store.delete(REQUEST.key)
+            store.getDownloadUrl(REQUEST.key)
+
+            assertEquals(
+                listOf("downloadUrl", "delete", "downloadUrl"),
+                source.calls,
+                "a download URL for a deleted object should never be served from the cache",
+            )
+        }
+
+    @Test
     fun `download URLs require a positive requested lifetime`() =
         runTest {
             val source = FakeUrlSource()
@@ -352,6 +413,7 @@ class PresignedObjectStoreTest {
         var downloadTtl: Duration? = null
         var partUrl: String = PART_URL
         var uploadId: String = "upload-1"
+        val downloadUrlCalls: Int get() = calls.count { it == "downloadUrl" }
 
         override suspend fun createUpload(request: UploadRequest): UploadSession {
             calls += "createUpload"

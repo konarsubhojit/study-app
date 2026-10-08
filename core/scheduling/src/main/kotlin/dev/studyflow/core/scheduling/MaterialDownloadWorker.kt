@@ -3,6 +3,7 @@ package dev.studyflow.core.scheduling
 import android.content.Context
 import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
+import androidx.work.ListenableWorker
 import androidx.work.WorkerParameters
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
@@ -47,16 +48,18 @@ public class MaterialDownloadWorker
                     transport = transport,
                     onRemoteMissing = remoteVerifier::onRemoteMissing,
                 )
-            return when (engine.download(materialId)) {
-                is DownloadOutcome.Cached -> Result.success()
-                is DownloadOutcome.Retryable -> Result.retry()
-                is DownloadOutcome.Permanent -> Result.failure()
-                DownloadOutcome.MaterialMissing -> Result.failure()
-            }
+            return engine.download(materialId).toWorkerResult(runAttemptCount)
         }
 
         private companion object {
             const val TAG = "MaterialDownloadWorker"
             const val MATERIALS_DIRECTORY_NAME = "materials"
         }
+    }
+
+internal fun DownloadOutcome.toWorkerResult(runAttemptCount: Int): ListenableWorker.Result =
+    when (this) {
+        is DownloadOutcome.Cached -> ListenableWorker.Result.success()
+        is DownloadOutcome.Retryable -> retryWhileAttemptsRemain(runAttemptCount)
+        is DownloadOutcome.Permanent, DownloadOutcome.MaterialMissing -> ListenableWorker.Result.failure()
     }

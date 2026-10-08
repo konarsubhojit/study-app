@@ -49,7 +49,7 @@ class MaterialUploadWorkerTest {
             val outcome = engine.upload(materialId)
             assertInstanceOf(UploadOutcome.Permanent::class.java, outcome)
 
-            val result = outcome.toWorkerResult()
+            val result = outcome.toWorkerResult(runAttemptCount = 0)
 
             assertEquals(ListenableWorker.Result.failure(), result)
             assertFalse(result == ListenableWorker.Result.retry())
@@ -57,12 +57,44 @@ class MaterialUploadWorkerTest {
 
     @Test
     fun `worker result mapping preserves retry and success outcomes`() {
-        assertEquals(ListenableWorker.Result.success(), UploadOutcome.Synced.toWorkerResult())
+        assertEquals(ListenableWorker.Result.success(), UploadOutcome.Synced.toWorkerResult(runAttemptCount = 0))
         assertEquals(
             ListenableWorker.Result.retry(),
-            UploadOutcome.Retryable("temporarily unavailable").toWorkerResult(),
+            UploadOutcome.Retryable("temporarily unavailable").toWorkerResult(runAttemptCount = 0),
         )
-        assertEquals(ListenableWorker.Result.failure(), UploadOutcome.MaterialMissing.toWorkerResult())
+        assertEquals(
+            ListenableWorker.Result.failure(),
+            UploadOutcome.MaterialMissing.toWorkerResult(runAttemptCount = 0),
+        )
+    }
+
+    @Test
+    fun `a retryable upload failure stops retrying once the attempt budget is spent`() {
+        val retryable = UploadOutcome.Retryable("backend unavailable")
+
+        assertEquals(
+            ListenableWorker.Result.retry(),
+            retryable.toWorkerResult(runAttemptCount = MAX_MATERIAL_TRANSFER_ATTEMPTS - 2),
+            "the last attempt but one should still be retried",
+        )
+        assertEquals(
+            ListenableWorker.Result.failure(),
+            retryable.toWorkerResult(runAttemptCount = MAX_MATERIAL_TRANSFER_ATTEMPTS - 1),
+            "the final attempt should end the work instead of waking the device again",
+        )
+    }
+
+    @Test
+    fun `download results retry transient failures within the same attempt budget`() {
+        assertEquals(ListenableWorker.Result.success(), DownloadOutcome.Cached("/cache/m").toWorkerResult(0))
+        assertEquals(ListenableWorker.Result.retry(), DownloadOutcome.Retryable("offline").toWorkerResult(0))
+        assertEquals(
+            ListenableWorker.Result.failure(),
+            DownloadOutcome.Retryable("offline").toWorkerResult(MAX_MATERIAL_TRANSFER_ATTEMPTS - 1),
+            "a download that keeps failing should stop retrying",
+        )
+        assertEquals(ListenableWorker.Result.failure(), DownloadOutcome.Permanent("gone").toWorkerResult(0))
+        assertEquals(ListenableWorker.Result.failure(), DownloadOutcome.MaterialMissing.toWorkerResult(0))
     }
 
     @Test

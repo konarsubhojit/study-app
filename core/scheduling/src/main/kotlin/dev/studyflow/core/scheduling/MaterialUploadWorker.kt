@@ -32,6 +32,25 @@ public const val EXTRA_UPLOAD_MATERIAL_ID: String = "dev.studyflow.core.scheduli
 /** A stable notification id derived from the material id, so progress updates the same row. */
 public fun materialUploadNotificationId(materialId: String): Int = "material-upload:$materialId".hashCode()
 
+/**
+ * How many times a material transfer may run before a still-retryable failure stops being retried.
+ *
+ * Waiting for a network or a charged battery does not count — WorkManager holds the work without
+ * running it — so attempts are only spent on runs that reached the backend and failed. With
+ * exponential backoff from WorkManager's minimum, ten attempts span hours, after which a failure
+ * that keeps recurring (a backend outage, a misconfigured bucket) stops waking the device; the
+ * material keeps its retryable failure state so the user can retry by hand.
+ */
+internal const val MAX_MATERIAL_TRANSFER_ATTEMPTS: Int = 10
+
+/** [ListenableWorker.Result.retry] while attempts remain, then [ListenableWorker.Result.failure]. */
+internal fun retryWhileAttemptsRemain(runAttemptCount: Int): ListenableWorker.Result =
+    if (runAttemptCount + 1 < MAX_MATERIAL_TRANSFER_ATTEMPTS) {
+        ListenableWorker.Result.retry()
+    } else {
+        ListenableWorker.Result.failure()
+    }
+
 internal suspend fun <T> runAfterForegroundPromotion(
     promoteToForeground: suspend () -> Unit,
     onPromotionUnavailable: (Exception) -> Unit,
@@ -122,19 +141,34 @@ public class MaterialUploadWorker
                 UploadOutcome.Synced -> {
                     syncScheduler.requestSync(SyncTrigger.OUTBOUND)
                     notifier.cancel(materialUploadNotificationId(materialId))
-                    outcome.toWorkerResult()
+                    outcome.toWorkerResult(runAttemptCount)
                 }
 
                 is UploadOutcome.Retryable -> {
+                    val result = outcome.toWorkerResult(runAttemptCount)
+                    val givingUp = result == Result.failure()
+                    if (givingUp) {
+                        logger.warning(
+                            TAG,
+                            "Upload kept failing after $MAX_MATERIAL_TRANSFER_ATTEMPTS attempts; stopping",
+                        )
+                    }
                     notifier.post(
                         materialUploadNotificationId(materialId),
                         StudyFlowNotificationChannel.UPLOADS,
-                        finishedNotification(
-                            title = "Upload paused",
-                            message = "We'll retry when your connection is available.",
-                        ),
+                        if (givingUp) {
+                            finishedNotification(
+                                title = "Upload failed",
+                                message = "You can retry or remove this material.",
+                            )
+                        } else {
+                            finishedNotification(
+                                title = "Upload paused",
+                                message = "We'll retry when your connection is available.",
+                            )
+                        },
                     )
-                    outcome.toWorkerResult()
+                    result
                 }
 
                 is UploadOutcome.Permanent -> {
@@ -152,12 +186,12 @@ public class MaterialUploadWorker
                                 },
                         ),
                     )
-                    outcome.toWorkerResult()
+                    outcome.toWorkerResult(runAttemptCount)
                 }
 
                 UploadOutcome.MaterialMissing -> {
                     notifier.cancel(materialUploadNotificationId(materialId))
-                    outcome.toWorkerResult()
+                    outcome.toWorkerResult(runAttemptCount)
                 }
             }
 
@@ -235,9 +269,9 @@ public class MaterialUploadWorker
         }
     }
 
-internal fun UploadOutcome.toWorkerResult(): ListenableWorker.Result =
+internal fun UploadOutcome.toWorkerResult(runAttemptCount: Int): ListenableWorker.Result =
     when (this) {
         UploadOutcome.Synced -> ListenableWorker.Result.success()
-        is UploadOutcome.Retryable -> ListenableWorker.Result.retry()
+        is UploadOutcome.Retryable -> retryWhileAttemptsRemain(runAttemptCount)
         is UploadOutcome.Permanent, UploadOutcome.MaterialMissing -> ListenableWorker.Result.failure()
     }

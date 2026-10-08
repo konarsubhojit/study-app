@@ -300,6 +300,24 @@ Deno.test("unmatched database refusals are retryable storage outages", async () 
     }
 });
 
+Deno.test("a missing RPC signature is diagnosed as pending migrations", async () => {
+    const lines: string[] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => void lines.push(args.map(String).join(" "));
+    try {
+        await withFetch(storageBackend(404, { code: "PGRST202" }), async () => {
+            const response = await handleRequest(statRequest());
+            await response.body?.cancel();
+        });
+    } finally {
+        console.warn = original;
+    }
+    const diagnostic = JSON.parse(lines[0] ?? "{}");
+    if (diagnostic.code !== "PGRST202" || diagnostic.hint !== "database_migrations_pending") {
+        throw new Error("schema drift was not named in the diagnostic");
+    }
+});
+
 Deno.test("explicit storage client errors keep their status and retry policy", async () => {
     for (const [code, expectedStatus] of [
         ["rate_limited", 429],

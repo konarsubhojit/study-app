@@ -47,7 +47,7 @@ jobs:
   backend-tests:
     name: Edge Function tests
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -69,6 +69,14 @@ jobs:
         run: |
           supabase db start
           supabase test db --local supabase/tests/database/service_role_privileges.sql supabase/tests/database/storage_completion.sql
+
+      - name: Test storage function against the local Supabase stack
+        working-directory: infra
+        # Drives initUpload -> signed part PUTs -> completeUpload -> stat/download/delete through the
+        # real PostgREST RPCs and Supabase Storage S3 protocol, so function/migration drift fails here.
+        run: |
+          supabase start -x studio,imgproxy,vector,logflare,supavisor,mailpit,realtime,postgres-meta,edge-runtime
+          scripts/storage-stack-test.sh
 
   build:
     name: Build and verify

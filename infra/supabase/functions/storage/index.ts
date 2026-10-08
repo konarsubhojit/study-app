@@ -212,6 +212,8 @@ async function databaseJson<T>(path: string, init: RequestInit = {}): Promise<T>
             resource: /^(?:rpc\/)?[a-z_]+$/.test(resource) ? resource : "unknown",
             status: response.status,
             code,
+            // PostgREST cannot find the RPC signature: the function was deployed ahead of its migrations.
+            ...(code === "PGRST202" ? { hint: "database_migrations_pending" } : {}),
         }));
         if (detail.includes("rate_limited")) {
             throw new ApiError(429, "rate_limited", "Too many storage requests. Try again in one minute.");

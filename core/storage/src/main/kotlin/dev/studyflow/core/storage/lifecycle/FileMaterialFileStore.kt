@@ -1,4 +1,4 @@
-package dev.studyflow.feature.settings.data
+package dev.studyflow.core.storage.lifecycle
 
 import dev.studyflow.core.domain.lifecycle.MaterialFileStore
 import java.io.File

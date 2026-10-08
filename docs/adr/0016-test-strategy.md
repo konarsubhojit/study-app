@@ -73,3 +73,21 @@ code.
 - Fakes are code that must be maintained alongside the interfaces they stand in for, and a fake
   that drifts from the real implementation is a false sense of safety — which is why contract-level
   integration tests at the module boundary remain part of the pyramid rather than optional.
+
+## Amendment (October 2026): real-stack tests for provider-facing backend code
+
+Fake-provider tests in `infra/supabase/functions/*/index_test.ts` encode our assumptions about
+Supabase, and two production outages passed them: provider checksums the hosted S3 protocol
+rejects (`InvalidPart`), and a function calling an RPC signature its deployed database did not
+yet have (`PGRST202`). Any change to how an Edge Function talks to PostgREST RPCs or to the
+storage provider must therefore also pass `infra/supabase/functions/storage/stack_test.ts`, run by
+`infra/scripts/storage-stack-test.sh` against `supabase start` in the `backend-tests` CI job. It
+drives initUpload, signed part uploads, completeUpload, stat, download and delete through the real
+migrated schema and Supabase Storage's S3 protocol, for one-part and multipart files.
+
+The fake-provider tests stay for error paths the stack cannot produce on demand. The stack test is
+the authority on what the schema and provider accept, with one known limit: local Storage (file
+backend, and S3 backends such as MinIO, which we tried) accepts completion checksums that hosted
+Supabase rejects, so the no-checksum rule remains pinned by a unit test and the runbook rather
+than by this test. Deploy ordering is enforced separately: the function deploy script pushes
+pending migrations first.

@@ -24,6 +24,9 @@ public class WorkManagerMaterialDownloadCoordinator(
                         .Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .setRequiresBatteryNotLow(true)
+                        // The file is written to app storage; on a nearly full device it would
+                        // fail part-way and burn the retry budget instead of waiting for space.
+                        .setRequiresStorageNotLow(true)
                         .build(),
                 ).build()
         workManager.enqueueUniqueWork(materialDownloadWorkName(materialId), ExistingWorkPolicy.KEEP, request)

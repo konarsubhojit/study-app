@@ -52,6 +52,16 @@ not `400 invalid_request`. Explicit client errors such as `rate_limited` (429),
 The storage diagnostic records only the bounded database code, resource and status, never
 upstream details or request bodies.
 
+**`PGRST202` on an `rpc/…` resource means the function is ahead of the database.** PostgREST
+could not find the RPC with the argument names the function sent. In October 2026,
+`completeUpload` failed this way on every material: the storage function was redeployed with
+the 3-argument `storage_claim_completion(p_upload_id, p_user_id, p_provider_upload_id)` from
+migration `20261007170000`, but production migrations had last been pushed at #206. The
+diagnostic now carries `"hint":"database_migrations_pending"`. To recover, run **Deploy backend**
+(or `supabase db push` from `infra/`); no function redeploy is needed. To prevent a repeat,
+`deploy-storage-function.sh` (and so the **Deploy Edge Function** workflow) now runs
+`supabase db push` before it deploys any function, and requires `SUPABASE_DB_PASSWORD`.
+
 This fix requires **both** deployments from `infra/`:
 
 ```sh
